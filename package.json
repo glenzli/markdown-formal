@@ -1,0 +1,35 @@
+{
+  "name": "markdown-formal",
+  "displayName": "Markdown Formal",
+  "description": "Agent-native, zero-dependency formal mathematics markdown assistant",
+  "version": "0.1.0",
+  "publisher": "glenzli",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "activationEvents": [
+    "onLanguage:markdown"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.webview.json"
+  },
+  "contributes": {
+    "markdown.markdownItPlugins": true,
+    "markdown.previewStyles": [
+      "./media/styles.css"
+    ],
+    "markdown.previewScripts": [
+      "./media/formal-script.js"
+    ],
+    "commands": [
+      {
+        "command": "markdown-formal.refreshLabels",
+        "title": "Markdown Formal: Refresh References"
+      }
+    ]
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

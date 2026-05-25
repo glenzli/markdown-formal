@@ -1,0 +1,39 @@
+# markdown-formal 开发者版安装指南
+
+在日常的插件开发和调试阶段，直接将源代码目录软链接至扩展目录是最高效的做法，这免去了繁琐的打包流程。
+
+## 开发者版 (Dev) 安装步骤
+
+1. 打开终端（Terminal）。
+2. 执行以下命令，将当前 `markdown-formal` 绝对路径软链接到您的扩展目录下：
+
+   **对于 VS Code:**
+   ```bash
+   ln -s "$PWD" ~/.vscode/extensions/markdown-formal
+   ```
+
+   **对于 Antigravity IDE:**
+   ```bash
+   ln -s "$PWD" ~/.antigravity-ide/extensions/markdown-formal
+   ```
+
+3. 重新加载编辑器，在命令面板中执行：**`Developer: Reload Window`**。
+
+## 开发者版热更新
+
+基于软链接机制，当您或 AI Agent 通过 `npm run build` 更新了 TypeScript 编译产物后，只需要在编辑器中重新加载窗口（`Developer: Reload Window`），最新逻辑即可立刻生效。
+
+需要注意：
+
+- `src/webview/formal-script.ts` 会编译到 `media/formal-script.js`，改预览端交互后必须运行 `npm run build`。
+- 扫描缓存位于 `.markdown-formal/`，包含 `labels.json`、`pages.json` 和 `config.json`。
+- `config.json` 支持 `"language": "zh"` 或 `"language": "en"`；旧配置缺少字段时会自动合并默认值。
+- 修改示例书结构后，重新打开预览或重新加载窗口可以触发扫描。
+
+## 故障排查
+
+如果在预览 Markdown 时发现插件未生效：
+1. 确保所在工作区目录存在有效的 `*.md` 文件，并且触发了首次缓存扫描。
+2. 确保没有权限问题导致无法写入工作区根目录的 `.markdown-formal/labels.json` 和 `.markdown-formal/pages.json`。
+3. 确保包含 Markdown 文件的所在文件夹已经在编辑器中打开作为工作区，单独拖拽文件可能无法获取 `workspaceRoot`。
+4. 可通过菜单栏 `Help > Toggle Developer Tools` 检查控制台（Console）中是否有 `[markdown-formal]` 相关的启动日志或报错。
