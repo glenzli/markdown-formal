@@ -1,5 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import {
+    DEFAULT_CONFIG,
+    getLanguage,
+    mergeConfig
+} from './core/formal-core';
 
 interface LabelData {
     type: string;
@@ -41,69 +46,6 @@ interface PageData {
     unitOrder?: number;
     chapter?: number;
     appendix?: string;
-}
-
-const DEFAULT_CONFIG = {
-    language: "zh",
-    dictionary: {
-        zh: { theorem: "定理", lemma: "引理", prop: "命题", cor: "推论", def: "定义", remark: "注", example: "例", section: "§" },
-        en: { theorem: "Theorem", lemma: "Lemma", prop: "Proposition", cor: "Corollary", def: "Definition", remark: "Remark", example: "Example", section: "§" }
-    },
-    ui: {
-        zh: {
-            back: "返回",
-            toc: "目录",
-            emptyToc: "暂无目录数据",
-            units: "章节",
-            chapter: "第 {number} 章",
-            appendix: "附录 {label}",
-            intro: "导读",
-            summary: "小结",
-            introBadge: "导",
-            summaryBadge: "结",
-            unvolumed: "未分卷",
-            volume: "第 {number} 卷",
-            book: "第 {number} 本",
-            workspace: "工作区"
-        },
-        en: {
-            back: "Back",
-            toc: "Contents",
-            emptyToc: "No outline",
-            units: "Sections",
-            chapter: "Chapter {number}",
-            appendix: "Appendix {label}",
-            intro: "Intro",
-            summary: "Summary",
-            introBadge: "I",
-            summaryBadge: "S",
-            unvolumed: "Unvolumed",
-            volume: "Volume {number}",
-            book: "Book {number}",
-            workspace: "Workspace"
-        }
-    }
-};
-
-function mergeConfig(config: any): any {
-    const existing = config && typeof config === 'object' ? config : {};
-    return {
-        ...DEFAULT_CONFIG,
-        ...existing,
-        language: existing.language === 'en' ? 'en' : 'zh',
-        dictionary: {
-            zh: { ...DEFAULT_CONFIG.dictionary.zh, ...(existing.dictionary?.zh || {}) },
-            en: { ...DEFAULT_CONFIG.dictionary.en, ...(existing.dictionary?.en || {}) }
-        },
-        ui: {
-            zh: { ...DEFAULT_CONFIG.ui.zh, ...(existing.ui?.zh || {}) },
-            en: { ...DEFAULT_CONFIG.ui.en, ...(existing.ui?.en || {}) }
-        }
-    };
-}
-
-function getLanguage(config: any): 'zh' | 'en' {
-    return config && config.language === 'en' ? 'en' : 'zh';
 }
 
 function getDictionary(config: any): Record<string, string> {

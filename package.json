@@ -13,7 +13,10 @@
   "main": "./out/extension.js",
   "scripts": {
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.webview.json",
-    "formal": "tsc -p tsconfig.json && node out/cli/formal-tools.js"
+    "formal": "tsc -p tsconfig.json && node out/cli/formal-tools.js",
+    "check": "npm run build && npm run formal -- lint",
+    "test:migrations": "node tests/formal-tools.test.mjs",
+    "test": "npm run check && npm run test:migrations"
   },
   "contributes": {
     "markdown.markdownItPlugins": true,

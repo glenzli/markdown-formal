@@ -36,8 +36,7 @@
 修改源码后至少运行：
 
 ```bash
-npm run build
-npm run formal -- lint
+npm test
 ```
 
 如果改了 CLI 或扫描逻辑，再运行：
@@ -45,6 +44,7 @@ npm run formal -- lint
 ```bash
 npm run formal -- prepare
 npm run formal -- help
+npm run formal -- perf-dummy 50 200
 ```
 
 AI 写作和旧项目迁移流程不放在本文档，见 [工作流接入指南](installer.md) 和 [AI 写作规范](editor.md)。
