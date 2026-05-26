@@ -12,7 +12,8 @@
   ],
   "main": "./out/extension.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json && tsc -p tsconfig.webview.json"
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.webview.json",
+    "formal": "tsc -p tsconfig.json && node out/cli/formal-tools.js"
   },
   "contributes": {
     "markdown.markdownItPlugins": true,

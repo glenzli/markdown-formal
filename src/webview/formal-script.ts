@@ -52,11 +52,15 @@
     type HistoryEntry = {
         filePath: string;
         scroll: number;
+        anchorId?: string;
+        anchorOffset?: number;
     };
 
     type NavPayload = {
         targetId?: string;
         scroll?: number;
+        anchorId?: string;
+        anchorOffset?: number;
         returnTo?: HistoryEntry;
         history?: HistoryEntry[];
     };
@@ -363,15 +367,62 @@
         if (!Array.isArray(history)) return [];
         return history
             .filter(item => item && typeof item.scroll === 'number' && typeof item.filePath === 'string')
-            .map(item => ({ filePath: normalizePath(item.filePath), scroll: item.scroll }))
+            .map(item => {
+                const normalized: HistoryEntry = {
+                    filePath: normalizePath(item.filePath),
+                    scroll: item.scroll
+                };
+                if (typeof item.anchorId === 'string' && item.anchorId) {
+                    normalized.anchorId = item.anchorId;
+                }
+                if (typeof item.anchorOffset === 'number') {
+                    normalized.anchorOffset = item.anchorOffset;
+                }
+                return normalized;
+            })
             .slice(-60);
+    }
+
+    function getAnchorCandidates(): HTMLElement[] {
+        return Array.from(document.querySelectorAll<HTMLElement>(
+            '.formal-section[id], .formal-block[id], h1[id], h2[id], h3[id], h4[id]'
+        )).filter(element => !element.closest('#formal-nav-bar'));
+    }
+
+    function getScrollAnchor(): Pick<HistoryEntry, 'anchorId' | 'anchorOffset'> {
+        const viewportTop = window.scrollY + 16;
+        let best: { id: string; top: number } | undefined;
+
+        getAnchorCandidates().forEach(element => {
+            const top = element.getBoundingClientRect().top + window.scrollY;
+            if (top <= viewportTop && (!best || top > best.top)) {
+                best = { id: element.id, top };
+            }
+        });
+
+        if (!best) return {};
+        return {
+            anchorId: best.id,
+            anchorOffset: window.scrollY - best.top
+        };
+    }
+
+    function makeHistoryEntry(currentFilePath: string): HistoryEntry | undefined {
+        if (!currentFilePath) return undefined;
+        return {
+            filePath: currentFilePath,
+            scroll: window.scrollY,
+            ...getScrollAnchor()
+        };
     }
 
     function appendHistoryEntry(history: HistoryEntry[], entry: HistoryEntry): HistoryEntry[] {
         if (!entry.filePath) return normalizeHistory(history);
 
         const normalized = normalizeHistory(history);
-        const normalizedEntry = { filePath: normalizePath(entry.filePath), scroll: entry.scroll };
+        const normalizedEntry = normalizeHistory([entry])[0];
+        if (!normalizedEntry) return normalized;
+
         const latest = normalized[normalized.length - 1];
         if (!latest || latest.filePath !== normalizedEntry.filePath || Math.abs(latest.scroll - normalizedEntry.scroll) > 8) {
             normalized.push(normalizedEntry);
@@ -381,13 +432,15 @@
     }
 
     function pushHistory(currentFilePath: string) {
-        if (!currentFilePath) return;
-        writeHistory(appendHistoryEntry(readHistory(), { filePath: currentFilePath, scroll: window.scrollY }));
+        const entry = makeHistoryEntry(currentFilePath);
+        if (!entry) return;
+        writeHistory(appendHistoryEntry(readHistory(), entry));
     }
 
     function currentHistoryWithReturn(currentFilePath: string): HistoryEntry[] {
-        if (!currentFilePath) return readHistory();
-        return appendHistoryEntry(readHistory(), { filePath: currentFilePath, scroll: window.scrollY });
+        const entry = makeHistoryEntry(currentFilePath);
+        if (!entry) return readHistory();
+        return appendHistoryEntry(readHistory(), entry);
     }
 
     function addReturnEntry(entry: HistoryEntry) {
@@ -744,6 +797,38 @@
         return true;
     }
 
+    function getMaxScroll(): number {
+        const documentHeight = Math.max(
+            document.documentElement.scrollHeight,
+            document.body.scrollHeight,
+            document.documentElement.offsetHeight,
+            document.body.offsetHeight
+        );
+        return Math.max(0, documentHeight - window.innerHeight);
+    }
+
+    function scrollToOffset(scroll: number, behavior: ScrollBehavior = 'smooth'): boolean {
+        const maxScroll = getMaxScroll();
+        const target = clamp(scroll, 0, maxScroll);
+        window.scrollTo({ top: target, behavior });
+
+        const hasEnoughDocumentHeight = scroll <= maxScroll + 8;
+        const reachedTarget = Math.abs(window.scrollY - target) <= 8;
+        return hasEnoughDocumentHeight && reachedTarget;
+    }
+
+    function restoreHistoryEntry(entry: Pick<HistoryEntry, 'scroll' | 'anchorId' | 'anchorOffset'>, behavior: ScrollBehavior = 'smooth'): boolean {
+        if (entry.anchorId) {
+            const anchor = getTargetElement(entry.anchorId);
+            if (anchor) {
+                const top = anchor.getBoundingClientRect().top + window.scrollY + (entry.anchorOffset || 0);
+                return scrollToOffset(top, behavior);
+            }
+        }
+
+        return scrollToOffset(entry.scroll, behavior);
+    }
+
     function makeNavHash(payload: NavPayload): string {
         return `#${NAV_HASH_PREFIX}${encodePayload(payload)}`;
     }
@@ -773,8 +858,11 @@
         const tryApply = () => {
             if (payload.targetId && scrollToTarget(payload.targetId, 'auto')) return;
             if (!payload.targetId && typeof payload.scroll === 'number') {
-                window.scrollTo({ top: payload.scroll, behavior: 'auto' });
-                return;
+                if (restoreHistoryEntry({
+                    scroll: payload.scroll,
+                    anchorId: payload.anchorId,
+                    anchorOffset: payload.anchorOffset
+                }, 'auto')) return;
             }
 
             if (Date.now() - startedAt < 3000) {
@@ -853,11 +941,16 @@
             if (!last) return;
 
             if (!last.filePath || last.filePath === currentFilePath) {
-                window.scrollTo({ top: last.scroll, behavior: 'smooth' });
+                restoreHistoryEntry(last, 'smooth');
                 return;
             }
 
-            navigateToFile(last.filePath, { scroll: last.scroll, history });
+            navigateToFile(last.filePath, {
+                scroll: last.scroll,
+                anchorId: last.anchorId,
+                anchorOffset: last.anchorOffset,
+                history
+            });
         });
 
         navBar.appendChild(backBtn);
@@ -1035,11 +1128,13 @@
             return;
         }
 
-        const returnTo = currentFilePath ? { filePath: currentFilePath, scroll: window.scrollY } : undefined;
+        const history = currentHistoryWithReturn(currentFilePath);
+        writeHistory(history);
+        const returnTo = history[history.length - 1];
         navigateToFile(targetInfo.filePath, {
             targetId: targetInfo.targetId || undefined,
             returnTo,
-            history: currentHistoryWithReturn(currentFilePath)
+            history
         });
     }
 

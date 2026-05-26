@@ -1,54 +1,70 @@
-# markdown-formal 工作流与安装指南
+# markdown-formal AI 工作流接入指南
 
-`markdown-formal` 用于编写可引用、可预览、可长期重排的数学 Markdown。它把“人类可读编号”和“机器稳定 ID”分开：文件结构决定章、卷、附录编号，`#id` 决定跨文档引用。
+这个文件用于让 AI 把 `markdown-formal` 纳入自己的写作、改稿和迁移流程。它不是开发安装指南；源码位置、构建命令、软链接调试和依赖审查见 [dev-installer.md](dev-installer.md)。
 
-## 推荐工作流
+## 接入目标
 
-1. 用 `skills/editor.md` 作为 AI 写作规约。
-2. 按书、卷、章节组织文件，例如 `book2/vol-1-foundations/01-background.md`。
-3. 使用 `:::theorem {#id title="..."}` 这类容器块定义可引用对象。
-4. 使用 `@id` 和 `@id.title` 引用对象，避免手写显示编号。
-5. 打开 Markdown Preview，扩展会扫描工作区并生成 `.markdown-formal/labels.json`、`.markdown-formal/pages.json` 和 `.markdown-formal/config.json`。
+接入后，AI 应遵守三条规则：
 
-## AI Agent 使用建议
+- 显示编号由工具生成，正文引用只写稳定 hash ID。
+- AI 新增形式化对象时只写 `tmp-*`，不手动生成正式 hash。
+- 每次写完用工具统一生成 ID、刷新索引并检查引用。
 
-给 AI 编写或重构内容时，建议明确附带：
+## 给 AI 的最小提示
+
+把下面这段加入项目级 AI 指令、仓库说明或对话开头即可：
 
 ```text
-请遵守 skills/editor.md：
-- ID 稳定、全局唯一，不用显示编号作为 ID。
-- 章节由 NN-title.md 推断，卷目录不重置正文章号。
-- intro.md 和 summary.md 可导航但不编号。
-- appendix-a-title.md 使用附录编号，附录编号按卷生效。
-- 引用使用 @id / @id.title，不手写定理编号。
-- LaTeX 和 Markdown 内容保持原样，方便 hover 预览渲染。
+请遵守 skills/editor.md。
+写作或迁移前运行 npm run formal -- prepare。
+优先读取 .markdown-formal/agent-guide.md，再读取目标原文和 .markdown-formal/reference-map.md。
+引用已有对象时，只能从 reference-map.md 复制 @h-... 或 @h-....title。
+新增对象使用 tmp-1/tmp-2/...，不要手动生成 hash。
+写完运行 npm run formal -- finalize <file-or-dir>，再运行 npm run formal -- lint。
+保持 Markdown 和 LaTeX 原样，方便 hover 预览渲染。
 ```
 
-为了让 AI 更稳，项目最好持续维护三个东西：
+## AI 使用流程
 
-- `examples/`：覆盖真实写法，包括单书、多卷、intro/summary、卷内附录。
-- `skills/editor.md`：作为写作约束，随着语法演进同步更新。
-- 一个轻量 lint 脚本：检查重复 ID、缺失引用、错误文件名、意外跨书引用。
+日常写作：
 
-## 多语言配置
-
-只支持中文和英文。配置文件位于 `.markdown-formal/config.json`：
-
-```json
-{
-  "language": "zh"
-}
+```bash
+npm run formal -- prepare
+npm run formal -- finalize path/to/chapter.md
+npm run formal -- lint
 ```
 
-可选值：
+`prepare` 会生成 AI 当次需要读的文件：
 
-- `"zh"`：中文类型名与导航文案。
-- `"en"`：英文类型名与导航文案。
+- `.markdown-formal/agent-guide.md`：极简操作卡。
+- `.markdown-formal/reference-map.md`：显示编号到 hash ID 的表。
+- `.markdown-formal/inventory.full.json`：完整内容索引，需要深挖时再读。
+- `.markdown-formal/report.md`：lint 详情。
 
-如果需要覆盖类型名或导航文案，可以在 `dictionary` 或 `ui` 中只写要覆盖的键；扩展会自动合并默认值。
+AI 只需要优先读 `agent-guide.md` 和 `reference-map.md`；不要直接编辑 `.markdown-formal/` 下的生成文件。
 
-## 插件安装
+## 迁移旧项目
 
-正式使用时安装 `.vsix`，或在插件市场搜索 `markdown-formal`。安装后，在工作区中打开任意 Markdown 文件即可触发扩展。
+逐步迁移单章或单卷，先 dry-run 再 apply：
 
-开发和本地调试请看 [开发者版安装指南](dev-installer.md)。
+```bash
+npm run formal -- migrate-text-refs --dry-run path/to/chapter-or-volume
+npm run formal -- migrate-text-refs --apply path/to/chapter-or-volume
+npm run formal -- migrate-ids --dry-run path/to/chapter-or-volume
+npm run formal -- migrate-ids --apply path/to/chapter-or-volume
+```
+
+如果 `migrate-ids` 发现目标范围内的旧 ID 被范围外文件引用，工具会拒绝 scoped apply。此时选择更大的闭合范围，或只迁移目标定义并同步更新入站引用：
+
+```bash
+npm run formal -- migrate-ids --apply --update-refs-all path/to/chapter-or-volume
+```
+
+只有明确要一次性迁移全项目时才使用 `--all`。
+
+## 项目约定
+
+- 写作细则和语法约束放在 [editor.md](editor.md)。
+- 开发安装、调试和构建细节放在 [dev-installer.md](dev-installer.md)。
+- `.markdown-formal/` 是生成缓存，建议忽略，不作为人工维护入口。
+- 如果 `npm run formal -- prepare` 不存在或失败，先不要手写替代流程；让用户安装或修复工具入口。

@@ -1,5 +1,5 @@
 # 第二卷小结
 
-第二卷展示了卷结构只影响导航，不影响正式编号：本卷从第 3 章继续到第 4 章。核心链条是 @b2-thm-descent 到 @b2-thm-gluing，再到 @b2-thm-stability-transfer 和 @b2-cor-wall-crossing。
+第二卷展示了卷结构只影响导航，不影响正式编号：本卷从第 3 章继续到第 4 章。核心链条是 @h-22addd5a8114a69e 到 @h-1bec2cb6f1af5555，再到 @h-1b10ddb204ee5731 和 @h-320bd410d8ab8530。
 
 第三卷会把同一套结构翻译为谱序列和指标理论语言。

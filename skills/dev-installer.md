@@ -26,9 +26,32 @@
 需要注意：
 
 - `src/webview/formal-script.ts` 会编译到 `media/formal-script.js`，改预览端交互后必须运行 `npm run build`。
-- 扫描缓存位于 `.markdown-formal/`，包含 `labels.json`、`pages.json` 和 `config.json`。
+- 扫描缓存位于 `.markdown-formal/`，包含 `labels.json`、`pages.json`、`config.json`、`agent-guide.md`、`reference-map.md` 和 `report.md`。
+- CLI 源码位于 `src/cli/formal-tools.ts`；`npm run formal -- ...` 会先编译到 `out/cli/formal-tools.js` 再执行。
 - `config.json` 支持 `"language": "zh"` 或 `"language": "en"`；旧配置缺少字段时会自动合并默认值。
 - 修改示例书结构后，重新打开预览或重新加载窗口可以触发扫描。
+
+## 开发校验
+
+修改源码后至少运行：
+
+```bash
+npm run build
+npm run formal -- lint
+```
+
+如果改了 CLI 或扫描逻辑，再运行：
+
+```bash
+npm run formal -- prepare
+npm run formal -- help
+```
+
+AI 写作和旧项目迁移流程不放在本文档，见 [工作流接入指南](installer.md) 和 [AI 写作规范](editor.md)。
+
+## 依赖安全
+
+当前维护工具不引入任何新依赖，只使用 Node 内置模块。以后如果确实需要新增包，必须先审查 npm/GitHub/OSV/advisory、近期发布记录、维护者变更、install/postinstall 脚本和 tarball 内容，并固定精确版本，不使用最新版范围。
 
 ## 故障排查
 
