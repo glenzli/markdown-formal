@@ -14,7 +14,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.webview.json",
     "formal": "tsc -p tsconfig.json && node out/cli/formal-tools.js",
-    "check": "npm run build && npm run formal -- lint",
+    "check": "npm run build && npm run formal -- verify",
     "test:migrations": "node tests/formal-tools.test.mjs",
     "test": "npm run check && npm run test:migrations"
   },

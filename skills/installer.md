@@ -20,7 +20,7 @@
 优先读取 .markdown-formal/agent-guide.md，再读取目标原文和 .markdown-formal/reference-map.md。
 引用已有对象时，只能从 reference-map.md 复制 @h-... 或 @h-....title。
 新增对象使用 tmp-1/tmp-2/...，不要手动生成 hash。
-写完运行 npm run formal -- finalize <file-or-dir>，再运行 npm run formal -- lint。
+写完运行 npm run formal -- finalize <file-or-dir>，再运行 npm run formal -- verify。
 保持 Markdown 和 LaTeX 原样，方便 hover 预览渲染。
 ```
 
@@ -31,7 +31,7 @@
 ```bash
 npm run formal -- prepare
 npm run formal -- finalize path/to/chapter.md
-npm run formal -- lint
+npm run formal -- verify
 ```
 
 `prepare` 会生成 AI 当次需要读的文件：
@@ -39,7 +39,7 @@ npm run formal -- lint
 - `.markdown-formal/agent-guide.md`：极简操作卡。
 - `.markdown-formal/reference-map.md`：显示编号到 hash ID 的表。
 - `.markdown-formal/inventory.full.json`：完整内容索引，需要深挖时再读。
-- `.markdown-formal/report.md`：lint 详情。
+- `.markdown-formal/report.md`：lint/verify 详情。
 
 AI 只需要优先读 `agent-guide.md` 和 `reference-map.md`；不要直接编辑 `.markdown-formal/` 下的生成文件。
 

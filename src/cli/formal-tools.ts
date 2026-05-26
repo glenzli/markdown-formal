@@ -124,6 +124,62 @@ async function lint() {
     if (state.issues.some(issue => issue.severity === 'error')) process.exitCode = 1;
 }
 
+const VERIFY_BLOCKING_WARNING_CODES = new Set([
+    'non-hash-id',
+    'formal-block-outside-numbered-file',
+    'duplicate-special-page'
+]);
+
+async function readTextReferenceMigrationCounts() {
+    try {
+        const report = await fs.readFile(path.join(CACHE_DIR, 'text-ref-migration.md'), 'utf8');
+        return {
+            unresolved: Number(report.match(/^Unresolved:\s*(\d+)/m)?.[1] || 0),
+            ambiguous: Number(report.match(/^Ambiguous:\s*(\d+)/m)?.[1] || 0)
+        };
+    } catch (_err) {
+        return { unresolved: 0, ambiguous: 0 };
+    }
+}
+
+async function verify(args) {
+    const strictChapters = args.includes('--strict-chapters');
+    const state = await scanWorkspace();
+    await writeArtifacts(state);
+    printSummary('verify', state);
+
+    const blockingIssues = state.issues.filter(issue => {
+        if (issue.severity === 'error') return true;
+        if (VERIFY_BLOCKING_WARNING_CODES.has(issue.code)) return true;
+        return strictChapters && issue.code === 'chapter-gap';
+    });
+    const migrationCounts = await readTextReferenceMigrationCounts();
+    const hasOpenTextMigration = migrationCounts.unresolved > 0 || migrationCounts.ambiguous > 0;
+
+    if (blockingIssues.length === 0 && !hasOpenTextMigration) {
+        console.log('OK verify: generated/ migrated content gate passed');
+        return;
+    }
+
+    if (blockingIssues.length > 0) {
+        console.error(`VERIFY failed: ${blockingIssues.length} blocking issues`);
+        blockingIssues.slice(0, 10).forEach(issue => {
+            const location = issue.line ? `${issue.file}:${issue.line}` : issue.file || 'workspace';
+            console.error(`${issue.code} ${location}: ${issue.message}`);
+        });
+        if (blockingIssues.length > 10) {
+            console.error(`... ${blockingIssues.length - 10} more blocking issues in .markdown-formal/report.md`);
+        }
+    }
+
+    if (hasOpenTextMigration) {
+        console.error(`VERIFY failed: text-reference migration has unresolved=${migrationCounts.unresolved}, ambiguous=${migrationCounts.ambiguous}`);
+        console.error('Resolve .markdown-formal/text-ref-migration.md before treating migration as complete.');
+    }
+
+    process.exitCode = 1;
+}
+
 async function finalize(paths) {
     const options = parseMigrationArgs(paths);
     if (options.paths.length === 0) {
@@ -184,12 +240,9 @@ async function finalize(paths) {
     const rewriteFiles = options.all ? await collectMarkdownFiles() : targetFiles;
     for (const filePath of rewriteFiles) {
         const original = await fs.readFile(filePath, 'utf8');
-        let updated = original;
-        const prefixPattern = targetFileSet.has(relativePath(filePath)) ? '[#@]' : '@';
-        for (const [tmpId, hashId] of mapping) {
-            const re = new RegExp(`(${prefixPattern})${escapeRegExp(tmpId)}(?=(?:\\.title)?\\b)`, 'g');
-            updated = updated.replace(re, `$1${hashId}`);
-        }
+        const updated = rewriteFormalIds(original, mapping, {
+            rewriteDefinitions: targetFileSet.has(relativePath(filePath))
+        });
         if (updated !== original) {
             await fs.writeFile(filePath, updated, 'utf8');
             changedFiles++;
@@ -211,6 +264,47 @@ function naturalTmpCompare(a, b) {
     const nb = b.match(/^tmp-(\d+)$/)?.[1];
     if (na && nb) return Number(na) - Number(nb);
     return a.localeCompare(b);
+}
+
+function rewriteInlineRefsOutsideCode(line, mapping) {
+    const parts = line.split(/(`[^`]*`)/g);
+    return parts.map(part => {
+        if (part.startsWith('`') && part.endsWith('`')) return part;
+        let updated = part;
+        for (const [oldId, newId] of mapping) {
+            const re = new RegExp(`@${escapeRegExp(oldId)}(?=(?:\\.title)?\\b)`, 'g');
+            updated = updated.replace(re, `@${newId}`);
+        }
+        return updated;
+    }).join('');
+}
+
+function rewriteDefinitionId(line, mapping) {
+    if (!/^:::(?:prop|lemma|theorem|cor|def|remark|example|section)\s+\{/.test(line)) return line;
+    let updated = line;
+    for (const [oldId, newId] of mapping) {
+        const re = new RegExp(`#${escapeRegExp(oldId)}(?=\\b)`, 'g');
+        updated = updated.replace(re, `#${newId}`);
+    }
+    return updated;
+}
+
+function rewriteFormalIds(content, mapping, { rewriteDefinitions }) {
+    const lines = content.split(/\r?\n/);
+    const eol = content.includes('\r\n') ? '\r\n' : '\n';
+    let inFence = false;
+    const updated = lines.map(line => {
+        if (/^\s*(```|~~~)/.test(line)) {
+            inFence = !inFence;
+            return line;
+        }
+        if (inFence) return line;
+
+        let next = rewriteDefinitions ? rewriteDefinitionId(line, mapping) : line;
+        next = rewriteInlineRefsOutsideCode(next, mapping);
+        return next;
+    });
+    return updated.join(eol);
 }
 
 async function resolveInputMarkdownFiles(inputs) {
@@ -291,12 +385,9 @@ async function migrateIds(args) {
     let changedFiles = 0;
     for (const filePath of rewriteFiles) {
         const original = await fs.readFile(filePath, 'utf8');
-        let updated = original;
-        const prefixPattern = targetFileSet.has(relativePath(filePath)) ? '[#@]' : '@';
-        for (const [oldId, newId] of mapping) {
-            const re = new RegExp(`(${prefixPattern})${escapeRegExp(oldId)}(?=(?:\\.title)?\\b)`, 'g');
-            updated = updated.replace(re, `$1${newId}`);
-        }
+        const updated = rewriteFormalIds(original, mapping, {
+            rewriteDefinitions: targetFileSet.has(relativePath(filePath))
+        });
         if (updated !== original) {
             await fs.writeFile(filePath, updated, 'utf8');
             changedFiles++;
@@ -652,24 +743,58 @@ function makeDummyDocuments(chapters, blocksPerChapter) {
 }
 
 async function perfDummy(args) {
-    const chapters = Math.max(1, Number(args[0] || 50));
-    const blocksPerChapter = Math.max(1, Number(args[1] || 200));
+    const options = parsePerfArgs(args);
+    const chapters = Math.max(1, Number(options.positionals[0] || 50));
+    const blocksPerChapter = Math.max(1, Number(options.positionals[1] || 200));
     const documents = makeDummyDocuments(chapters, blocksPerChapter);
     const started = Date.now();
     const state = scanFormalDocuments(documents, mergeConfig(DEFAULT_CONFIG));
     const elapsed = Date.now() - started;
     const memory = process.memoryUsage ? process.memoryUsage() : undefined;
-    const heapMb = memory ? Math.round(memory.heapUsed / 1024 / 1024) : 'n/a';
+    const heapMbValue = memory ? memory.heapUsed / 1024 / 1024 : undefined;
+    const heapMb = heapMbValue === undefined ? 'n/a' : Math.round(heapMbValue);
     printSummary('perf-dummy', state);
     console.log(`Documents: ${chapters}, blocks/document: ${blocksPerChapter}, total blocks: ${chapters * blocksPerChapter}`);
     console.log(`Elapsed: ${elapsed}ms, heap used: ${heapMb}MB`);
     if (state.issues.some(issue => issue.severity === 'error')) process.exitCode = 1;
+    if (options.maxMs !== undefined && elapsed > options.maxMs) {
+        console.error(`PERF failed: elapsed ${elapsed}ms exceeds --max-ms ${options.maxMs}`);
+        process.exitCode = 1;
+    }
+    if (options.maxHeapMb !== undefined && heapMbValue !== undefined && heapMbValue > options.maxHeapMb) {
+        console.error(`PERF failed: heap ${Math.round(heapMbValue)}MB exceeds --max-heap-mb ${options.maxHeapMb}`);
+        process.exitCode = 1;
+    }
+}
+
+function parsePerfArgs(args) {
+    const options = {
+        positionals: [],
+        maxMs: undefined,
+        maxHeapMb: undefined
+    };
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+        if (arg === '--max-ms') {
+            options.maxMs = Number(args[++i]);
+        } else if (arg.startsWith('--max-ms=')) {
+            options.maxMs = Number(arg.slice('--max-ms='.length));
+        } else if (arg === '--max-heap-mb') {
+            options.maxHeapMb = Number(args[++i]);
+        } else if (arg.startsWith('--max-heap-mb=')) {
+            options.maxHeapMb = Number(arg.slice('--max-heap-mb='.length));
+        } else {
+            options.positionals.push(arg);
+        }
+    }
+    return options;
 }
 
 function printHelp() {
     console.log(`Usage:
   npm run formal -- prepare
   npm run formal -- lint
+  npm run formal -- verify [--strict-chapters]
   npm run formal -- finalize <file-or-dir> [...] [--all]
   npm run formal -- migrate-text-refs --dry-run <file-or-dir> [...] [--all]
   npm run formal -- migrate-text-refs --apply <file-or-dir> [...] [--all]
@@ -678,13 +803,14 @@ function printHelp() {
   npm run formal -- migrate-ids --apply --update-refs-all <file-or-dir> [...]
   npm run formal -- migrate-ids --dry-run --all
   npm run formal -- migrate-ids --apply --all
-  npm run formal -- perf-dummy [chapters] [blocks-per-chapter]
+  npm run formal -- perf-dummy [chapters] [blocks-per-chapter] [--max-ms N] [--max-heap-mb N]
   npm run formal -- report
 
 Agent workflow:
   1. Run prepare.
   2. Read .markdown-formal/agent-guide.md and .markdown-formal/reference-map.md.
-  3. Use tmp-* for new objects, then run finalize on the edited file or directory.`);
+  3. Use tmp-* for new objects, then run finalize on the edited file or directory.
+  4. Run verify before treating generated or migrated content as complete.`);
 }
 
 async function main() {
@@ -696,6 +822,8 @@ async function main() {
         await prepare({ exitOnError: true });
     } else if (command === 'lint') {
         await lint();
+    } else if (command === 'verify') {
+        await verify(args);
     } else if (command === 'finalize') {
         await finalize(args);
     } else if (command === 'migrate-text-refs') {

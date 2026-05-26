@@ -147,7 +147,7 @@ AI 不手动生成正式 hash。新增内容时只使用临时 ID：
 
 - `@id` 渲染为类型和编号，例如 `定理 3.2` 或 `Theorem 3.2`。
 - `@id.title` 渲染为该块标题。
-- 未定义引用会在 `npm run formal -- lint` 中报错。
+- 未定义引用会在 `npm run formal -- lint` / `npm run formal -- verify` 中报错。
 
 写作建议：
 
@@ -176,7 +176,7 @@ AI 不手动生成正式 hash。新增内容时只使用临时 ID：
 5. 运行 `npm run formal -- migrate-text-refs --dry-run <file-or-dir>` 查看范围内会替换哪些“定理 2.1”文字引用。
 6. 如果 dry-run 报告无歧义，运行 `npm run formal -- migrate-text-refs --apply <file-or-dir>`。
 7. 对 `.markdown-formal/text-ref-migration.md` 中的 unresolved/ambiguous 项，AI 结合原文上下文手工改成正确 `@h-...`。
-8. 最后运行 `npm run formal -- lint`。
+8. 最后运行 `npm run formal -- verify`。
 
 迁移是默认 scoped 的：传入单章就只改单章，传入单卷目录就只改单卷。这样可以逐章/逐卷审查，不必一次性重写全书。
 

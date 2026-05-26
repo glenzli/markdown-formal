@@ -788,7 +788,8 @@ export function renderAgentGuide(state: any): string {
         '3. Reference existing objects with `@h-...` or `@h-....title`; never handwrite display numbers as references.',
         '4. Create new objects with temporary IDs such as `tmp-1`, `tmp-2`, `tmp-3`.',
         '5. Keep Markdown and LaTeX unescaped so hover preview can render formulas.',
-        '6. Run `npm run formal -- finalize <file-or-dir>` after editing, then fix `.markdown-formal/report.md` if needed.',
+        '6. Run `npm run formal -- finalize <file-or-dir>` after editing.',
+        '7. Run `npm run formal -- verify` before treating generated or migrated content as complete.',
         '',
         '## Gradual Migration',
         '',
@@ -801,7 +802,7 @@ export function renderAgentGuide(state: any): string {
         '',
         '- `.markdown-formal/reference-map.md`: compact display-number to hash-ID table.',
         '- `.markdown-formal/inventory.full.json`: full content inventory for deeper lookup.',
-        '- `.markdown-formal/report.md`: lint details.',
+        '- `.markdown-formal/report.md`: lint/verify details.',
         '- `.markdown-formal/text-ref-migration.md`: generated only after text-reference migration.',
         ''
     ];
