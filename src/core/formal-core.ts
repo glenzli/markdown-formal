@@ -18,7 +18,6 @@ export interface LabelData {
     volumeTitle?: string;
     volumeOrder?: number;
     content?: string;
-    contentPreview?: string;
     startLine?: number;
     endLine?: number;
 }
@@ -51,12 +50,25 @@ export interface FormalIssue {
 }
 
 export interface FormalDefinition {
-    id: string;
+    id?: string;
     type: string;
     title: string;
     file: string;
     line: number;
     label: LabelData;
+}
+
+export interface RuntimeDefinitionData {
+    title: string;
+    filePath: string;
+    line: number;
+    content: string;
+    bookKey?: string;
+    bookTitle?: string;
+    bookOrder?: number;
+    volumeKey?: string;
+    volumeTitle?: string;
+    volumeOrder?: number;
 }
 
 export interface FormalReference {
@@ -99,16 +111,13 @@ interface UnitFile {
     unit: NumberingUnit;
 }
 
-interface PendingBlock {
+export interface FormalMarker {
     type: string;
-    id: string;
+    id?: string;
     title: string;
-    filePath: string;
-    book: BookInfo;
-    unit: NumberingUnit;
-    volume?: VolumeInfo;
-    startLine: number;
-    contentLines: string[];
+    markerText: string;
+    rest: string;
+    level?: number;
 }
 
 export const FORMAL_TYPES = ['prop', 'lemma', 'theorem', 'cor', 'def', 'remark', 'example', 'section'];
@@ -213,7 +222,10 @@ export function getContentPreview(content: string, maxLength = 240): string {
         .replace(/```[\s\S]*?```/g, ' ')
         .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
         .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-        .replace(/[`*_>#~-]+/g, '')
+        .replace(/`([^`]*)`/g, '$1')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/\*([^*]+)\*/g, '$1')
+        .replace(/^[ \t]{0,3}(?:#{1,6}\s+|>\s*|[-+*]\s+)/gm, '')
         .replace(/\s+/g, ' ')
         .trim();
     return text.length > maxLength ? `${text.slice(0, maxLength).trimEnd()}...` : text;
@@ -225,6 +237,94 @@ export function stripIgnoredMarkdown(content: string): string {
         .replace(/```[\s\S]*?```/g, '')
         .replace(/~~~[\s\S]*?~~~/g, '')
         .replace(/`[^`\n]*`/g, '');
+}
+
+const MARKER_TYPE_ALIASES: Record<string, string> = {
+    '命题': 'prop',
+    '引理': 'lemma',
+    '定理': 'theorem',
+    '推论': 'cor',
+    '定义': 'def',
+    '注': 'remark',
+    '例': 'example',
+    proposition: 'prop',
+    prop: 'prop',
+    lemma: 'lemma',
+    lem: 'lemma',
+    theorem: 'theorem',
+    thm: 'theorem',
+    corollary: 'cor',
+    cor: 'cor',
+    definition: 'def',
+    def: 'def',
+    remark: 'remark',
+    example: 'example'
+};
+
+function normalizeMarkerType(value: string): string | undefined {
+    return MARKER_TYPE_ALIASES[value.toLowerCase()] || MARKER_TYPE_ALIASES[value];
+}
+
+function extractMarkerTitle(type: string, rest: string): string {
+    const trimmed = rest.trim();
+    if (!trimmed) return '';
+
+    const paren = trimmed.match(/^[（(]([^）)]+)[）)]/);
+    if (paren) return paren[1].trim();
+
+    if (type === 'def') {
+        const term = trimmed.match(/^([^：:\n，,。.;；]+)[：:]/);
+        if (term) return term[1].trim();
+    }
+
+    return '';
+}
+
+export function parseFormalMarkerLine(line: string): FormalMarker | undefined {
+    const heading = line.match(/^(#{2,6})\s+#([A-Za-z0-9_-]+)\s+(.+?)\s*$/);
+    if (heading) {
+        return {
+            type: 'section',
+            id: heading[2],
+            title: heading[3].trim(),
+            markerText: `#${heading[2]}`,
+            rest: heading[3].trim(),
+            level: heading[1].length
+        };
+    }
+
+    const text = line.trim();
+    const typePattern = '定理|引理|命题|推论|定义|注|例|Theorem|Thm\\.?|Lemma|Lem\\.?|Proposition|Prop\\.?|Corollary|Cor\\.?|Definition|Def\\.?|Remark|Example';
+    const typed = text.match(new RegExp(`^(${typePattern})\\s*(.*)$`, 'i'));
+    if (!typed) return undefined;
+
+    const type = normalizeMarkerType(typed[1].replace(/\.$/, ''));
+    if (!type) return undefined;
+
+    if (type === 'def') {
+        const rest = typed[2] || '';
+        if (!/^\s*[（(]/.test(rest)) return undefined;
+        const title = extractMarkerTitle(type, rest);
+        if (!title) return undefined;
+        return {
+            type,
+            title,
+            markerText: typed[1],
+            rest
+        };
+    }
+
+    const match = text.match(new RegExp(`^(${typePattern})\\s+#([A-Za-z0-9_-]+)\\b\\s*(.*)$`, 'i'));
+    if (!match) return undefined;
+
+    const rest = match[3] || '';
+    return {
+        type,
+        id: match[2],
+        title: extractMarkerTitle(type, rest),
+        markerText: `${match[1]} #${match[2]}`,
+        rest
+    };
 }
 
 function parseVolumeOrder(value: string): number {
@@ -329,49 +429,77 @@ function getPageOrder(kind: string, unit?: NumberingUnit): number {
     return unit ? unit.order : 0;
 }
 
-export function parseFormalBlockStart(line: string): any {
-    const match = line.match(/^:::(prop|lemma|theorem|cor|def|remark|example|section)\s+\{([^}]+)\}\s*$/);
-    if (!match) return undefined;
-
-    const inner = match[2];
-    const idMatch = inner.match(/#([^\s}]+)/);
-    if (!idMatch) return undefined;
-
-    const titleMatch = inner.match(/title="([^"]*)"/);
-    return {
-        type: match[1],
-        id: idMatch[1],
-        title: titleMatch ? titleMatch[1] : ''
-    };
+function markerLineContent(line: string, marker: FormalMarker): string {
+    if (marker.type === 'section') return marker.title;
+    return line.trim().replace(marker.markerText, sourceMarkerLabel(marker)).trim();
 }
 
-function makeLabelData(pending: PendingBlock, itemNumber?: number, sectionNumber?: number, endLine?: number): LabelData {
-    const content = pending.contentLines.join('\n');
+function sourceMarkerLabel(marker: FormalMarker): string {
+    return marker.markerText.replace(/\s+#[A-Za-z0-9_-]+\b$/, '').trim();
+}
+
+function collectMarkerContent(lines: string[], startLine: number, marker: FormalMarker): { contentLines: string[]; endLine: number } {
+    const contentLines = [markerLineContent(lines[startLine], marker)];
+    let endLine = startLine;
+
+    for (let i = startLine + 1; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line.trim()) break;
+        if (/^#{1,6}\s+/.test(line) || parseFormalMarkerLine(line)) break;
+        contentLines.push(line);
+        endLine = i;
+    }
+
+    return { contentLines, endLine };
+}
+
+function makeLabelData(marker: FormalMarker, unitFile: UnitFile, startLine: number, contentLines: string[], itemNumber?: number, sectionNumber?: number, endLine?: number): LabelData {
+    const content = contentLines.join('\n');
     const label: LabelData = {
-        type: pending.type,
-        title: pending.title,
-        filePath: pending.filePath,
-        bookKey: pending.book.key,
-        bookTitle: pending.book.title,
-        bookOrder: pending.book.order,
-        unitKind: pending.unit.kind,
-        unitKey: pending.unit.key,
-        unitLabel: pending.unit.label,
-        unitOrder: pending.unit.order,
+        type: marker.type,
+        title: marker.title,
+        filePath: unitFile.filePath,
+        bookKey: unitFile.book.key,
+        bookTitle: unitFile.book.title,
+        bookOrder: unitFile.book.order,
+        unitKind: unitFile.unit.kind,
+        unitKey: unitFile.unit.key,
+        unitLabel: unitFile.unit.label,
+        unitOrder: unitFile.unit.order,
         content,
-        contentPreview: getContentPreview(content),
-        startLine: pending.startLine,
+        startLine,
         endLine
     };
 
-    if (pending.unit.chapter !== undefined) label.chapter = pending.unit.chapter;
-    if (pending.unit.appendix !== undefined) label.appendix = pending.unit.appendix;
-    if (INCREMENTAL_TYPES.has(pending.type)) label.number = itemNumber;
-    if (SECTION_TYPES.has(pending.type)) label.number = sectionNumber;
-    if (pending.volume) {
-        label.volumeKey = pending.volume.key;
-        label.volumeTitle = pending.volume.title;
-        label.volumeOrder = pending.volume.order;
+    if (unitFile.unit.chapter !== undefined) label.chapter = unitFile.unit.chapter;
+    if (unitFile.unit.appendix !== undefined) label.appendix = unitFile.unit.appendix;
+    if (INCREMENTAL_TYPES.has(marker.type)) label.number = itemNumber;
+    if (SECTION_TYPES.has(marker.type)) label.number = sectionNumber;
+    if (unitFile.volume) {
+        label.volumeKey = unitFile.volume.key;
+        label.volumeTitle = unitFile.volume.title;
+        label.volumeOrder = unitFile.volume.order;
+    }
+    return label;
+}
+
+function makeDefinitionLabelData(marker: FormalMarker, document: FormalDocument, book: BookInfo, volume: VolumeInfo | undefined, startLine: number, contentLines: string[], endLine?: number): LabelData {
+    const content = contentLines.join('\n');
+    const label: LabelData = {
+        type: marker.type,
+        title: marker.title,
+        filePath: document.filePath,
+        bookKey: book.key,
+        bookTitle: book.title,
+        bookOrder: book.order,
+        content,
+        startLine,
+        endLine
+    };
+    if (volume) {
+        label.volumeKey = volume.key;
+        label.volumeTitle = volume.title;
+        label.volumeOrder = volume.order;
     }
     return label;
 }
@@ -423,13 +551,36 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
         }
 
         collectReferences(content, filePath, references);
-        const blockStarts = collectBlockStarts(content, filePath, issues);
-        if (blockStarts.length > 0 && !unit) {
+        const markerStarts = collectMarkerStarts(content, filePath);
+        if (markerStarts.some(marker => marker.type !== 'def') && !unit) {
             issues.push({
                 severity: 'warn',
-                code: 'formal-block-outside-numbered-file',
+                code: 'formal-marker-outside-numbered-file',
                 file: filePath,
-                message: 'Formal blocks are only numbered in NN-title.md or appendix-a-title.md files.'
+                message: 'Numbered markers are only numbered in NN-title.md or appendix-a-title.md files.'
+            });
+        }
+
+        const lines = content.split(/\r?\n/);
+        let inFence = false;
+        for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+            const line = lines[lineIndex];
+            if (/^\s*(```|~~~)/.test(line)) {
+                inFence = !inFence;
+                continue;
+            }
+            if (inFence) continue;
+            const marker = parseFormalMarkerLine(line);
+            if (!marker || marker.type !== 'def') continue;
+
+            const collected = collectMarkerContent(lines, lineIndex, marker);
+            const label = makeDefinitionLabelData(marker, { filePath, content }, book, volume, lineIndex, collected.contentLines, collected.endLine);
+            definitions.push({
+                type: marker.type,
+                title: marker.title,
+                file: filePath,
+                line: lineIndex + 1,
+                label
             });
         }
 
@@ -447,59 +598,31 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
 
         for (const unitFile of groupFiles) {
             const lines = unitFile.content.split(/\r?\n/);
-            let pending: PendingBlock | undefined;
             let inFence = false;
 
             for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
                 const line = lines[lineIndex];
                 if (/^\s*(```|~~~)/.test(line)) {
                     inFence = !inFence;
-                    if (pending) pending.contentLines.push(line);
                     continue;
                 }
-
-                if (pending) {
-                    if (!inFence && /^:::\s*$/.test(line)) {
-                        const itemNumber = INCREMENTAL_TYPES.has(pending.type) ? itemCounter++ : undefined;
-                        const sectionNumber = SECTION_TYPES.has(pending.type) ? sectionCounter++ : undefined;
-                        const label = makeLabelData(pending, itemNumber, sectionNumber, lineIndex);
-                        labels[pending.id] = label;
-                        definitions.push({
-                            id: pending.id,
-                            type: pending.type,
-                            title: pending.title,
-                            file: pending.filePath,
-                            line: pending.startLine + 1,
-                            label
-                        });
-                        pending = undefined;
-                        continue;
-                    }
-                    pending.contentLines.push(line);
-                    continue;
-                }
-
                 if (inFence) continue;
-                const block = parseFormalBlockStart(line);
-                if (!block) continue;
-                pending = {
-                    ...block,
-                    filePath: unitFile.filePath,
-                    book: unitFile.book,
-                    volume: unitFile.volume,
-                    unit: unitFile.unit,
-                    startLine: lineIndex,
-                    contentLines: []
-                };
-            }
+                const marker = parseFormalMarkerLine(line);
+                if (!marker) continue;
+                if (marker.type === 'def') continue;
 
-            if (pending) {
-                issues.push({
-                    severity: 'error',
-                    code: 'unclosed-formal-block',
-                    file: pending.filePath,
-                    line: pending.startLine + 1,
-                    message: `Missing closing ::: for #${pending.id}.`
+                const itemNumber = INCREMENTAL_TYPES.has(marker.type) ? itemCounter++ : undefined;
+                const sectionNumber = SECTION_TYPES.has(marker.type) ? sectionCounter++ : undefined;
+                const content = collectMarkerContent(lines, lineIndex, marker);
+                const label = makeLabelData(marker, unitFile, lineIndex, content.contentLines, itemNumber, sectionNumber, content.endLine);
+                labels[marker.id!] = label;
+                definitions.push({
+                    id: marker.id!,
+                    type: marker.type,
+                    title: marker.title,
+                    file: unitFile.filePath,
+                    line: lineIndex + 1,
+                    label
                 });
             }
         }
@@ -511,11 +634,10 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
 
     definitions.sort(compareDefinitionRecords);
     pages.sort(comparePages);
-    const inventory = buildInventory(definitions, config);
-    return { config, files: files.map(file => file.filePath), labels, pages, definitions, references, inventory, issues };
+    return { config, files: files.map(file => file.filePath), labels, pages, definitions, references, issues };
 }
 
-function collectBlockStarts(content: string, filePath: string, issues: FormalIssue[]): any[] {
+function collectMarkerStarts(content: string, filePath: string): any[] {
     const starts = [];
     const lines = content.split(/\r?\n/);
     let inFence = false;
@@ -526,18 +648,8 @@ function collectBlockStarts(content: string, filePath: string, issues: FormalIss
             continue;
         }
         if (inFence) continue;
-        const block = parseFormalBlockStart(line);
-        if (block) starts.push({ ...block, file: filePath, line: i + 1 });
-        const malformed = line.match(/^:::(prop|lemma|theorem|cor|def|remark|example|section)\b/);
-        if (malformed && !block) {
-            issues.push({
-                severity: 'error',
-                code: 'malformed-formal-block',
-                file: filePath,
-                line: i + 1,
-                message: 'Formal block start must be :::type {#id title="..."} on one line.'
-            });
-        }
+        const marker = parseFormalMarkerLine(line);
+        if (marker) starts.push({ ...marker, file: filePath, line: i + 1 });
     }
     return starts;
 }
@@ -573,6 +685,7 @@ function lintDefinitions(definitions: FormalDefinition[]): FormalIssue[] {
     const issues: FormalIssue[] = [];
     const byId = new Map<string, FormalDefinition[]>();
     for (const def of definitions) {
+        if (!def.id) continue;
         if (!byId.has(def.id)) byId.set(def.id, []);
         byId.get(def.id)!.push(def);
 
@@ -582,7 +695,7 @@ function lintDefinitions(definitions: FormalDefinition[]): FormalIssue[] {
                 code: 'tmp-id-left',
                 file: def.file,
                 line: def.line,
-                message: `Temporary id #${def.id} remains. Run npm run formal -- finalize <file>.`
+                message: `Temporary marker #${def.id} remains. Run npm run formal -- finalize <file>.`
             });
         } else if (!HASH_ID_RE.test(def.id)) {
             issues.push({
@@ -590,7 +703,7 @@ function lintDefinitions(definitions: FormalDefinition[]): FormalIssue[] {
                 code: 'non-hash-id',
                 file: def.file,
                 line: def.line,
-                message: `Formal id #${def.id} is not a pure hash id.`
+                message: `Marker id #${def.id} is not a pure hash id.`
             });
         }
     }
@@ -603,7 +716,7 @@ function lintDefinitions(definitions: FormalDefinition[]): FormalIssue[] {
                 code: 'duplicate-id',
                 file: def.file,
                 line: def.line,
-                message: `Duplicate formal id #${id}.`
+                message: `Duplicate marker id #${id}.`
             });
         });
     }
@@ -613,7 +726,7 @@ function lintDefinitions(definitions: FormalDefinition[]): FormalIssue[] {
 function lintReferences(references: FormalReference[], labels: Record<string, LabelData>, definitions: FormalDefinition[]): FormalIssue[] {
     const issues: FormalIssue[] = [];
     const definedIds = new Set(Object.keys(labels));
-    const tmpDefs = new Set(definitions.filter(def => TMP_ID_RE.test(def.id)).map(def => def.id));
+    const tmpDefs = new Set(definitions.filter(def => def.id && TMP_ID_RE.test(def.id)).map(def => def.id as string));
     for (const ref of references) {
         if (TMP_ID_RE.test(ref.id)) {
             issues.push({
@@ -631,7 +744,7 @@ function lintReferences(references: FormalReference[], labels: Record<string, La
                 code: 'missing-ref',
                 file: ref.file,
                 line: ref.line,
-                message: `Reference @${ref.id} has no matching formal block.`
+                message: `Reference @${ref.id} has no matching marker.`
             });
         }
     }
@@ -728,24 +841,6 @@ export function displayNumber(def: FormalDefinition): string {
     return formatLabelNumber(def.label);
 }
 
-export function buildInventory(definitions: FormalDefinition[], config: any): Record<string, any> {
-    const inventory: Record<string, any> = {};
-    for (const def of definitions) {
-        inventory[def.id] = {
-            type: def.type,
-            display: displayLabel(def, config),
-            title: def.title,
-            file: def.file,
-            line: def.line,
-            book: def.label.bookTitle,
-            unit: def.label.unitKey,
-            preview: def.label.contentPreview,
-            content: def.label.content
-        };
-    }
-    return inventory;
-}
-
 export function renderReferenceMap(definitions: FormalDefinition[], config: any): string {
     const lines = [
         '# Reference Map',
@@ -755,7 +850,7 @@ export function renderReferenceMap(definitions: FormalDefinition[], config: any)
     ];
 
     let currentBook = '';
-    for (const def of definitions) {
+    for (const def of definitions.filter(def => def.id && displayNumber(def))) {
         const book = def.label.bookTitle || 'Workspace';
         if (book !== currentBook) {
             currentBook = book;
@@ -771,6 +866,31 @@ export function renderReferenceMap(definitions: FormalDefinition[], config: any)
     return `${lines.join('\n')}\n`;
 }
 
+export function buildRuntimeDefinitions(definitions: FormalDefinition[]): RuntimeDefinitionData[] {
+    return definitions
+        .filter(def => def.type === 'def')
+        .map(def => ({
+            title: def.title,
+            filePath: def.file,
+            line: def.line,
+            content: def.label.content || '',
+            bookKey: def.label.bookKey,
+            bookTitle: def.label.bookTitle,
+            bookOrder: def.label.bookOrder,
+            volumeKey: def.label.volumeKey,
+            volumeTitle: def.label.volumeTitle,
+            volumeOrder: def.label.volumeOrder
+        }));
+}
+
+export function buildPreviewCache(state: any) {
+    return {
+        entries: state.labels,
+        pages: state.pages,
+        definitions: buildRuntimeDefinitions(state.definitions || [])
+    };
+}
+
 export function renderAgentGuide(state: any): string {
     const errors = state.issues.filter((issue: FormalIssue) => issue.severity === 'error').length;
     const warnings = state.issues.filter((issue: FormalIssue) => issue.severity !== 'error').length;
@@ -779,29 +899,29 @@ export function renderAgentGuide(state: any): string {
         '',
         'Generated by `npm run formal -- prepare`. This is the compact workflow card for AI agents.',
         '',
-        `Current cache: ${Object.keys(state.labels).length} labels, ${state.pages.length} pages, ${errors} errors, ${warnings} warnings.`,
+        `Current cache: ${Object.keys(state.labels).length} preview entries, ${state.pages.length} pages, ${errors} errors, ${warnings} warnings.`,
         '',
         '## Normal Writing',
         '',
         '1. Read the target Markdown file.',
         '2. Read `.markdown-formal/reference-map.md` to map display numbers to stable hash IDs.',
-        '3. Reference existing objects with `@h-...` or `@h-....title`; never handwrite display numbers as references.',
-        '4. Create new objects with temporary IDs such as `tmp-1`, `tmp-2`, `tmp-3`.',
-        '5. Keep Markdown and LaTeX unescaped so hover preview can render formulas.',
+        '3. Put stable IDs directly where numbers used to appear: `## #tmp-1 Section`, `定理 #tmp-2（Title）：...`, or `Theorem #tmp-2 (Title): ...`. Definitions stay plain: `定义（Term）：...` or `Definition (Term): ...`.',
+        '4. Reference numbered objects with `@h-...`; never handwrite display numbers as references.',
+        '5. Keep Markdown and LaTeX unescaped.',
         '6. Run `npm run formal -- finalize <file-or-dir>` after editing.',
         '7. Run `npm run formal -- verify` before treating generated or migrated content as complete.',
         '',
-        '## Gradual Migration',
+        '## Lightweight Syntax',
         '',
-        '- Text references: run `npm run formal -- migrate-text-refs --dry-run <file-or-dir>` before `--apply`.',
-        '- Old semantic IDs: run `npm run formal -- migrate-ids --dry-run <file-or-dir>` before `--apply`.',
-        '- If scoped ID migration reports outside references, choose a larger closed scope or use `--update-refs-all`.',
-        '- Use `--all` only when intentionally migrating the whole project or cross-file temporary references.',
+        '- Sections: `## #h-... Title` renders as the current section number plus title.',
+        '- Numbered objects: `命题 #h-...（Title）：...`, `引理 #h-...`, `定理 #h-...`, `推论 #h-...` share the theorem counter per chapter or appendix.',
+        '- Definitions: `定义（Term）：...` and `Definition (Term): ...` enter the preview definition search only; they do not have hash IDs and do not participate in automatic reference migration.',
+        '- Appendices use the appendix file prefix, so markers in `appendix-a-*.md` render as `A.1`, `A.2`, etc.',
         '',
         '## Generated Files',
         '',
         '- `.markdown-formal/reference-map.md`: compact display-number to hash-ID table.',
-        '- `.markdown-formal/inventory.full.json`: full content inventory for deeper lookup.',
+        '- `.markdown-formal/preview-cache.json`: runtime preview/navigation/definition lookup cache.',
         '- `.markdown-formal/report.md`: lint/verify details.',
         '- `.markdown-formal/text-ref-migration.md`: generated only after text-reference migration.',
         ''

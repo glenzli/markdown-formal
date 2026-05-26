@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
     DEFAULT_CONFIG,
+    buildPreviewCache,
     mergeConfig,
     scanFormalDocuments,
     toPosix
@@ -68,15 +69,26 @@ async function scanWorkspaceOnce() {
         fs.mkdirSync(cacheDir, { recursive: true });
     }
 
-    await fs.promises.writeFile(path.join(cacheDir, 'labels.json'), `${JSON.stringify(state.labels, null, 2)}\n`, 'utf-8');
-    await fs.promises.writeFile(path.join(cacheDir, 'pages.json'), `${JSON.stringify(state.pages, null, 2)}\n`, 'utf-8');
+    await fs.promises.writeFile(path.join(cacheDir, 'preview-cache.json'), `${JSON.stringify(buildPreviewCache(state), null, 2)}\n`, 'utf-8');
+    await removeStaleArtifact(cacheDir, 'definition-index.md');
+    await removeStaleArtifact(cacheDir, 'labels.json');
+    await removeStaleArtifact(cacheDir, 'pages.json');
+    await removeStaleArtifact(cacheDir, 'preview-index.json');
 
     const errors = state.issues.filter(issue => issue.severity === 'error');
     const warnings = state.issues.filter(issue => issue.severity !== 'error');
     if (errors.length > 0 || warnings.length > 0) {
         console.warn(`[markdown-formal] Scan completed with ${errors.length} errors and ${warnings.length} warnings.`);
     } else {
-        console.log('[markdown-formal] Scanned workspace and updated labels.json');
+        console.log('[markdown-formal] Scanned workspace and updated preview-cache.json');
+    }
+}
+
+async function removeStaleArtifact(cacheDir: string, fileName: string) {
+    try {
+        await fs.promises.rm(path.join(cacheDir, fileName));
+    } catch (err: any) {
+        if (err?.code !== 'ENOENT') throw err;
     }
 }
 
@@ -135,7 +147,7 @@ export function activate(context: vscode.ExtensionContext) {
         configWatcher.onDidChange(() => scheduleScan())
     );
 
-    const refreshCmd = vscode.commands.registerCommand('markdown-formal.refreshLabels', async () => {
+    const refreshCmd = vscode.commands.registerCommand('markdown-formal.refreshIndex', async () => {
         await scanWorkspace();
         vscode.window.showInformationMessage('Markdown Formal: References refreshed successfully.');
     });

@@ -23,7 +23,12 @@
                 unvolumed: '未分卷',
                 volume: '第 {number} 卷',
                 book: '第 {number} 本',
-                workspace: '工作区'
+                workspace: '工作区',
+                definitionSearch: '查定义',
+                definitionSearchPlaceholder: '搜索定义',
+                definitionSearchEmpty: '无匹配定义',
+                definitionContextTitle: '定义',
+                definitionLocate: '定位'
             },
             en: {
                 back: 'Back',
@@ -39,7 +44,12 @@
                 unvolumed: 'Unvolumed',
                 volume: 'Volume {number}',
                 book: 'Book {number}',
-                workspace: 'Workspace'
+                workspace: 'Workspace',
+                definitionSearch: 'Definitions',
+                definitionSearchPlaceholder: 'Search definitions',
+                definitionSearchEmpty: 'No matching definitions',
+                definitionContextTitle: 'Definition',
+                definitionLocate: 'Locate'
             }
         }
     };
@@ -141,6 +151,26 @@
         }
         catch (err) {
             console.error('[markdown-formal] Failed to parse pages', err);
+            return [];
+        }
+    }
+    function readDefinitions() {
+        const dataDiv = document.getElementById('formal-definitions-data');
+        if (!dataDiv)
+            return [];
+        try {
+            const raw = dataDiv.getAttribute('data-definitions');
+            const definitions = raw ? JSON.parse(raw) : [];
+            return Array.isArray(definitions)
+                ? definitions.map((definition, index) => ({
+                    ...definition,
+                    index,
+                    targetId: `formal-def-${index}`
+                }))
+                : [];
+        }
+        catch (err) {
+            console.error('[markdown-formal] Failed to parse definitions', err);
             return [];
         }
     }
@@ -577,6 +607,327 @@
             return uiText(config, 'summaryBadge');
         return chapter.unitKind === 'appendix' ? chapter.unitLabel : chapter.unitLabel.padStart(2, '0');
     }
+    function normalizeDefinitionQuery(value) {
+        return String(value || '')
+            .normalize('NFKC')
+            .replace(/[`*_~#$@()[\]{}（）【】「」『』《》〈〉:：,，.。;；!?！？]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase();
+    }
+    function definitionScore(definition, query) {
+        const normalizedQuery = normalizeDefinitionQuery(query);
+        if (!normalizedQuery)
+            return Number.MAX_SAFE_INTEGER;
+        const title = normalizeDefinitionQuery(definition.title || '');
+        const content = normalizeDefinitionQuery(definition.content || '');
+        if (!title)
+            return Number.MAX_SAFE_INTEGER;
+        if (title === normalizedQuery)
+            return 0;
+        if (title.startsWith(normalizedQuery))
+            return 1;
+        if (normalizedQuery.includes(title))
+            return 2;
+        if (title.includes(normalizedQuery))
+            return 3;
+        if (content.includes(normalizedQuery))
+            return 4;
+        return Number.MAX_SAFE_INTEGER;
+    }
+    function searchDefinitions(definitions, query, limit = 12) {
+        return definitions
+            .map(definition => ({ definition, score: definitionScore(definition, query) }))
+            .filter(item => item.score < Number.MAX_SAFE_INTEGER)
+            .sort((a, b) => {
+            if (a.score !== b.score)
+                return a.score - b.score;
+            const titleDelta = (a.definition.title || '').length - (b.definition.title || '').length;
+            if (titleDelta !== 0)
+                return titleDelta;
+            return `${a.definition.filePath}:${a.definition.line}`.localeCompare(`${b.definition.filePath}:${b.definition.line}`);
+        })
+            .slice(0, limit)
+            .map(item => item.definition);
+    }
+    function getDefinitionElement(definition) {
+        if (definition.targetId) {
+            const target = getTargetElement(definition.targetId);
+            if (target)
+                return target;
+        }
+        if (definition.index !== undefined) {
+            const byIndex = document.querySelector(`[data-formal-definition-index="${definition.index}"]`);
+            if (byIndex)
+                return byIndex;
+        }
+        return null;
+    }
+    function flashDefinitionElement(element) {
+        element.classList.add('formal-definition-highlight');
+        window.setTimeout(() => element.classList.remove('formal-definition-highlight'), 1600);
+    }
+    function openDefinition(definition) {
+        const labels = readLabels();
+        const pages = readPages();
+        const currentFilePath = getCurrentFilePath(labels, pages);
+        const targetFilePath = normalizePath(definition.filePath);
+        if (!targetFilePath || targetFilePath === currentFilePath) {
+            pushHistory(currentFilePath);
+            const element = getDefinitionElement(definition);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                flashDefinitionElement(element);
+            }
+            else if (definition.targetId) {
+                scrollToTarget(definition.targetId);
+            }
+            scheduleRebuild();
+            return;
+        }
+        const history = currentHistoryWithReturn(currentFilePath);
+        writeHistory(history);
+        navigateToFile(targetFilePath, {
+            targetId: definition.targetId,
+            returnTo: history[history.length - 1],
+            history
+        });
+    }
+    function getDefinitionTemplate(definition) {
+        if (definition.index === undefined)
+            return undefined;
+        return Array.from(document.querySelectorAll('#formal-definition-templates template[data-definition-index]'))
+            .find(template => Number(template.getAttribute('data-definition-index')) === definition.index);
+    }
+    function removeDefinitionPopover() {
+        document.getElementById('formal-definition-popover')?.remove();
+    }
+    function removeDefinitionSelectionAction() {
+        document.getElementById('formal-definition-selection-action')?.remove();
+    }
+    function positionFloatingElement(element, origin) {
+        const margin = 12;
+        const width = Math.min(460, Math.max(300, window.innerWidth - margin * 2));
+        element.style.width = `${width}px`;
+        let x = margin;
+        let y = margin;
+        if (origin instanceof Element) {
+            const rect = origin.getBoundingClientRect();
+            x = rect.left;
+            y = rect.bottom + 8;
+        }
+        else {
+            x = origin.x;
+            y = origin.y + 8;
+        }
+        document.body.appendChild(element);
+        const rect = element.getBoundingClientRect();
+        const left = clamp(x, margin, window.innerWidth - rect.width - margin);
+        const belowFits = y + rect.height <= window.innerHeight - margin;
+        const top = belowFits ? y : clamp(y - rect.height - 18, margin, window.innerHeight - rect.height - margin);
+        element.style.left = `${left}px`;
+        element.style.top = `${top}px`;
+    }
+    function appendDefinitionContent(container, definition) {
+        const template = getDefinitionTemplate(definition);
+        if (template) {
+            container.appendChild(document.importNode(template.content, true));
+            return;
+        }
+        const fallback = document.createElement('pre');
+        fallback.className = 'formal-definition-fallback';
+        fallback.textContent = definition.content || definition.title;
+        container.appendChild(fallback);
+    }
+    function appendDefinitionPreview(container, definition) {
+        const template = getDefinitionTemplate(definition);
+        if (template) {
+            const content = document.importNode(template.content, true);
+            container.appendChild(content);
+            return;
+        }
+        const fallback = document.createElement('span');
+        fallback.textContent = definition.content || definition.title;
+        container.appendChild(fallback);
+    }
+    function showDefinitionDetail(definition, origin, config) {
+        removeDefinitionSelectionAction();
+        removeDefinitionPopover();
+        const popover = document.createElement('div');
+        popover.id = 'formal-definition-popover';
+        popover.className = 'formal-definition-popover';
+        const header = document.createElement('div');
+        header.className = 'formal-definition-popover-header';
+        const heading = document.createElement('div');
+        heading.className = 'formal-definition-popover-title';
+        heading.textContent = definition.title || uiText(config, 'definitionContextTitle');
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'formal-definition-close';
+        close.textContent = '×';
+        close.addEventListener('click', removeDefinitionPopover);
+        header.append(heading, close);
+        const location = document.createElement('div');
+        location.className = 'formal-definition-location';
+        location.textContent = `${definition.filePath}:${definition.line}`;
+        const content = document.createElement('div');
+        content.className = 'formal-definition-content';
+        appendDefinitionContent(content, definition);
+        const footer = document.createElement('div');
+        footer.className = 'formal-definition-footer';
+        const locate = document.createElement('button');
+        locate.type = 'button';
+        locate.className = 'formal-definition-locate';
+        locate.textContent = uiText(config, 'definitionLocate');
+        locate.addEventListener('click', () => openDefinition(definition));
+        footer.appendChild(locate);
+        popover.append(header, location, content, footer);
+        positionFloatingElement(popover, origin);
+    }
+    function showDefinitionLookupPopover(query, results, origin, config) {
+        removeDefinitionSelectionAction();
+        if (results.length === 1) {
+            showDefinitionDetail(results[0], origin, config);
+            return;
+        }
+        removeDefinitionPopover();
+        const popover = document.createElement('div');
+        popover.id = 'formal-definition-popover';
+        popover.className = 'formal-definition-popover formal-definition-results-popover';
+        const header = document.createElement('div');
+        header.className = 'formal-definition-popover-header';
+        const heading = document.createElement('div');
+        heading.className = 'formal-definition-popover-title';
+        heading.textContent = `${uiText(config, 'definitionContextTitle')}: ${query}`;
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'formal-definition-close';
+        close.textContent = '×';
+        close.addEventListener('click', removeDefinitionPopover);
+        header.append(heading, close);
+        popover.appendChild(header);
+        const list = document.createElement('div');
+        list.className = 'formal-definition-result-list';
+        results.forEach(definition => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'formal-definition-result';
+            item.addEventListener('click', () => {
+                const rect = item.getBoundingClientRect();
+                showDefinitionDetail(definition, { x: rect.left, y: rect.bottom }, config);
+            });
+            const title = document.createElement('span');
+            title.className = 'formal-definition-result-title';
+            title.textContent = definition.title;
+            const meta = document.createElement('span');
+            meta.className = 'formal-definition-result-meta';
+            meta.textContent = `${definition.filePath}:${definition.line}`;
+            item.append(title, meta);
+            list.appendChild(item);
+        });
+        popover.appendChild(list);
+        positionFloatingElement(popover, origin);
+    }
+    function renderDefinitionSearchResults(panel, definitions, query, config) {
+        panel.replaceChildren();
+        const normalizedQuery = normalizeDefinitionQuery(query);
+        panel.classList.toggle('formal-definition-search-open', Boolean(normalizedQuery));
+        if (!normalizedQuery)
+            return;
+        const results = searchDefinitions(definitions, query, 10);
+        if (results.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'formal-definition-search-empty';
+            empty.textContent = uiText(config, 'definitionSearchEmpty');
+            panel.appendChild(empty);
+            return;
+        }
+        results.forEach(definition => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'formal-definition-search-result';
+            item.addEventListener('click', () => {
+                openDefinition(definition);
+                panel.classList.remove('formal-definition-search-open');
+            });
+            const title = document.createElement('span');
+            title.className = 'formal-definition-search-title';
+            title.textContent = definition.title;
+            const meta = document.createElement('span');
+            meta.className = 'formal-definition-search-meta';
+            meta.textContent = `${definition.filePath}:${definition.line}`;
+            const preview = document.createElement('span');
+            preview.className = 'formal-definition-search-preview';
+            appendDefinitionPreview(preview, definition);
+            item.append(title, meta, preview);
+            panel.appendChild(item);
+        });
+    }
+    function getSelectedLookupText() {
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed)
+            return '';
+        const text = selection.toString().replace(/\s+/g, ' ').trim();
+        return text.length <= 80 ? text : '';
+    }
+    function getSelectionRect() {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0 || selection.isCollapsed)
+            return undefined;
+        const range = selection.getRangeAt(0);
+        const rects = Array.from(range.getClientRects()).filter(rect => rect.width > 0 && rect.height > 0);
+        return rects[rects.length - 1] || undefined;
+    }
+    function showDefinitionSelectionAction(query, results, rect, config) {
+        removeDefinitionSelectionAction();
+        const action = document.createElement('button');
+        action.id = 'formal-definition-selection-action';
+        action.type = 'button';
+        action.className = 'formal-definition-selection-action';
+        action.textContent = uiText(config, 'definitionSearch');
+        action.addEventListener('mousedown', event => {
+            event.preventDefault();
+            event.stopPropagation();
+        });
+        action.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            removeDefinitionSelectionAction();
+            showDefinitionLookupPopover(query, results, { x: rect.left, y: rect.bottom }, config);
+        });
+        document.body.appendChild(action);
+        const actionRect = action.getBoundingClientRect();
+        const margin = 8;
+        const left = clamp(rect.left, margin, window.innerWidth - actionRect.width - margin);
+        const top = rect.bottom + actionRect.height + 12 <= window.innerHeight
+            ? rect.bottom + 6
+            : Math.max(margin, rect.top - actionRect.height - 6);
+        action.style.left = `${left}px`;
+        action.style.top = `${top}px`;
+    }
+    function refreshDefinitionSelectionAction() {
+        const active = document.activeElement;
+        if (active instanceof HTMLElement && active.closest('#formal-nav-bar, #formal-definition-popover, input, textarea, code, pre')) {
+            removeDefinitionSelectionAction();
+            return;
+        }
+        const selectedText = getSelectedLookupText();
+        const rect = getSelectionRect();
+        if (!selectedText || !rect) {
+            removeDefinitionSelectionAction();
+            return;
+        }
+        const definitions = readDefinitions();
+        const results = searchDefinitions(definitions, selectedText, 8);
+        if (results.length === 0) {
+            removeDefinitionSelectionAction();
+            return;
+        }
+        showDefinitionSelectionAction(selectedText, results, rect, readConfig());
+    }
+    function scheduleDefinitionSelectionAction() {
+        window.setTimeout(refreshDefinitionSelectionAction, 0);
+    }
     function setImportantStyle(element, property, value) {
         element.style.setProperty(property, value, 'important');
     }
@@ -688,14 +1039,20 @@
         document.querySelectorAll('.formal-section, .formal-prop, .formal-lemma, .formal-theorem, .formal-cor').forEach(el => {
             if (!el.id)
                 return;
+            const display = (el.getAttribute('data-formal-display') || '').trim();
+            const dataTitle = (el.getAttribute('data-formal-title') || '').trim();
             if (el.classList.contains('formal-section')) {
-                items.push({ id: el.id, title: el.innerText.trim(), type: 'section' });
+                const fallback = el.innerText.trim();
+                const title = dataTitle || (display ? fallback.replace(display, '').trim() : fallback) || fallback;
+                items.push({ id: el.id, display, title, type: 'section' });
                 return;
             }
             const strong = el.querySelector('strong');
-            if (strong) {
-                items.push({ id: el.id, title: strong.textContent?.replace(/[：:]$/, '').trim() || el.id, type: 'block' });
-            }
+            const title = strong?.textContent?.replace(/[：:]$/, '').trim()
+                || dataTitle
+                || el.innerText.split(/\n/)[0]?.trim()
+                || el.id;
+            items.push({ id: el.id, display, title, type: 'block' });
         });
         return items;
     }
@@ -724,7 +1081,7 @@
         backBtn.disabled = !hasHistory;
         backBtn.classList.toggle('formal-btn-disabled', !hasHistory);
     }
-    function renderNav(currentFilePath, tocItems, chapters, config) {
+    function renderNav(currentFilePath, tocItems, chapters, definitions, config) {
         document.getElementById('formal-nav-bar')?.remove();
         const currentChapter = getCurrentChapter(chapters, currentFilePath);
         const navBar = document.createElement('div');
@@ -820,7 +1177,16 @@
             const link = document.createElement('a');
             link.className = `formal-toc-item ${item.type === 'section' ? 'formal-toc-section' : 'formal-toc-block'}`;
             link.href = `#${item.id}`;
-            link.textContent = item.title;
+            if (item.display) {
+                const display = document.createElement('span');
+                display.className = 'formal-toc-display';
+                display.textContent = item.display;
+                link.appendChild(display);
+            }
+            const title = document.createElement('span');
+            title.className = 'formal-toc-title';
+            title.textContent = item.title || item.display || item.id;
+            link.appendChild(title);
             tocMenu.appendChild(link);
         });
         if (tocItems.length === 0) {
@@ -831,18 +1197,44 @@
         }
         tocContainer.appendChild(tocMenu);
         navBar.appendChild(tocContainer);
+        if (definitions.length > 0) {
+            const definitionContainer = document.createElement('div');
+            definitionContainer.className = 'formal-definition-search-container';
+            const definitionInput = document.createElement('input');
+            definitionInput.type = 'search';
+            definitionInput.className = 'formal-definition-search-input';
+            definitionInput.placeholder = uiText(config, 'definitionSearchPlaceholder');
+            definitionInput.setAttribute('aria-label', uiText(config, 'definitionSearch'));
+            const definitionPanel = document.createElement('div');
+            definitionPanel.className = 'formal-definition-search-menu';
+            definitionInput.addEventListener('input', () => {
+                renderDefinitionSearchResults(definitionPanel, definitions, definitionInput.value, config);
+            });
+            definitionInput.addEventListener('focus', () => {
+                renderDefinitionSearchResults(definitionPanel, definitions, definitionInput.value, config);
+            });
+            definitionInput.addEventListener('keydown', event => {
+                if (event.key === 'Escape') {
+                    definitionPanel.classList.remove('formal-definition-search-open');
+                    definitionInput.blur();
+                }
+            });
+            definitionContainer.append(definitionInput, definitionPanel);
+            navBar.appendChild(definitionContainer);
+        }
         document.body.appendChild(navBar);
     }
     function rebuildNav() {
         formalWindow.__markdownFormalRebuildTimer = undefined;
         const labels = readLabels();
         const pages = readPages();
+        const definitions = readDefinitions();
         const config = readConfig();
         const currentFilePath = getCurrentFilePath(labels, pages);
         const tocItems = collectTocItems();
         const chapters = collectChapters(labels, pages, currentFilePath, config);
         applyIncomingNavigation();
-        if (tocItems.length === 0 && chapters.length === 0 && retryCount < 40) {
+        if (tocItems.length === 0 && chapters.length === 0 && definitions.length === 0 && retryCount < 40) {
             retryCount++;
             scheduleRebuild(75);
             return;
@@ -850,14 +1242,14 @@
         retryCount = 0;
         const language = getLanguage(config);
         const uiSignature = JSON.stringify(config.ui?.[language] || {});
-        const signature = `${language}|${uiSignature}|${currentFilePath}|${tocItems.map(item => `${item.id}:${item.title}`).join('|')}|${chapters.map(item => `${item.bookKey}:${item.volumeKey}:${item.unitKind}:${item.unitKey}:${item.filePath}:${item.title}`).join('|')}|${readHistory().length}`;
+        const signature = `${language}|${uiSignature}|${currentFilePath}|${tocItems.map(item => `${item.id}:${item.display || ''}:${item.title}`).join('|')}|${chapters.map(item => `${item.bookKey}:${item.volumeKey}:${item.unitKind}:${item.unitKey}:${item.filePath}:${item.title}`).join('|')}|${definitions.map(item => `${item.filePath}:${item.line}:${item.title}`).join('|')}|${readHistory().length}`;
         if (signature === lastNavSignature && document.getElementById('formal-nav-bar')) {
             normalizeFormalLinks(currentFilePath);
             return;
         }
         lastNavSignature = signature;
         normalizeFormalLinks(currentFilePath);
-        renderNav(currentFilePath, tocItems, chapters, config);
+        renderNav(currentFilePath, tocItems, chapters, definitions, config);
     }
     function scheduleRebuild(delay = 50) {
         if (formalWindow.__markdownFormalRebuildTimer !== undefined) {
@@ -910,6 +1302,40 @@
             history
         });
     }
+    function handleDefinitionContextMenu(event) {
+        const target = event.target;
+        if (!(target instanceof Element))
+            return;
+        if (target.closest('#formal-nav-bar, #formal-definition-popover, #formal-definition-selection-action, input, textarea, code, pre'))
+            return;
+        const selectedText = getSelectedLookupText();
+        if (!selectedText)
+            return;
+        const definitions = readDefinitions();
+        if (definitions.length === 0)
+            return;
+        const results = searchDefinitions(definitions, selectedText, 8);
+        if (results.length === 0)
+            return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        showDefinitionLookupPopover(selectedText, results, { x: event.clientX, y: event.clientY }, readConfig());
+    }
+    function handleDefinitionDismiss(event) {
+        const target = event.target;
+        if (target instanceof Element && target.closest('#formal-definition-popover'))
+            return;
+        if (target instanceof Element && target.closest('#formal-definition-selection-action'))
+            return;
+        removeDefinitionPopover();
+    }
+    function handleDefinitionKeydown(event) {
+        if (event.key === 'Escape') {
+            removeDefinitionPopover();
+            removeDefinitionSelectionAction();
+        }
+    }
     function installTooltipAdjustment() {
         document.body.addEventListener('mouseover', event => {
             const target = event.target;
@@ -941,6 +1367,12 @@
         }
         formalWindow.__markdownFormalInstalled = true;
         document.body.addEventListener('click', handleFormalClick, true);
+        document.body.addEventListener('contextmenu', handleDefinitionContextMenu, true);
+        document.body.addEventListener('click', handleDefinitionDismiss);
+        document.body.addEventListener('mouseup', scheduleDefinitionSelectionAction, true);
+        document.addEventListener('keydown', handleDefinitionKeydown, true);
+        document.addEventListener('keyup', scheduleDefinitionSelectionAction, true);
+        document.addEventListener('selectionchange', scheduleDefinitionSelectionAction);
         installTooltipAdjustment();
         const observer = new MutationObserver(mutations => {
             const onlyNavChanged = mutations.every(mutation => {

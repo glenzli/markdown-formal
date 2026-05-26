@@ -5,13 +5,14 @@ import * as crypto from 'node:crypto';
 
 import {
     DEFAULT_CONFIG,
-    FORMAL_TYPES,
     HASH_ID_RE,
     TMP_ID_RE,
+    buildPreviewCache,
     displayLabel,
     displayNumber,
     escapeRegExp,
     mergeConfig,
+    parseFormalMarkerLine,
     renderAgentGuide,
     renderReferenceMap,
     renderReport,
@@ -84,19 +85,30 @@ async function scanWorkspace() {
 
 async function writeArtifacts(state) {
     await ensureCacheDir();
-    await fs.writeFile(path.join(CACHE_DIR, 'labels.json'), `${JSON.stringify(state.labels, null, 2)}\n`, 'utf8');
-    await fs.writeFile(path.join(CACHE_DIR, 'pages.json'), `${JSON.stringify(state.pages, null, 2)}\n`, 'utf8');
-    await fs.writeFile(path.join(CACHE_DIR, 'inventory.full.json'), `${JSON.stringify(state.inventory, null, 2)}\n`, 'utf8');
+    await fs.writeFile(path.join(CACHE_DIR, 'preview-cache.json'), `${JSON.stringify(buildPreviewCache(state), null, 2)}\n`, 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'reference-map.md'), renderReferenceMap(state.definitions, state.config), 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'agent-guide.md'), renderAgentGuide(state), 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'report.md'), renderReport(state), 'utf8');
+    await removeStaleArtifact('definition-index.md');
+    await removeStaleArtifact('labels.json');
+    await removeStaleArtifact('pages.json');
+    await removeStaleArtifact('preview-index.json');
+    await removeStaleArtifact('inventory.full.json');
+}
+
+async function removeStaleArtifact(fileName) {
+    try {
+        await fs.rm(path.join(CACHE_DIR, fileName));
+    } catch (err: any) {
+        if (err?.code !== 'ENOENT') throw err;
+    }
 }
 
 function printSummary(action, state) {
     const errors = state.issues.filter(issue => issue.severity === 'error');
     const warnings = state.issues.filter(issue => issue.severity !== 'error');
     const status = errors.length > 0 ? 'ERROR' : warnings.length > 0 ? 'WARN' : 'OK';
-    console.log(`${status} ${action}: ${Object.keys(state.labels).length} labels, ${state.pages.length} pages, ${errors.length} errors, ${warnings.length} warnings`);
+    console.log(`${status} ${action}: ${Object.keys(state.labels).length} preview entries, ${state.pages.length} pages, ${errors.length} errors, ${warnings.length} warnings`);
     if (errors.length > 0 || warnings.length > 0) {
         console.log('Report: .markdown-formal/report.md');
         [...errors, ...warnings].slice(0, 5).forEach(issue => {
@@ -126,7 +138,7 @@ async function lint() {
 
 const VERIFY_BLOCKING_WARNING_CODES = new Set([
     'non-hash-id',
-    'formal-block-outside-numbered-file',
+    'formal-marker-outside-numbered-file',
     'duplicate-special-page'
 ]);
 
@@ -195,17 +207,25 @@ async function finalize(paths) {
 
     for (const filePath of targetFiles) {
         const content = await fs.readFile(filePath, 'utf8');
-        const re = /^:::(?:prop|lemma|theorem|cor|def|remark|example|section)\s+\{[^}]*#(tmp-[A-Za-z0-9_-]+)[^}]*\}\s*$/gm;
-        let match;
-        while ((match = re.exec(content))) {
-            tmpDefs.push({ id: match[1], file: relativePath(filePath) });
+        const lines = content.split(/\r?\n/);
+        let inFence = false;
+        for (const line of lines) {
+            if (/^\s*(```|~~~)/.test(line)) {
+                inFence = !inFence;
+                continue;
+            }
+            if (inFence) continue;
+            const marker = parseFormalMarkerLine(line);
+            if (marker?.id && TMP_ID_RE.test(marker.id)) {
+                tmpDefs.push({ id: marker.id, file: relativePath(filePath) });
+            }
         }
     }
 
     const tmpIds = [...new Set(tmpDefs.map(def => def.id))].sort((a, b) => naturalTmpCompare(a, b));
     const duplicateTmp = tmpIds.filter(id => tmpDefs.filter(def => def.id === id).length > 1);
     if (duplicateTmp.length > 0) {
-        duplicateTmp.forEach(id => console.error(`Duplicate temporary definition #${id}`));
+        duplicateTmp.forEach(id => console.error(`Duplicate temporary marker #${id}`));
         process.exitCode = 1;
         return;
     }
@@ -279,8 +299,9 @@ function rewriteInlineRefsOutsideCode(line, mapping) {
     }).join('');
 }
 
-function rewriteDefinitionId(line, mapping) {
-    if (!/^:::(?:prop|lemma|theorem|cor|def|remark|example|section)\s+\{/.test(line)) return line;
+function rewriteMarkerId(line, mapping) {
+    const marker = parseFormalMarkerLine(line);
+    if (!marker?.id) return line;
     let updated = line;
     for (const [oldId, newId] of mapping) {
         const re = new RegExp(`#${escapeRegExp(oldId)}(?=\\b)`, 'g');
@@ -300,7 +321,7 @@ function rewriteFormalIds(content, mapping, { rewriteDefinitions }) {
         }
         if (inFence) return line;
 
-        let next = rewriteDefinitions ? rewriteDefinitionId(line, mapping) : line;
+        let next = rewriteDefinitions ? rewriteMarkerId(line, mapping) : line;
         next = rewriteInlineRefsOutsideCode(next, mapping);
         return next;
     });
@@ -343,7 +364,7 @@ async function migrateIds(args) {
     const idsToMigrate = state.definitions
         .filter(def => targetFileSet.has(def.file))
         .map(def => def.id)
-        .filter(id => !HASH_ID_RE.test(id) && !TMP_ID_RE.test(id));
+        .filter(id => typeof id === 'string' && !HASH_ID_RE.test(id) && !TMP_ID_RE.test(id));
     const uniqueIds = [...new Set(idsToMigrate)].sort();
 
     if (uniqueIds.length === 0) {
@@ -374,7 +395,7 @@ async function migrateIds(args) {
         printReferenceSamples(outsideRefs);
         if (apply) {
             console.error('Refusing to apply because those outside references would point to removed IDs.');
-            console.error('Use --update-refs-all to migrate only target definitions while updating all incoming references, or choose a closed chapter/volume scope.');
+            console.error('Use --update-refs-all to migrate only target numbered markers while updating all incoming references, or choose a closed chapter/volume scope.');
             process.exitCode = 1;
             return;
         }
@@ -397,7 +418,7 @@ async function migrateIds(args) {
     console.log(`Updated ${changedFiles} files.`);
     if (!options.all) {
         const scopeText = options.updateRefsAll
-            ? 'target definitions, all incoming references'
+            ? 'target numbered markers, all incoming references'
             : 'target files only';
         console.log(`Scope: ${scopeText}. Run on later chapters/volumes as you migrate them.`);
     }
@@ -423,7 +444,20 @@ function parseMigrationArgs(args) {
     };
 }
 
-function textReferenceAliases(def, config) {
+const TEXT_REF_NUMBER = '[A-Z]+(?:[.．]\\d+)+|\\d+(?:[.．]\\d+)+';
+
+function normalizeReferenceNumber(value) {
+    return value.replace(/．/g, '.');
+}
+
+function pushAlias(byAlias, alias, def) {
+    const key = normalizeTextReferenceAlias(alias);
+    if (!byAlias.has(key)) byAlias.set(key, []);
+    const defs = byAlias.get(key);
+    if (!defs.some(existing => existing.id === def.id)) defs.push(def);
+}
+
+function numberedReferenceAliases(def, config) {
     const number = displayNumber(def);
     if (!number) return [];
 
@@ -449,6 +483,13 @@ function textReferenceAliases(def, config) {
         cor: 'Cor.',
         section: 'Sec.'
     };
+    const shortEnNoDotTypes = {
+        theorem: 'Thm',
+        lemma: 'Lem',
+        prop: 'Prop',
+        cor: 'Cor',
+        section: 'Sec'
+    };
 
     const zh = zhTypes[def.type];
     if (zh) {
@@ -465,8 +506,26 @@ function textReferenceAliases(def, config) {
         aliases.push(`${shortEn} ${number}`);
     }
 
+    const shortEnNoDot = shortEnNoDotTypes[def.type];
+    if (shortEnNoDot) {
+        aliases.push(`${shortEnNoDot} ${number}`);
+    }
+
     if (def.type === 'section') {
-        aliases.push(`§ ${number}`, `§${number}`, `${number}节`, `${number} 节`);
+        aliases.push(
+            `§ ${number}`,
+            `§${number}`,
+            `${number}节`,
+            `${number} 节`,
+            `第${number}节`,
+            `第 ${number} 节`,
+            `节${number}`,
+            `节 ${number}`,
+            `小节${number}`,
+            `小节 ${number}`,
+            `章节${number}`,
+            `章节 ${number}`
+        );
     }
 
     // Honor custom dictionary labels as aliases when they are numbered.
@@ -480,31 +539,34 @@ function textReferenceAliases(def, config) {
 
 function buildTextReferenceIndex(definitions, config) {
     const byAlias = new Map();
+
     for (const def of definitions) {
-        for (const alias of textReferenceAliases(def, config)) {
-            const key = normalizeTextReferenceAlias(alias);
-            if (!byAlias.has(key)) byAlias.set(key, []);
-            const defs = byAlias.get(key);
-            if (!defs.some(existing => existing.id === def.id)) defs.push(def);
+        for (const alias of numberedReferenceAliases(def, config)) {
+            pushAlias(byAlias, alias, def);
         }
     }
+
     return byAlias;
 }
 
 function normalizeTextReferenceAlias(value) {
-    const alias = value.trim().replace(/\s+/g, ' ');
-    const number = '([A-Z]+(?:\\.\\d+)+|\\d+(?:\\.\\d+)+)';
-    const cjk = alias.match(new RegExp(`^(定理|引理|命题|推论|节)\\s*${number}$`));
-    if (cjk) return `${cjk[1]}${cjk[2]}`;
+    const alias = value.trim().replace(/．/g, '.').replace(/\s+/g, ' ');
+    const number = `(${TEXT_REF_NUMBER.replace(/．/g, '.')})`;
+    const cjk = alias.match(new RegExp(`^(定理|引理|命题|推论)\\s*${number}$`));
+    if (cjk) return `${cjk[1]}${normalizeReferenceNumber(cjk[2])}`;
+    const cjkSectionPrefix = alias.match(new RegExp(`^第\\s*${number}\\s*节$`));
+    if (cjkSectionPrefix) return `§${normalizeReferenceNumber(cjkSectionPrefix[1])}`;
+    const cjkSectionName = alias.match(new RegExp(`^(?:节|小节|章节)\\s*${number}$`));
+    if (cjkSectionName) return `§${normalizeReferenceNumber(cjkSectionName[1])}`;
     const cjkSectionSuffix = alias.match(new RegExp(`^${number}\\s*节$`));
-    if (cjkSectionSuffix) return `${cjkSectionSuffix[1]}节`;
+    if (cjkSectionSuffix) return `§${normalizeReferenceNumber(cjkSectionSuffix[1])}`;
     const sectionSymbol = alias.match(new RegExp(`^§\\s*${number}$`));
-    if (sectionSymbol) return `§${sectionSymbol[1]}`;
+    if (sectionSymbol) return `§${normalizeReferenceNumber(sectionSymbol[1])}`;
     return alias;
 }
 
 function makeTextReferencePattern(config) {
-    const configuredTypes = FORMAL_TYPES
+    const configuredTypes = ['prop', 'lemma', 'theorem', 'cor', 'section']
         .map(type => typeName(config, type))
         .filter(name => name && name !== '§');
     const typeWords = unique([
@@ -519,23 +581,108 @@ function makeTextReferencePattern(config) {
         'Corollary',
         'Section',
         'Thm\\.',
+        'Thm',
         'Lem\\.',
+        'Lem',
         'Prop\\.',
+        'Prop',
         'Cor\\.',
+        'Cor',
         'Sec\\.',
+        'Sec',
         ...configuredTypes.map(escapeRegExp)
     ]).join('|');
-    const number = '[A-Z]+(?:\\.\\d+)+|\\d+(?:\\.\\d+)+';
-    return new RegExp(`(^|[^@#A-Za-z0-9_])((?:(?:${typeWords})\\s*(?:${number}))|(?:§\\s*(?:${number}))|(?:(?:${number})\\s*节))(?![A-Za-z0-9_.-])`, 'g');
+    const alternatives = [
+        `(?:(?:${typeWords})\\s*(?:${TEXT_REF_NUMBER}))`,
+        `(?:§\\s*(?:${TEXT_REF_NUMBER}))`,
+        `(?:(?:${TEXT_REF_NUMBER})\\s*节)`,
+        `(?:第\\s*(?:${TEXT_REF_NUMBER})\\s*节)`,
+        `(?:(?:小节|章节)\\s*(?:${TEXT_REF_NUMBER}))`
+    ].filter(Boolean).join('|');
+    return new RegExp(`(^|[^@#A-Za-z0-9_])(${alternatives})(?![A-Za-z0-9_-]|\\.\\d)`, 'g');
 }
 
-function rewriteTextReferenceLine(line, pattern, byAlias, file, lineNumber, replacements, unresolved, ambiguous) {
-    const parts = line.split(/(`[^`]*`)/g);
+function describeTextReference(alias, byAlias) {
+    const defs = byAlias.get(normalizeTextReferenceAlias(alias)) || [];
+    if (defs.length === 1) {
+        const def = defs[0];
+        return {
+            status: 'resolved',
+            id: def.id,
+            title: def.title,
+            display: displayLabel(def, { language: 'zh', dictionary: DEFAULT_CONFIG.dictionary })
+        };
+    }
+    if (defs.length > 1) {
+        return {
+            status: 'ambiguous',
+            candidates: defs.map(def => ({
+                id: def.id,
+                display: displayLabel(def, { language: 'zh', dictionary: DEFAULT_CONFIG.dictionary }),
+                title: def.title,
+                file: def.file,
+                line: def.line
+            }))
+        };
+    }
+    return { status: 'unresolved' };
+}
+
+function splitProtectedInlineSegments(line) {
+    const segments = [];
+    const re = /(`[^`]*`|\[[^\]\n]+\]\([^\)\n]*\))/g;
+    let lastIndex = 0;
+    let match;
+    while ((match = re.exec(line))) {
+        if (match.index > lastIndex) {
+            segments.push({ text: line.slice(lastIndex, match.index), kind: 'text' });
+        }
+        segments.push({
+            text: match[0],
+            kind: match[0].startsWith('`') ? 'code' : 'link'
+        });
+        lastIndex = re.lastIndex;
+    }
+    if (lastIndex < line.length) {
+        segments.push({ text: line.slice(lastIndex), kind: 'text' });
+    }
+    return segments;
+}
+
+function collectLinkedTextReferences(segment, pattern, byAlias, file, lineNumber, linkedReferences, options: any = {}) {
+    const match = segment.match(/^\[([^\]\n]+)\]\(([^\)\n]*)\)$/);
+    if (!match) return;
+
+    const label = match[1];
+    pattern.lastIndex = 0;
+    let refMatch;
+    while ((refMatch = pattern.exec(label))) {
+        const alias = refMatch[2];
+        const description = describeTextReference(alias, byAlias);
+        if (description.status === 'unresolved' && options.recordUnresolved === false) continue;
+        linkedReferences.push({
+            file,
+            line: lineNumber,
+            text: alias,
+            link: segment,
+            ...description
+        });
+    }
+    pattern.lastIndex = 0;
+}
+
+function rewriteTextReferenceLine(line, pattern, byAlias, file, lineNumber, replacements, unresolved, ambiguous, linkedReferences, options: any = {}) {
+    const parts = splitProtectedInlineSegments(line);
     let changed = false;
 
     const updated = parts.map(part => {
-        if (part.startsWith('`') && part.endsWith('`')) return part;
-        return part.replace(pattern, (match, prefix, alias) => {
+        if (part.kind === 'code') return part.text;
+        if (part.kind === 'link') {
+            collectLinkedTextReferences(part.text, pattern, byAlias, file, lineNumber, linkedReferences, options);
+            return part.text;
+        }
+
+        return part.text.replace(pattern, (match, prefix, alias) => {
             const defs = byAlias.get(normalizeTextReferenceAlias(alias)) || [];
             if (defs.length === 1) {
                 const def = defs[0];
@@ -563,7 +710,7 @@ function rewriteTextReferenceLine(line, pattern, byAlias, file, lineNumber, repl
                         line: def.line
                     }))
                 });
-            } else {
+            } else if (options.recordUnresolved !== false) {
                 unresolved.push(record);
             }
             return match;
@@ -573,12 +720,31 @@ function rewriteTextReferenceLine(line, pattern, byAlias, file, lineNumber, repl
     return { line: updated, changed };
 }
 
-function rewriteTextReferences(content, file, pattern, byAlias) {
+function collectSectionHeadingAudit(line, file, lineNumber, sectionHeadings) {
+    const match = line.match(/^(#{2,6})\s+(.+?)\s*$/);
+    if (!match) return;
+
+    const rawTitle = match[2].replace(/\s*\{#[^}]+\}\s*$/, '').trim();
+    if (!rawTitle) return;
+    if (/^#[A-Za-z0-9_-]+\b/.test(rawTitle)) return;
+
+    sectionHeadings.push({
+        file,
+        line: lineNumber,
+        level: match[1].length,
+        title: rawTitle,
+        text: line.trim()
+    });
+}
+
+function rewriteTextReferences(content, file, pattern, byAlias, options: any = {}) {
     const lines = content.split(/\r?\n/);
     const eol = content.includes('\r\n') ? '\r\n' : '\n';
     const replacements = [];
     const unresolved = [];
     const ambiguous = [];
+    const linkedReferences = [];
+    const sectionHeadings = [];
     let inFence = false;
     let changed = false;
 
@@ -588,7 +754,10 @@ function rewriteTextReferences(content, file, pattern, byAlias) {
             return line;
         }
         if (inFence) return line;
-        if (/^:::/.test(line)) return line;
+
+        if (options.auditStructure !== false) {
+            collectSectionHeadingAudit(line, file, index + 1, sectionHeadings);
+        }
 
         const result = rewriteTextReferenceLine(
             line,
@@ -598,7 +767,9 @@ function rewriteTextReferences(content, file, pattern, byAlias) {
             index + 1,
             replacements,
             unresolved,
-            ambiguous
+            ambiguous,
+            linkedReferences,
+            options
         );
         if (result.changed) changed = true;
         return result.line;
@@ -609,7 +780,9 @@ function rewriteTextReferences(content, file, pattern, byAlias) {
         changed,
         replacements,
         unresolved,
-        ambiguous
+        ambiguous,
+        linkedReferences,
+        sectionHeadings
     };
 }
 
@@ -618,10 +791,15 @@ function renderTextReferenceMigrationReport(result) {
         '# Text Reference Migration',
         '',
         `Mode: ${result.apply ? 'apply' : 'dry-run'}`,
+        `Reference scope: ${result.referenceScope}`,
+        `Target files: ${result.definitionFiles}`,
+        `Numbered entries in scope: ${result.definitionsInScope}`,
         `Files scanned: ${result.files}`,
         `Replacements: ${result.replacements.length}`,
         `Unresolved: ${result.unresolved.length}`,
         `Ambiguous: ${result.ambiguous.length}`,
+        `Markdown links needing manual rewrite: ${result.linkedReferences.length}`,
+        `Section headings needing numbered markers: ${result.sectionHeadings.length}`,
         ''
     ];
 
@@ -652,6 +830,30 @@ function renderTextReferenceMigrationReport(result) {
         lines.push('');
     }
 
+    if (result.linkedReferences.length > 0) {
+        lines.push('## Markdown Links Needing Manual Rewrite', '');
+        lines.push('Inline formal refs render as links already. Do not put `@h-...` inside an existing Markdown link label; replace the whole old link after checking the target.', '');
+        result.linkedReferences.forEach(item => {
+            const suffix = item.status === 'resolved' ? `; suggested @${item.id} (${item.title || item.display || 'untitled'})` : `; ${item.status}`;
+            lines.push(`- ${item.file}:${item.line}: ${item.link} contains ${item.text}${suffix}`);
+            if (item.candidates) {
+                item.candidates.forEach(candidate => {
+                    lines.push(`  - ${candidate.id} ${candidate.title || 'untitled'} (${candidate.file}:${candidate.line})`);
+                });
+            }
+        });
+        lines.push('');
+    }
+
+    if (result.sectionHeadings.length > 0) {
+        lines.push('## Section Headings Needing Numbered Markers', '');
+        lines.push('Plain Markdown headings are navigable as prose, but they are not stable numbered anchors. For referenced sections, write the heading as `## #tmp-* Title` and run `finalize`.', '');
+        result.sectionHeadings.forEach(item => {
+            lines.push(`- ${item.file}:${item.line}: ${item.text}`);
+        });
+        lines.push('');
+    }
+
     return `${lines.join('\n')}\n`;
 }
 
@@ -660,6 +862,8 @@ async function migrateTextRefs(args) {
     if (!options.all && options.paths.length === 0) {
         console.error('Usage: npm run formal -- migrate-text-refs --dry-run <file-or-dir> [...]');
         console.error('       npm run formal -- migrate-text-refs --apply <file-or-dir> [...]');
+        console.error('       npm run formal -- migrate-text-refs --dry-run --update-refs-all <file-or-dir> [...]');
+        console.error('       npm run formal -- migrate-text-refs --apply --update-refs-all <file-or-dir> [...]');
         console.error('       npm run formal -- migrate-text-refs --dry-run --all');
         process.exitCode = 1;
         return;
@@ -674,23 +878,47 @@ async function migrateTextRefs(args) {
     }
     const pattern = makeTextReferencePattern(state.config);
 
-    const targetFiles = options.all ? await collectMarkdownFiles() : await resolveInputMarkdownFiles(options.paths);
+    const allFiles = await collectMarkdownFiles();
+    const targetFiles = options.all ? allFiles : await resolveInputMarkdownFiles(options.paths);
+    const targetFileSet = new Set(targetFiles.map(relativePath));
+    const targetDefinitions = options.all
+        ? state.definitions
+        : state.definitions.filter(def => targetFileSet.has(def.file));
+    const targetNumberedEntries = targetDefinitions.filter(displayNumber);
+    const targetByAlias = buildTextReferenceIndex(targetDefinitions, state.config);
+    const rewriteFiles = options.all || options.updateRefsAll ? allFiles : targetFiles;
     const result = {
         apply: options.apply,
-        files: targetFiles.length,
+        referenceScope: options.all ? 'all files' : options.updateRefsAll ? 'target files plus incoming refs across all files' : 'target files only',
+        definitionFiles: targetFiles.length,
+        definitionsInScope: targetNumberedEntries.length,
+        files: rewriteFiles.length,
         replacements: [],
         unresolved: [],
-        ambiguous: []
+        ambiguous: [],
+        linkedReferences: [],
+        sectionHeadings: []
     };
 
     let changedFiles = 0;
-    for (const fullPath of targetFiles) {
+    for (const fullPath of rewriteFiles) {
         const file = relativePath(fullPath);
         const original = await fs.readFile(fullPath, 'utf8');
-        const rewritten = rewriteTextReferences(original, file, pattern, byAlias);
+        const isTargetFile = targetFileSet.has(file);
+        const rewritten = rewriteTextReferences(
+            original,
+            file,
+            pattern,
+            isTargetFile ? byAlias : targetByAlias,
+            isTargetFile
+                ? {}
+                : { recordUnresolved: false, auditStructure: false }
+        );
         result.replacements.push(...rewritten.replacements);
         result.unresolved.push(...rewritten.unresolved);
         result.ambiguous.push(...rewritten.ambiguous);
+        result.linkedReferences.push(...rewritten.linkedReferences);
+        result.sectionHeadings.push(...rewritten.sectionHeadings);
         if (options.apply && rewritten.changed) {
             await fs.writeFile(fullPath, rewritten.content, 'utf8');
             changedFiles++;
@@ -702,6 +930,8 @@ async function migrateTextRefs(args) {
 
     const mode = options.apply ? 'APPLY' : 'DRY-RUN';
     console.log(`${mode} migrate-text-refs: ${result.replacements.length} replacements, ${result.unresolved.length} unresolved, ${result.ambiguous.length} ambiguous`);
+    console.log(`Scope: ${result.referenceScope}.`);
+    console.log(`Manual review: ${result.linkedReferences.length} markdown links, ${result.sectionHeadings.length} section headings`);
     console.log('Report: .markdown-formal/text-ref-migration.md');
 
     if (options.apply) {
@@ -729,9 +959,7 @@ function makeDummyDocuments(chapters, blocksPerChapter) {
         for (let index = 1; index <= blocksPerChapter; index++) {
             const id = makeDummyHash(chapter, index);
             const previous = index > 1 ? ` By @${makeDummyHash(chapter, index - 1)} we continue.` : '';
-            lines.push(`:::theorem {#${id} title="Dummy ${chapter}.${index}"}`);
-            lines.push(`This is a generated theorem for scanner performance.${previous}`);
-            lines.push(':::');
+            lines.push(`定理 #${id}（Dummy ${chapter}.${index}）：This is a generated theorem for scanner performance.${previous}`);
             lines.push('');
         }
         documents.push({
@@ -798,6 +1026,8 @@ function printHelp() {
   npm run formal -- finalize <file-or-dir> [...] [--all]
   npm run formal -- migrate-text-refs --dry-run <file-or-dir> [...] [--all]
   npm run formal -- migrate-text-refs --apply <file-or-dir> [...] [--all]
+  npm run formal -- migrate-text-refs --dry-run --update-refs-all <file-or-dir> [...]
+  npm run formal -- migrate-text-refs --apply --update-refs-all <file-or-dir> [...]
   npm run formal -- migrate-ids --dry-run <file-or-dir> [...]
   npm run formal -- migrate-ids --apply <file-or-dir> [...]
   npm run formal -- migrate-ids --apply --update-refs-all <file-or-dir> [...]

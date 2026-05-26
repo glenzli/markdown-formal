@@ -26,7 +26,7 @@
 需要注意：
 
 - `src/webview/formal-script.ts` 会编译到 `media/formal-script.js`，改预览端交互后必须运行 `npm run build`。
-- 扫描缓存位于 `.markdown-formal/`，包含 `labels.json`、`pages.json`、`config.json`、`agent-guide.md`、`reference-map.md` 和 `report.md`。
+- 扫描缓存位于 `.markdown-formal/`，包含 `preview-cache.json`、`config.json`、`agent-guide.md`、`reference-map.md` 和 `report.md`。
 - CLI 源码位于 `src/cli/formal-tools.ts`；`npm run formal -- ...` 会先编译到 `out/cli/formal-tools.js` 再执行。
 - `config.json` 支持 `"language": "zh"` 或 `"language": "en"`；旧配置缺少字段时会自动合并默认值。
 - 修改示例书结构后，重新打开预览或重新加载窗口可以触发扫描。
@@ -74,6 +74,6 @@ AI 写作和旧项目迁移流程不放在本文档，见 [工作流接入指南
 
 如果在预览 Markdown 时发现插件未生效：
 1. 确保所在工作区目录存在有效的 `*.md` 文件，并且触发了首次缓存扫描。
-2. 确保没有权限问题导致无法写入工作区根目录的 `.markdown-formal/labels.json` 和 `.markdown-formal/pages.json`。
+2. 确保没有权限问题导致无法写入工作区根目录的 `.markdown-formal/preview-cache.json`。
 3. 确保包含 Markdown 文件的所在文件夹已经在编辑器中打开作为工作区，单独拖拽文件可能无法获取 `workspaceRoot`。
 4. 可通过菜单栏 `Help > Toggle Developer Tools` 检查控制台（Console）中是否有 `[markdown-formal]` 相关的启动日志或报错。

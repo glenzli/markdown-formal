@@ -3,7 +3,9 @@ import * as path from 'path';
 import {
     DEFAULT_CONFIG,
     getLanguage,
-    mergeConfig
+    mergeConfig,
+    parseFormalMarkerLine,
+    type RuntimeDefinitionData
 } from './core/formal-core';
 
 interface LabelData {
@@ -24,7 +26,6 @@ interface LabelData {
     volumeTitle?: string;
     volumeOrder?: number;
     content?: string;
-    contentPreview?: string;
     startLine?: number;
     endLine?: number;
 }
@@ -75,6 +76,14 @@ function normalizeFileHref(rootPath: string, filePath: string, id: string): stri
     return `/${encodeURI(filePath)}#formal-${encodeURIComponent(id)}`;
 }
 
+function normalizePreviewFilePath(filePath: string): string {
+    return String(filePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+}
+
+function definitionTargetId(index: number): string {
+    return `formal-def-${index}`;
+}
+
 function addClass(attrs: string, className: string): string {
     if (/\sclass\s*=/.test(attrs)) {
         return attrs.replace(/\sclass=(["'])(.*?)\1/i, (_match, quote, existing) => ` class=${quote}${existing} ${className}${quote}`);
@@ -114,6 +123,135 @@ function getNumberPrefix(labelData: LabelData): string {
 function formatLabelNumber(labelData: LabelData): string {
     const prefix = getNumberPrefix(labelData);
     return prefix && labelData.number !== undefined ? `${prefix}.${labelData.number}` : '';
+}
+
+function setAttr(token: any, name: string, value: string) {
+    token.attrs = token.attrs || [];
+    const index = token.attrs.findIndex((attr: any) => attr[0] === name);
+    if (index >= 0) token.attrs[index][1] = value;
+    else token.attrs.push([name, value]);
+}
+
+function addTokenClass(token: any, className: string) {
+    token.attrs = token.attrs || [];
+    const index = token.attrs.findIndex((attr: any) => attr[0] === 'class');
+    if (index >= 0) {
+        const classes = new Set(String(token.attrs[index][1]).split(/\s+/).filter(Boolean));
+        className.split(/\s+/).filter(Boolean).forEach(item => classes.add(item));
+        token.attrs[index][1] = Array.from(classes).join(' ');
+    } else {
+        token.attrs.push(['class', className]);
+    }
+}
+
+function replaceFirstTextChild(inlineToken: any, from: string, to: string) {
+    inlineToken.content = String(inlineToken.content || '').replace(from, to);
+    if (!inlineToken.children) return;
+    for (const child of inlineToken.children) {
+        if (child.type !== 'text') continue;
+        const next = String(child.content || '').replace(from, to);
+        if (next !== child.content) {
+            child.content = next;
+            return;
+        }
+    }
+}
+
+function markerTypeName(config: any, type: string): string {
+    const dict = getDictionary(config);
+    return dict[type] || type;
+}
+
+function renderedMarkerPrefix(marker: any, labelData: LabelData, config: any): string {
+    if (marker.type === 'section') {
+        return formatLabelNumber(labelData);
+    }
+
+    const typeName = markerTypeName(config, labelData.type || marker.type);
+    const number = formatLabelNumber(labelData);
+    const space = /^[A-Za-z]/.test(typeName) ? ' ' : '';
+    return number ? `${typeName}${space}${number}` : typeName;
+}
+
+function findDefinitionIndex(definitions: RuntimeDefinitionData[], currentFilePath: string, lineNumber: number | undefined, title: string): number {
+    if (lineNumber === undefined) return -1;
+
+    const normalizedCurrent = normalizePreviewFilePath(currentFilePath);
+    const matches = definitions
+        .map((def, index) => ({ def, index }))
+        .filter(item => (
+            item.def.line === lineNumber
+            && item.def.title === title
+            && (!normalizedCurrent || normalizePreviewFilePath(item.def.filePath) === normalizedCurrent)
+        ));
+    return matches.length === 1 ? matches[0].index : -1;
+}
+
+function renderDefinitionTemplates(md: any, definitions: RuntimeDefinitionData[], env: any): string {
+    return definitions.map((def, index) => {
+        const renderedContent = def.content
+            ? md.render(def.content, {
+                ...env,
+                tooltipDepth: 1,
+                formalTooltipCache: env.formalTooltipCache || {}
+            })
+            : '';
+        const safeHtml = inlineSafeRenderedMarkdown(renderedContent).replace(/<\/template/gi, '&lt;/template');
+        return `<template data-definition-index="${index}">${safeHtml}</template>`;
+    }).join('\n');
+}
+
+function applyLightweightMarker(tokens: any[], inlineIndex: number, labels: Record<string, LabelData>, definitions: RuntimeDefinitionData[], currentFilePath: string, config: any) {
+    const inlineToken = tokens[inlineIndex];
+    const openToken = tokens[inlineIndex - 1];
+    if (!inlineToken || !openToken) return;
+
+    const isHeading = /^h[2-6]$/.test(openToken.tag || '');
+    const line = isHeading
+        ? `${'#'.repeat(Number(openToken.tag.slice(1)))} ${inlineToken.content || ''}`
+        : String(inlineToken.content || '');
+    const marker = parseFormalMarkerLine(line);
+    if (!marker) return;
+    if (isHeading && marker.type !== 'section') return;
+
+    if (marker.type === 'def' && !marker.id) {
+        const lineNumber = openToken.map ? openToken.map[0] + 1 : undefined;
+        const definitionIndex = findDefinitionIndex(definitions, currentFilePath, lineNumber, marker.title);
+        if (definitionIndex < 0) return;
+
+        setAttr(openToken, 'id', definitionTargetId(definitionIndex));
+        setAttr(openToken, 'dir', 'auto');
+        setAttr(openToken, 'data-formal-definition-index', String(definitionIndex));
+        setAttr(openToken, 'data-formal-title', marker.title || '');
+        setAttr(openToken, 'data-formal-type', marker.type);
+        if (openToken.map) setAttr(openToken, 'data-line', String(openToken.map[0]));
+        addTokenClass(openToken, 'formal-definition');
+        return;
+    }
+
+    if (!marker.id) return;
+
+    const labelData = (labels[marker.id] || {
+        type: marker.type,
+        title: marker.title,
+        filePath: ''
+    }) as LabelData;
+    const replacement = renderedMarkerPrefix(marker, labelData, config);
+    const replacementText = replacement ? replacement : '';
+
+    replaceFirstTextChild(inlineToken, marker.markerText, replacementText);
+    setAttr(openToken, 'id', `formal-${marker.id}`);
+    setAttr(openToken, 'dir', 'auto');
+    setAttr(openToken, 'data-formal-title', labelData.title || marker.title || '');
+    setAttr(openToken, 'data-formal-type', labelData.type || marker.type);
+    setAttr(openToken, 'data-formal-display', replacementText);
+    if (openToken.map) setAttr(openToken, 'data-line', String(openToken.map[0]));
+
+    if (marker.type === 'section') {
+        addTokenClass(openToken, 'formal-section');
+    } else {
+        addTokenClass(openToken, `formal-block formal-${escapeHtml(marker.type)}`);
+    }
 }
 
 function normalizeEnvFilePath(rootPath: string, value: unknown): string {
@@ -168,36 +306,39 @@ export = function formalPlugin(md: any, options: any) {
     const rootPath = options ? options.rootPath : '';
     let cachedLabels: Record<string, LabelData> = {};
     let cachedPages: PageData[] = [];
+    let cachedDefinitions: RuntimeDefinitionData[] = [];
     let cachedConfig: any = mergeConfig(DEFAULT_CONFIG);
     
-    // Core rule to load labels ONCE per render
-    md.core.ruler.before('normalize', 'formal_load_labels', (state: any) => {
-        if (!rootPath) return;
-        const cachePath = path.join(rootPath, '.markdown-formal', 'labels.json');
-        try {
-            if (fs && fs.existsSync && fs.existsSync(cachePath)) {
-                const data = fs.readFileSync(cachePath, 'utf-8');
-                cachedLabels = JSON.parse(data);
-                state.env.labels = cachedLabels;
-            } else {
-                cachedLabels = {};
-            }
-        } catch (e: any) {
-            console.error('[markdown-formal] Failed to load labels.json:', e);
-            cachedLabels = {};
+    // Core rule to load the preview index once per render.
+    md.core.ruler.before('normalize', 'formal_load_preview_index', (state: any) => {
+        if (state.env && state.env.tooltipDepth) {
+            state.env.labels = cachedLabels;
+            state.env.pages = cachedPages;
+            state.env.definitions = cachedDefinitions;
+            return;
         }
 
-        const pagesPath = path.join(rootPath, '.markdown-formal', 'pages.json');
+        if (!rootPath) return;
+        const cachePath = path.join(rootPath, '.markdown-formal', 'preview-cache.json');
         try {
-            if (fs && fs.existsSync && fs.existsSync(pagesPath)) {
-                cachedPages = JSON.parse(fs.readFileSync(pagesPath, 'utf-8'));
+            if (fs && fs.existsSync && fs.existsSync(cachePath)) {
+                const data = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+                cachedLabels = data.entries || {};
+                cachedPages = Array.isArray(data.pages) ? data.pages : [];
+                cachedDefinitions = Array.isArray(data.definitions) ? data.definitions : [];
+                state.env.labels = cachedLabels;
                 state.env.pages = cachedPages;
+                state.env.definitions = cachedDefinitions;
             } else {
+                cachedLabels = {};
                 cachedPages = [];
+                cachedDefinitions = [];
             }
         } catch (e: any) {
-            console.error('[markdown-formal] Failed to load pages.json:', e);
+            console.error('[markdown-formal] Failed to load preview-cache.json:', e);
+            cachedLabels = {};
             cachedPages = [];
+            cachedDefinitions = [];
         }
         
         const configPath = path.join(rootPath, '.markdown-formal', 'config.json');
@@ -219,123 +360,23 @@ export = function formalPlugin(md: any, options: any) {
         const token = new state.Token('html_block', '', 0);
         const dataStr = escapeHtml(JSON.stringify(cachedLabels || {}));
         const pagesStr = escapeHtml(JSON.stringify(cachedPages || []));
+        const definitionsStr = escapeHtml(JSON.stringify(cachedDefinitions || []));
         const configStr = escapeHtml(JSON.stringify(cachedConfig || mergeConfig(DEFAULT_CONFIG)));
         const currentFilePath = escapeHtml(getCurrentFilePathFromEnv(rootPath, state.env));
-        token.content = `<div id="formal-labels-data" style="display:none;" data-labels="${dataStr}"></div>\n<div id="formal-pages-data" style="display:none;" data-pages="${pagesStr}" data-current-file="${currentFilePath}"></div>\n<div id="formal-config-data" style="display:none;" data-config="${configStr}"></div>\n`;
+        const definitionTemplates = renderDefinitionTemplates(md, cachedDefinitions || [], state.env || {});
+        token.content = `<div id="formal-labels-data" style="display:none;" data-labels="${dataStr}"></div>\n<div id="formal-pages-data" style="display:none;" data-pages="${pagesStr}" data-current-file="${currentFilePath}"></div>\n<div id="formal-definitions-data" style="display:none;" data-definitions="${definitionsStr}"></div>\n<div id="formal-definition-templates" style="display:none;">${definitionTemplates}</div>\n<div id="formal-config-data" style="display:none;" data-config="${configStr}"></div>\n`;
         state.tokens.push(token);
     });
 
-    // Block rule for :::prop {#id title="title"}
-    md.block.ruler.before('fence', 'formal_block', (state: any, startLine: number, endLine: number, silent: boolean) => {
-        const start = state.bMarks[startLine] + state.tShift[startLine];
-        const max = state.eMarks[startLine];
-        const lineText = state.src.slice(start, max);
-        
-        const match = lineText.match(/^:::(prop|lemma|theorem|cor|def|remark|example|section)\s+\{([^}]+)\}\s*$/);
-        if (!match) return false;
-
-        if (silent) return true;
-        
-        // Find closing :::
-        let nextLine = startLine + 1;
-        let hasClosing = false;
-        while (nextLine < endLine) {
-            const nextStart = state.bMarks[nextLine] + state.tShift[nextLine];
-            const nextMax = state.eMarks[nextLine];
-            const nextLineText = state.src.slice(nextStart, nextMax);
-            if (nextLineText.trim() === ':::') {
-                hasClosing = true;
-                break;
+    md.core.ruler.after('inline', 'formal_lightweight_markers', (state: any) => {
+        if (state.env && state.env.tooltipDepth) return;
+        const currentFilePath = normalizePreviewFilePath(getCurrentFilePathFromEnv(rootPath, state.env));
+        for (let i = 0; i < state.tokens.length; i++) {
+            if (state.tokens[i].type === 'inline') {
+                applyLightweightMarker(state.tokens, i, cachedLabels || {}, cachedDefinitions || [], currentFilePath, cachedConfig);
             }
-            nextLine++;
         }
-        
-        if (!hasClosing) return false;
-        
-        const type = match[1];
-        const inner = match[2];
-        const idMatch = inner.match(/#([^\s]+)/);
-        const titleMatch = inner.match(/title="([^"]*)"/);
-        
-        const id = idMatch ? idMatch[1] : '';
-        const title = titleMatch ? titleMatch[1] : '';
-        
-        const old_parent = state.parentType;
-        const old_line_max = state.lineMax;
-        state.parentType = 'container';
-        state.lineMax = nextLine;
-        
-        const tokenStart = state.push('formal_block_open', 'div', 1);
-        tokenStart.block = true;
-        tokenStart.map = [startLine, nextLine];
-        tokenStart.meta = { type, id, title };
-        
-        state.md.block.tokenize(state, startLine + 1, nextLine);
-        
-        const tokenEnd = state.push('formal_block_close', 'div', -1);
-        tokenEnd.block = true;
-        
-        state.parentType = old_parent;
-        state.lineMax = old_line_max;
-        state.line = nextLine + 1;
-        return true;
     });
-
-    // Renderer for formal_block
-    md.renderer.rules.formal_block_open = (tokens: any, idx: number, options: any, env: any, self: any) => {
-        const token = tokens[idx];
-        const { type, id, title } = token.meta;
-        
-        const labels = cachedLabels || {};
-        const labelData = (labels[id] || { type, title, filePath: '' }) as LabelData;
-        
-        const dict = getDictionary(cachedConfig);
-        const typeName = dict[labelData.type] || labelData.type;
-        const space = /^[A-Za-z]/.test(typeName) ? ' ' : '';
-        
-        let headerText = typeName;
-        
-        const lineAttr = token.map ? ` data-line="${token.map[0]}" dir="auto"` : '';
-        
-        if (type === 'section') {
-            headerText = '';
-            headerText = formatLabelNumber(labelData);
-            if (labelData.title) {
-                headerText += (headerText ? ' ' : '') + labelData.title;
-            }
-            return `<h2 id="formal-${escapeHtml(id)}"${lineAttr} class="formal-section" style="margin-top: 1.5em; margin-bottom: 0.5em;">${escapeHtml(headerText)}</h2>\n<div class="formal-section-body">`;
-        }
-        
-        const labelNumber = formatLabelNumber(labelData);
-        if (labelNumber) {
-            headerText += `${space}${labelNumber}`;
-        }
-        if (labelData.title) {
-            headerText += ` (${labelData.title})`;
-        }
-        
-        const colon = getColon(cachedConfig);
-        
-        // Inject inline style to the immediate paragraph so it stays on the same line
-        if (tokens[idx + 1] && tokens[idx + 1].type === 'paragraph_open') {
-            const pToken = tokens[idx + 1];
-            pToken.attrs = pToken.attrs || [];
-            const styleIndex = pToken.attrs.findIndex((a: any) => a[0] === 'style');
-            if (styleIndex < 0) {
-                pToken.attrs.push(['style', 'display: inline; margin: 0;']);
-            } else {
-                pToken.attrs[styleIndex][1] += ' display: inline; margin: 0;';
-            }
-        }
-        
-        // A minimal neutral styling, removing colored quote box
-        return `<div id="formal-${escapeHtml(id)}"${lineAttr} class="formal-block formal-${escapeHtml(type)}" style="margin: 1em 0;">
-<strong>${escapeHtml(headerText)}${colon}</strong>`;
-    };
-
-    md.renderer.rules.formal_block_close = () => {
-        return `</div>\n`;
-    };
 
     // Inline rule for @p-123 and @p-123.title
     md.inline.ruler.before('link', 'formal_inline', (state: any, silent: boolean) => {

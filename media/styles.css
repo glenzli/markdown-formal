@@ -108,6 +108,164 @@
     margin: 0.5em 0 !important;
 }
 
+.formal-definition {
+    scroll-margin-top: 72px !important;
+}
+
+.formal-definition-highlight {
+    background: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 181, 85, 0.28)) !important;
+    border-radius: 4px !important;
+    transition: background-color 0.3s ease !important;
+}
+
+.formal-definition-popover {
+    position: fixed !important;
+    z-index: 1000001 !important;
+    max-height: min(520px, calc(100vh - 24px)) !important;
+    overflow-y: auto !important;
+    background: var(--vscode-editorWidget-background, var(--vscode-editor-background, #1f1f1f)) !important;
+    border: 1px solid var(--vscode-editorWidget-border, rgba(127, 127, 127, 0.28)) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22) !important;
+    color: var(--vscode-editorWidget-foreground, var(--vscode-editor-foreground, #d4d4d4)) !important;
+    padding: 10px !important;
+    font-size: 13px !important;
+    line-height: 1.55 !important;
+}
+
+.formal-definition-selection-action {
+    position: fixed !important;
+    z-index: 1000002 !important;
+    min-height: 26px !important;
+    border: 1px solid var(--vscode-editorWidget-border, rgba(127, 127, 127, 0.28)) !important;
+    border-radius: 6px !important;
+    background: var(--vscode-editorWidget-background, var(--vscode-editor-background, #1f1f1f)) !important;
+    color: var(--vscode-foreground, var(--vscode-editor-foreground, #d4d4d4)) !important;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18) !important;
+    cursor: pointer !important;
+    font-size: 12px !important;
+    padding: 0 9px !important;
+}
+
+.formal-definition-selection-action:hover {
+    background: var(--vscode-toolbar-hoverBackground, rgba(127, 127, 127, 0.12)) !important;
+}
+
+.formal-definition-popover-header {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 12px !important;
+    margin-bottom: 4px !important;
+}
+
+.formal-definition-popover-title {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    font-weight: 650 !important;
+}
+
+.formal-definition-close {
+    flex: 0 0 auto !important;
+    width: 24px !important;
+    height: 24px !important;
+    border: none !important;
+    border-radius: 5px !important;
+    background: transparent !important;
+    color: var(--vscode-descriptionForeground, rgba(180, 180, 180, 0.78)) !important;
+    cursor: pointer !important;
+    font-size: 16px !important;
+    line-height: 1 !important;
+}
+
+.formal-definition-close:hover {
+    background: var(--vscode-toolbar-hoverBackground, rgba(127, 127, 127, 0.12)) !important;
+    color: var(--vscode-foreground, inherit) !important;
+}
+
+.formal-definition-location {
+    margin-bottom: 8px !important;
+    color: var(--vscode-descriptionForeground, rgba(180, 180, 180, 0.78)) !important;
+    font-size: 12px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+.formal-definition-content {
+    max-height: 360px !important;
+    overflow-y: auto !important;
+}
+
+.formal-definition-content .formal-tooltip-header {
+    display: none !important;
+}
+
+.formal-definition-fallback {
+    white-space: pre-wrap !important;
+    margin: 0 !important;
+    font-family: var(--vscode-editor-font-family, monospace) !important;
+}
+
+.formal-definition-footer {
+    display: flex !important;
+    justify-content: flex-end !important;
+    margin-top: 10px !important;
+}
+
+.formal-definition-locate {
+    border: none !important;
+    border-radius: 5px !important;
+    background: var(--vscode-button-background, rgba(90, 120, 180, 0.35)) !important;
+    color: var(--vscode-button-foreground, var(--vscode-foreground, #fff)) !important;
+    min-height: 26px !important;
+    padding: 0 10px !important;
+    cursor: pointer !important;
+}
+
+.formal-definition-locate:hover {
+    background: var(--vscode-button-hoverBackground, var(--vscode-button-background, rgba(90, 120, 180, 0.45))) !important;
+}
+
+.formal-definition-result-list {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+}
+
+.formal-definition-result {
+    border: none !important;
+    border-radius: 6px !important;
+    background: transparent !important;
+    color: inherit !important;
+    cursor: pointer !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 8px !important;
+    padding: 7px 8px !important;
+    text-align: left !important;
+}
+
+.formal-definition-result:hover {
+    background: var(--vscode-toolbar-hoverBackground, rgba(127, 127, 127, 0.12)) !important;
+}
+
+.formal-definition-result-title {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    font-weight: 600 !important;
+}
+
+.formal-definition-result-meta {
+    color: var(--vscode-descriptionForeground, rgba(180, 180, 180, 0.78)) !important;
+    font-size: 12px !important;
+    white-space: nowrap !important;
+}
+
 /* Floating Nav Bar */
 .formal-nav-bar {
     --formal-nav-bg: var(--vscode-editorWidget-background, var(--vscode-editor-background, #1f1f1f)) !important;
@@ -157,6 +315,113 @@
 
 .formal-nav-btn:hover:not(.formal-btn-disabled) {
     background-color: var(--formal-nav-hover) !important;
+}
+
+.formal-definition-search-container {
+    position: relative !important;
+}
+
+.formal-definition-search-input {
+    width: 132px !important;
+    min-height: 28px !important;
+    border: none !important;
+    border-radius: 6px !important;
+    background: transparent !important;
+    color: var(--formal-nav-foreground) !important;
+    padding: 0 9px !important;
+    outline: none !important;
+    font-size: 13px !important;
+}
+
+.formal-definition-search-input::placeholder {
+    color: var(--formal-nav-muted) !important;
+}
+
+.formal-definition-search-input:hover,
+.formal-definition-search-input:focus {
+    background: var(--formal-nav-hover) !important;
+}
+
+.formal-definition-search-menu {
+    position: absolute !important;
+    top: calc(100% + 6px) !important;
+    right: 0 !important;
+    width: 340px !important;
+    max-height: 420px !important;
+    overflow-y: auto !important;
+    background: var(--vscode-dropdown-background, var(--formal-nav-bg)) !important;
+    border: 1px solid var(--vscode-dropdown-border, var(--formal-nav-border)) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18) !important;
+    display: none !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+    padding: 6px !important;
+}
+
+.formal-definition-search-menu.formal-definition-search-open,
+.formal-definition-search-container:focus-within .formal-definition-search-menu.formal-definition-search-open {
+    display: flex !important;
+}
+
+.formal-definition-search-result {
+    border: none !important;
+    border-radius: 6px !important;
+    background: transparent !important;
+    color: var(--formal-nav-foreground) !important;
+    cursor: pointer !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 4px 10px !important;
+    padding: 8px 9px !important;
+    text-align: left !important;
+}
+
+.formal-definition-search-result:hover {
+    background: var(--formal-nav-hover) !important;
+}
+
+.formal-definition-search-title {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    font-weight: 600 !important;
+}
+
+.formal-definition-search-meta {
+    color: var(--formal-nav-muted) !important;
+    font-size: 11px !important;
+    white-space: nowrap !important;
+}
+
+.formal-definition-search-preview {
+    grid-column: 1 / -1 !important;
+    color: var(--formal-nav-muted) !important;
+    overflow: hidden !important;
+    max-height: 3.2em !important;
+    font-size: 12px !important;
+    line-height: 1.45 !important;
+}
+
+.formal-definition-search-preview .formal-tooltip-header {
+    display: none !important;
+}
+
+.formal-definition-search-preview p,
+.formal-definition-search-preview .formal-tooltip-p {
+    margin: 0 !important;
+}
+
+.formal-definition-search-preview * {
+    max-width: 100% !important;
+}
+
+.formal-definition-search-empty {
+    color: var(--formal-nav-muted) !important;
+    padding: 12px 10px !important;
+    text-align: center !important;
+    font-size: 12px !important;
 }
 
 .formal-btn-disabled {
@@ -222,11 +487,11 @@
     font-size: 0.88em !important;
     color: var(--formal-nav-foreground) !important;
     border-radius: 6px !important;
-    display: block !important;
+    display: flex !important;
+    align-items: baseline !important;
+    gap: 8px !important;
     text-decoration: none !important;
     overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    white-space: nowrap !important;
     transition: background-color 0.12s ease !important;
 }
 
@@ -240,11 +505,33 @@
     text-decoration: none !important;
     font-size: 0.85em !important;
     border-radius: 6px !important;
-    display: block !important;
+    display: flex !important;
+    align-items: baseline !important;
+    gap: 8px !important;
+    overflow: hidden !important;
+    transition: background-color 0.12s ease, color 0.12s ease !important;
+}
+
+.formal-toc-display {
+    flex: 0 0 auto !important;
+    max-width: 96px !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
     white-space: nowrap !important;
-    transition: background-color 0.12s ease, color 0.12s ease !important;
+    color: var(--formal-nav-muted) !important;
+    font-variant-numeric: tabular-nums !important;
+}
+
+.formal-toc-block .formal-toc-display {
+    font-size: 0.92em !important;
+}
+
+.formal-toc-title {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
 }
 
 .formal-toc-block:hover {

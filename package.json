@@ -29,7 +29,7 @@
     ],
     "commands": [
       {
-        "command": "markdown-formal.refreshLabels",
+        "command": "markdown-formal.refreshIndex",
         "title": "Markdown Formal: Refresh References"
       }
     ]

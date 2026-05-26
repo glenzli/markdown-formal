@@ -34,9 +34,7 @@ async function testFinalizeCrossFileSafety() {
     await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
         '# Chapter 1',
         '',
-        ':::theorem {#tmp-1 title="Tmp Main"}',
-        'A.',
-        ':::',
+        '定理 #tmp-1（Tmp Main）：A.',
         '',
         'Local @tmp-1.',
         'Inline code `@tmp-1 #tmp-1` must stay unchanged.',
@@ -55,14 +53,14 @@ async function testFinalizeCrossFileSafety() {
     const scoped = runCli(root, ['finalize', 'book1/01-a.md']);
     assert.notEqual(scoped.status, 0, combinedOutput(scoped));
     assert.match(combinedOutput(scoped), /cross-file temporary references/);
-    assert.match(await read(root, 'book1/01-a.md'), /#tmp-1/);
+    assert.match(await read(root, 'book1/01-a.md'), /定理 #tmp-1/);
     assert.match(await read(root, 'book1/02-b.md'), /@tmp-1/);
 
     const all = runCli(root, ['finalize', 'book1/01-a.md', '--all']);
     assert.equal(all.status, 0, combinedOutput(all));
     const chapter1 = await read(root, 'book1/01-a.md');
     const chapter2 = await read(root, 'book1/02-b.md');
-    assert.doesNotMatch(chapter1, /:::theorem \{#tmp-1/);
+    assert.doesNotMatch(chapter1, /定理 #tmp-1/);
     assert.doesNotMatch(chapter1, /Local @tmp-1\./);
     assert.doesNotMatch(chapter2, /tmp-1/);
     assert.match(chapter1, /#h-[a-f0-9]{16}/);
@@ -76,11 +74,11 @@ async function testMigrateIdsScopedSafety() {
     await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
         '# Chapter 1',
         '',
-        ':::theorem {#old-main title="Old Main"}',
-        'A.',
-        ':::',
+        '定理 #old-main（Old Main）：A.',
         '',
         'Local @old-main.',
+        '',
+        '定义（旧术语）：Definitions are lookup-only and have no IDs.',
         'Inline code `@old-main #old-main` must stay unchanged.',
         '```',
         'Fenced @old-main #old-main must stay unchanged.',
@@ -93,25 +91,24 @@ async function testMigrateIdsScopedSafety() {
         'Cross @old-main.',
         'Code `@old-main` must stay unchanged.',
         '',
-        ':::lemma {#outside-old title="Outside"}',
-        'B.',
-        ':::',
+        '引理 #outside-old（Outside）：B.',
         ''
     ].join('\n'));
 
     const scoped = runCli(root, ['migrate-ids', '--apply', 'book1/01-a.md']);
     assert.notEqual(scoped.status, 0, combinedOutput(scoped));
     assert.match(combinedOutput(scoped), /Refusing to apply/);
-    assert.match(await read(root, 'book1/01-a.md'), /#old-main/);
+    assert.match(await read(root, 'book1/01-a.md'), /定理 #old-main/);
     assert.match(await read(root, 'book1/02-b.md'), /@old-main/);
 
     const updateRefs = runCli(root, ['migrate-ids', '--apply', '--update-refs-all', 'book1/01-a.md']);
     assert.equal(updateRefs.status, 0, combinedOutput(updateRefs));
     const chapter1 = await read(root, 'book1/01-a.md');
     const chapter2 = await read(root, 'book1/02-b.md');
-    assert.doesNotMatch(chapter1, /:::theorem \{#old-main/);
+    assert.doesNotMatch(chapter1, /定理 #old-main/);
     assert.doesNotMatch(chapter1, /Local @old-main\./);
     assert.doesNotMatch(chapter2, /Cross @old-main\./);
+    assert.match(chapter1, /定义（旧术语）：Definitions are lookup-only and have no IDs\./);
     assert.match(chapter1, /#h-[a-f0-9]{16}/);
     assert.match(chapter2, /@h-[a-f0-9]{16}/);
     assert.match(chapter2, /#outside-old/);
@@ -125,9 +122,7 @@ async function testMigrateTextRefsReport() {
     await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
         '# Chapter 1',
         '',
-        ':::theorem {#h-1111111111111111 title="Base"}',
-        'Base statement.',
-        ':::',
+        '定理 #h-1111111111111111（Base）：Base statement.',
         '',
         '由 定理 1.1 和 Theorem 1.1 可得结论。',
         'Inline code `定理 1.1` must stay unchanged.',
@@ -149,7 +144,7 @@ async function testMigrateTextRefsReport() {
     const report = await read(root, '.markdown-formal/text-ref-migration.md');
     assert.match(report, /Replacements: 2/);
     assert.match(report, /Unresolved: 1/);
-    assert.match(report, /book1\/01-a\.md:12: 定理 9\.9/);
+    assert.match(report, /book1\/01-a\.md:10: 定理 9\.9/);
 
     const verify = runCli(root, ['verify']);
     assert.notEqual(verify.status, 0, combinedOutput(verify));
@@ -170,9 +165,9 @@ async function testCustomDictionaryTextRefs() {
     await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
         '# Chapter 1',
         '',
-        ':::theorem {#h-2222222222222222 title="Base"}',
-        'Base statement.',
-        ':::',
+        'Theorem #h-2222222222222222 (Base): Base statement.',
+        '',
+        'Definition (Spectrum): A definition body.',
         '',
         'By Satz 1.1 we conclude.',
         ''
@@ -182,6 +177,90 @@ async function testCustomDictionaryTextRefs() {
     assert.equal(apply.status, 0, combinedOutput(apply));
     const chapter = await read(root, 'book1/01-a.md');
     assert.match(chapter, /By @h-2222222222222222 we conclude\./);
+
+    const previewCache = JSON.parse(await read(root, '.markdown-formal/preview-cache.json'));
+    assert.equal(previewCache.entries['h-2222222222222222'].content, 'Theorem (Base): Base statement.');
+    assert.equal(previewCache.definitions[0].title, 'Spectrum');
+    assert.equal(previewCache.definitions[0].filePath, 'book1/01-a.md');
+    assert.equal(previewCache.definitions[0].line, 5);
+    assert.equal(previewCache.definitions[0].content, 'Definition (Spectrum): A definition body.');
+    await assert.rejects(read(root, '.markdown-formal/definition-index.md'), /ENOENT/);
+}
+
+async function testMigrateTextRefsSectionsAndAudits() {
+    const root = await makeWorkspace('text-refs-audit');
+    await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
+        '# Chapter 1',
+        '',
+        '## #h-3333333333333333 背景',
+        '',
+        'Background.',
+        '',
+        '定理 #h-4444444444444444（Base）：Base statement.',
+        '',
+        '定义（谱）：A definition body.',
+        '',
+        '见第 1.1 节、§1.1 和 1.1 节。',
+        '链接 [定理 1.1](old.md#thm) 需要人工处理。',
+        '根据谱定义可得。',
+        '## 1.2 旧小节标题',
+        ''
+    ].join('\n'));
+
+    const apply = runCli(root, ['migrate-text-refs', '--apply', 'book1/01-a.md']);
+    assert.equal(apply.status, 0, combinedOutput(apply));
+    const chapter = await read(root, 'book1/01-a.md');
+    assert.match(chapter, /见@h-3333333333333333、@h-3333333333333333 和 @h-3333333333333333。/);
+    assert.match(chapter, /链接 \[定理 1\.1\]\(old\.md#thm\) 需要人工处理。/);
+    assert.match(chapter, /根据谱定义可得。/);
+
+    const report = await read(root, '.markdown-formal/text-ref-migration.md');
+    assert.match(report, /Replacements: 3/);
+    assert.match(report, /Markdown links needing manual rewrite: 1/);
+    assert.match(report, /Section headings needing numbered markers: 1/);
+    assert.match(report, /\[定理 1\.1\]\(old\.md#thm\).*suggested @h-4444444444444444/);
+    assert.match(report, /book1\/01-a\.md:14: ## 1\.2 旧小节标题/);
+}
+
+async function testMigrateTextRefsUpdateRefsAllIncoming() {
+    const root = await makeWorkspace('text-refs-incoming');
+    await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
+        '# Chapter 1',
+        '',
+        '定理 #h-aaaaaaaaaaaaaaaa（Target）：Target statement.',
+        '',
+        'Target chapter outgoing 定理 2.1.',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', '02-b.md'), [
+        '# Chapter 2',
+        '',
+        '定理 #h-bbbbbbbbbbbbbbbb（Outside）：Outside statement.',
+        '',
+        'Incoming 定理 1.1 should update.',
+        'Unrelated 定理 2.1 should stay for later migration.',
+        'Link [定理 1.1](old.md#target) should be reported.',
+        'Other link [定理 2.1](old.md#outside) should not be reported.',
+        ''
+    ].join('\n'));
+
+    const apply = runCli(root, ['migrate-text-refs', '--apply', '--update-refs-all', 'book1/01-a.md']);
+    assert.equal(apply.status, 0, combinedOutput(apply));
+    const chapter1 = await read(root, 'book1/01-a.md');
+    const chapter2 = await read(root, 'book1/02-b.md');
+    assert.match(chapter1, /Target chapter outgoing @h-bbbbbbbbbbbbbbbb\./);
+    assert.match(chapter2, /Incoming @h-aaaaaaaaaaaaaaaa should update\./);
+    assert.match(chapter2, /Unrelated 定理 2\.1 should stay for later migration\./);
+    assert.match(chapter2, /Link \[定理 1\.1\]\(old\.md#target\) should be reported\./);
+    assert.match(chapter2, /Other link \[定理 2\.1\]\(old\.md#outside\) should not be reported\./);
+
+    const report = await read(root, '.markdown-formal/text-ref-migration.md');
+    assert.match(report, /Reference scope: target files plus incoming refs across all files/);
+    assert.match(report, /Replacements: 2/);
+    assert.match(report, /Unresolved: 0/);
+    assert.match(report, /Markdown links needing manual rewrite: 1/);
+    assert.match(report, /\[定理 1\.1\]\(old\.md#target\).*suggested @h-aaaaaaaaaaaaaaaa/);
+    assert.doesNotMatch(report, /old\.md#outside/);
 }
 
 async function testVerifyRejectsNonHashIds() {
@@ -189,9 +268,7 @@ async function testVerifyRejectsNonHashIds() {
     await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
         '# Chapter 1',
         '',
-        ':::theorem {#semantic-id title="Semantic"}',
-        'Statement.',
-        ':::',
+        '定理 #semantic-id（Semantic）：Statement.',
         ''
     ].join('\n'));
 
@@ -215,6 +292,8 @@ const tests = [
     ['migrate-ids scoped safety', testMigrateIdsScopedSafety],
     ['migrate-text-refs report', testMigrateTextRefsReport],
     ['custom dictionary text refs', testCustomDictionaryTextRefs],
+    ['migrate-text-refs sections and audits', testMigrateTextRefsSectionsAndAudits],
+    ['migrate-text-refs update incoming refs', testMigrateTextRefsUpdateRefsAllIncoming],
     ['verify rejects non-hash ids', testVerifyRejectsNonHashIds],
     ['perf-dummy thresholds', testPerfDummyThresholds]
 ];
