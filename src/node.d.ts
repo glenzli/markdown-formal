@@ -7,9 +7,11 @@ declare module 'fs' {
 
 declare module 'node:fs/promises' {
     export const access: any;
+    export const copyFile: any;
     export const mkdir: any;
     export const readFile: any;
     export const readdir: any;
+    export const rm: any;
     export const stat: any;
     export const writeFile: any;
 }
@@ -30,6 +32,7 @@ declare module 'node:path' {
 }
 
 declare module 'node:crypto' {
+    export const createHash: any;
     export const randomBytes: any;
 }
 

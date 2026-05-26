@@ -47,6 +47,23 @@ npm run formal -- help
 npm run formal -- perf-dummy 50 200
 ```
 
+## 本地 Release
+
+当前 release 不引入 bundler、vsce 或压缩依赖，只组装可复制目录：
+
+```bash
+npm run release:local
+```
+
+产物位于 `dist/markdown-formal-<version>/`：
+
+- `extension/`：编辑器扩展目录包。
+- `cli/`：可复制到目标项目 `tools/markdown-formal/` 的 CLI 包。
+- `manifest.json`：产物结构说明。
+- `checksums.txt`：所有产物文件的 sha256。
+
+`.vsix` 和单文件 CLI 暂不生成；需要时再单独审查相关打包依赖。
+
 AI 写作和旧项目迁移流程不放在本文档，见 [工作流接入指南](installer.md) 和 [AI 写作规范](editor.md)。
 
 ## 依赖安全
