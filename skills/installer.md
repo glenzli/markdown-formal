@@ -43,6 +43,36 @@ npm run formal -- verify
 
 AI 只需要优先读 `agent-guide.md` 和 `reference-map.md`；不要直接编辑 `.markdown-formal/` 下的生成文件。
 
+## Release 接入
+
+如果使用本仓库生成的 release 产物，在目标项目中保持 repo-local 接入：
+
+```text
+your-project/
+  tools/
+    markdown-formal/   # 复制 dist/markdown-formal-<version>/cli
+  skills/              # 复制 cli/skills 或 extension/skills
+```
+
+目标项目的 `package.json` 至少提供：
+
+```json
+{
+  "scripts": {
+    "formal": "node tools/markdown-formal/out/cli/formal-tools.js"
+  }
+}
+```
+
+接入后先运行：
+
+```bash
+npm run formal -- prepare
+npm run formal -- verify
+```
+
+不要从远端自动安装或自动更新 skill；复制 release 产物前先核对 `checksums.txt`。
+
 ## 迁移旧项目
 
 逐步迁移单章或单卷，先 dry-run 再 apply：

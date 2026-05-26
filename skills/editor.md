@@ -26,11 +26,12 @@ npm run formal -- prepare
 
 ```bash
 npm run formal -- finalize path/to/chapter.md
+npm run formal -- verify
 ```
 
 `finalize` 默认只改传入的文件或目录。如果确实写了跨文件的 `@tmp-*` 引用，再显式加 `--all`。
 
-如果报错，再读 `.markdown-formal/report.md` 修正。
+`verify` 是生成后/迁移后的严格 gate。如果报错，读取 `.markdown-formal/report.md`；如果是文字引用迁移遗留问题，读取 `.markdown-formal/text-ref-migration.md`。
 
 旧文档如果已经有大量“定理 2.1 / Theorem 2.1”文字引用，先不要手工替换。使用迁移模式：
 
@@ -163,7 +164,8 @@ AI 不手动生成正式 hash。新增内容时只使用临时 ID：
 4. 新增对象使用 `tmp-1/tmp-2/...`。
 5. 保持 LaTeX 原样，避免 HTML 转义和过度改写。
 6. 写完运行 `npm run formal -- finalize <file>`。
-7. 如果仍有错误，读取 `.markdown-formal/report.md`。
+7. 运行 `npm run formal -- verify`。
+8. 如果仍有错误，读取 `.markdown-formal/report.md` 或 `.markdown-formal/text-ref-migration.md`。
 
 ## 旧项目迁移模式
 
