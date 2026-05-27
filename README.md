@@ -33,7 +33,7 @@ References:
 
 - `@h-...` renders the object type and display number.
 - `@h-....title` renders the object title.
-- Definitions are indexed for lookup; do not mechanically reference every use of a defined term.
+- Definition names are indexed for lookup; definition bodies are shown after a name match but are not used as broad search text.
 
 Project-specific symbols can be declared in `formal-symbols.json`:
 
@@ -48,7 +48,7 @@ Project-specific symbols can be declared in `formal-symbols.json`:
 ]
 ```
 
-Only record symbols with local conventions. Do not list generic math notation. `source`, `pattern`, and `meaning` are required; `display` is optional and normally generated from the pattern.
+Only record explicit local notation conventions. Do not list generic math notation or whole derivation formulas. `source`, `pattern`, and `meaning` are required; `display` is optional and normally generated from the pattern.
 
 ## AI Workflow
 
@@ -59,10 +59,11 @@ Follow skills/editor.md.
 Before writing or migrating, run npm run formal -- prepare.
 Read .markdown-formal/agent-guide.md, the target Markdown file, and .markdown-formal/reference-map.md.
 Reference existing numbered objects only by copying @h-... or @h-....title from reference-map.md.
+Keep a short natural-language cue near important refs, such as "by the spectral-radius lemma `@h-...`"; do not leave important prose as only a bare `@h-...`.
 Use tmp-1/tmp-2/... for new markers; do not generate hash IDs manually.
-Use plain definition markers for terms; do not automatically reference every definition term.
-Maintain formal-symbols.json only for project-specific symbol conventions.
-After editing, run npm run formal -- finalize <file-or-dir>, then npm run formal -- verify.
+Use plain definition markers for terms; lookup is by definition name, not by scanning every definition body.
+Maintain formal-symbols.json only for explicit project-specific notation conventions, not ordinary formulas.
+After editing, run npm run formal -- finish <file-or-dir>.
 Keep Markdown and LaTeX unescaped.
 ```
 
@@ -70,8 +71,19 @@ Normal edit loop:
 
 ```bash
 npm run formal -- prepare
-npm run formal -- finalize path/to/chapter.md
-npm run formal -- verify
+npm run formal -- finish path/to/chapter.md
+```
+
+Definition and symbol lookup is scoped to the current book by default. If one book intentionally depends on another, declare it in `.markdown-formal/config.json`:
+
+```json
+{
+  "lookup": {
+    "bookDependencies": {
+      "book3": ["book2"]
+    }
+  }
+}
 ```
 
 `prepare` writes generated helper files under `.markdown-formal/`:
@@ -89,7 +101,7 @@ For old prose references such as `定理 2.1` or `Theorem 2.1`:
 
 ```bash
 npm run formal -- prepare
-npm run formal -- migrate-text-refs --dry-run path/to/chapter-or-volume
+npm run formal -- migrate-text-refs path/to/chapter-or-volume
 npm run formal -- migrate-text-refs --apply path/to/chapter-or-volume
 npm run formal -- verify
 ```
@@ -99,31 +111,31 @@ Scoped text-reference migration has two ranges:
 - Numbered-object scope: the chapter or volume passed on the command line.
 - Reference rewrite scope: where textual references are rewritten.
 
-By default, only files in the target scope are rewritten. To also update incoming references from the rest of the book to objects defined in the target scope:
+By default, target files are migrated against the full reference map, while non-target files only rewrite incoming references that point into the target scope. This keeps gradual migration reviewable without leaving incoming references behind.
+
+If you explicitly want the older, narrower behavior, restrict the rewrite to the target files:
 
 ```bash
-npm run formal -- migrate-text-refs --dry-run --update-refs-all path/to/chapter-or-volume
-npm run formal -- migrate-text-refs --apply --update-refs-all path/to/chapter-or-volume
+npm run formal -- migrate-text-refs --target-only path/to/chapter-or-volume
+npm run formal -- migrate-text-refs --apply --target-only path/to/chapter-or-volume
 ```
-
-With `--update-refs-all`, target files are migrated against the full reference map, while non-target files only rewrite references that point into the target scope. This keeps gradual migration reviewable without leaving incoming references behind.
 
 `migrate-text-refs` automatically rewrites unambiguous numbered references, including common section forms such as `第 2.1 节`, `§2.1`, and `Sec. 2.1`. It does not rewrite old Markdown links in place because formal refs render as links already; those links are listed in `.markdown-formal/text-ref-migration.md` with suggested IDs.
 
-The same report lists plain `##`/`###` section headings that may need numbered markers. For referenced sections, write the heading as `## #tmp-* Title`, run `finalize`, then rerun the migration.
+The same report lists plain `##`/`###` section headings that may need numbered markers. For referenced sections, write the heading as `## #tmp-* Title`, run `finish`, then rerun the migration.
 
 For old semantic IDs:
 
 ```bash
-npm run formal -- migrate-ids --dry-run path/to/chapter-or-volume
+npm run formal -- migrate-ids path/to/chapter-or-volume
 npm run formal -- migrate-ids --apply path/to/chapter-or-volume
 npm run formal -- verify
 ```
 
-If scoped ID migration would break references outside the target range, the tool refuses to apply. Use a larger closed scope, or update only incoming references:
+Scoped ID migration also updates incoming references by default. If you explicitly want to touch only the target files, use `--target-only`; the tool will refuse to apply if that would leave outside references pointing at removed IDs:
 
 ```bash
-npm run formal -- migrate-ids --apply --update-refs-all path/to/chapter-or-volume
+npm run formal -- migrate-ids --apply --target-only path/to/chapter-or-volume
 ```
 
 ## Books, Volumes, And Appendices
@@ -159,12 +171,14 @@ npm run build
 npm run formal -- prepare
 npm run formal -- verify
 npm run formal -- finalize <file-or-dir> [--all]
-npm run formal -- migrate-text-refs --dry-run <file-or-dir>
+npm run formal -- finish <file-or-dir> [--all]
+npm run formal -- migrate-text-refs <file-or-dir>
 npm run formal -- migrate-text-refs --apply <file-or-dir>
-npm run formal -- migrate-text-refs --dry-run --update-refs-all <file-or-dir>
-npm run formal -- migrate-text-refs --apply --update-refs-all <file-or-dir>
-npm run formal -- migrate-ids --dry-run <file-or-dir>
+npm run formal -- migrate-text-refs --target-only <file-or-dir>
+npm run formal -- migrate-text-refs --apply --target-only <file-or-dir>
+npm run formal -- migrate-ids <file-or-dir>
 npm run formal -- migrate-ids --apply <file-or-dir>
+npm run formal -- migrate-ids --apply --target-only <file-or-dir>
 npm run formal -- perf-dummy 50 200 --max-ms 2000 --max-heap-mb 256
 npm test
 ```
@@ -199,7 +213,7 @@ For another project, copy `dist/markdown-formal-<version>/cli` into `tools/markd
 }
 ```
 
-Check `checksums.txt` before copying release artifacts. Do not auto-install or auto-update skills from remote sources.
+Check `checksums.txt` before copying release artifacts. Do not auto-install or auto-update skills from remote sources. Put the prompt block from **AI Workflow** into the target project's AI instructions, such as `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, or the repository README.
 
 ## Development
 

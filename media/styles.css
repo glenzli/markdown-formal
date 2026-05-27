@@ -391,8 +391,8 @@
     position: absolute !important;
     top: calc(100% + 6px) !important;
     right: 0 !important;
-    width: 340px !important;
-    max-height: 420px !important;
+    width: min(560px, calc(100vw - 24px)) !important;
+    max-height: min(620px, calc(100vh - 84px)) !important;
     overflow-y: auto !important;
     background: var(--vscode-dropdown-background, var(--formal-nav-bg)) !important;
     border: 1px solid var(--vscode-dropdown-border, var(--formal-nav-border)) !important;
@@ -417,8 +417,9 @@
     cursor: pointer !important;
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) auto !important;
-    gap: 4px 10px !important;
-    padding: 8px 9px !important;
+    gap: 7px 14px !important;
+    min-height: 92px !important;
+    padding: 12px 13px !important;
     text-align: left !important;
 }
 
@@ -432,21 +433,32 @@
     text-overflow: ellipsis !important;
     white-space: nowrap !important;
     font-weight: 600 !important;
+    font-size: 13px !important;
 }
 
 .formal-definition-search-meta {
     color: var(--formal-nav-muted) !important;
     font-size: 11px !important;
     white-space: nowrap !important;
+    align-self: start !important;
+    max-width: 220px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
 }
 
 .formal-definition-search-preview {
     grid-column: 1 / -1 !important;
     color: var(--formal-nav-muted) !important;
     overflow: hidden !important;
-    max-height: 3.2em !important;
+    max-height: 7.4em !important;
     font-size: 12px !important;
-    line-height: 1.45 !important;
+    font-weight: 400 !important;
+    line-height: 1.48 !important;
+}
+
+.formal-definition-search-preview strong,
+.formal-definition-search-preview .formal-definition-lead {
+    font-weight: 650 !important;
 }
 
 .formal-definition-search-preview .formal-tooltip-header {

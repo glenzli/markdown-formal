@@ -6,12 +6,6 @@
     "source": "examples/book1/03-spectral-theory.md:7"
   },
   {
-    "pattern": "\\lambda",
-    "meaning": "在谱理论语境中表示算子谱中的复特征值或谱参数。",
-    "scope": "file",
-    "source": "examples/book1/03-spectral-theory.md:7"
-  },
-  {
     "pattern": "\\mathcal{C}",
     "meaning": "纤维化站点中的基范畴，带有 Grothendieck 拓扑。",
     "scope": "book",
@@ -28,18 +22,6 @@
     "meaning": "纤维化站点中匹配到的对象上的纤维范畴。",
     "scope": "book",
     "source": "examples/book2/vol-1-foundations/01-categorical-background.md:13"
-  },
-  {
-    "pattern": "\\mathcal{E}(${space})",
-    "meaning": "在空间或对象上形成的全局下降范畴。",
-    "scope": "book",
-    "source": "examples/book2/vol-1-foundations/02-compactness-machinery.md:13"
-  },
-  {
-    "pattern": "\\mathrm{Hom}(${object},-)",
-    "meaning": "用于判定紧生成元的 Hom 函子；它需要与滤过余极限交换。",
-    "scope": "book",
-    "source": "examples/book2/vol-1-foundations/02-compactness-machinery.md:7"
   },
   {
     "pattern": "\\mathfrak{M}",

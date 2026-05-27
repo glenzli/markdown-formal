@@ -202,10 +202,10 @@ async function verify(args) {
     process.exitCode = 1;
 }
 
-async function finalize(paths) {
+async function finalize(paths, commandName = 'finalize') {
     const options = parseMigrationArgs(paths);
     if (options.paths.length === 0) {
-        console.error('Usage: npm run formal -- finalize <file-or-dir> [...] [--all]');
+        console.error(`Usage: npm run formal -- ${commandName} <file-or-dir> [...] [--all]`);
         process.exitCode = 1;
         return;
     }
@@ -289,6 +289,12 @@ async function finalize(paths) {
     await prepare({ exitOnError: true });
 }
 
+async function finish(args) {
+    await finalize(args, 'finish');
+    if (process.exitCode && process.exitCode !== 0) return;
+    await verify([]);
+}
+
 function naturalTmpCompare(a, b) {
     const na = a.match(/^tmp-(\d+)$/)?.[1];
     const nb = b.match(/^tmp-(\d+)$/)?.[1];
@@ -358,10 +364,8 @@ async function migrateIds(args) {
     const apply = options.apply;
     const dryRun = options.dryRun;
     if (!options.all && options.paths.length === 0) {
-        console.error('Usage: npm run formal -- migrate-ids --dry-run <file-or-dir> [...]');
-        console.error('       npm run formal -- migrate-ids --apply <file-or-dir> [...]');
-        console.error('       npm run formal -- migrate-ids --apply --update-refs-all <file-or-dir> [...]');
-        console.error('       npm run formal -- migrate-ids --dry-run --all');
+        console.error('Usage: npm run formal -- migrate-ids <file-or-dir> [...] [--apply] [--target-only]');
+        console.error('       npm run formal -- migrate-ids --all [--apply]');
         process.exitCode = 1;
         return;
     }
@@ -369,7 +373,7 @@ async function migrateIds(args) {
     const state = await scanWorkspace();
     const allFiles = await collectMarkdownFiles();
     const targetFiles = options.all ? allFiles : await resolveInputMarkdownFiles(options.paths);
-    const rewriteFiles = options.all || options.updateRefsAll ? allFiles : targetFiles;
+    const rewriteFiles = migrationRewriteFiles(options, allFiles, targetFiles);
     const targetFileSet = new Set(targetFiles.map(relativePath));
     const idsToMigrate = state.definitions
         .filter(def => targetFileSet.has(def.file))
@@ -400,15 +404,17 @@ async function migrateIds(args) {
 
     const migratedIdSet = new Set(uniqueIds);
     const outsideRefs = state.references.filter(ref => migratedIdSet.has(ref.id) && !targetFileSet.has(ref.file));
-    if (outsideRefs.length > 0 && !options.all && !options.updateRefsAll) {
+    if (outsideRefs.length > 0 && !options.all && options.targetOnly) {
         console.warn(`Scoped migrate-ids found ${outsideRefs.length} references outside the target scope.`);
         printReferenceSamples(outsideRefs);
         if (apply) {
             console.error('Refusing to apply because those outside references would point to removed IDs.');
-            console.error('Use --update-refs-all to migrate only target numbered markers while updating all incoming references, or choose a closed chapter/volume scope.');
+            console.error('Omit --target-only to update incoming references, or choose a closed chapter/volume scope.');
             process.exitCode = 1;
             return;
         }
+    } else if (outsideRefs.length > 0 && !options.all) {
+        console.log(`Incoming references outside target scope will be updated: ${outsideRefs.length}`);
     }
 
     if (!apply) return;
@@ -427,9 +433,9 @@ async function migrateIds(args) {
 
     console.log(`Updated ${changedFiles} files.`);
     if (!options.all) {
-        const scopeText = options.updateRefsAll
-            ? 'target numbered markers, all incoming references'
-            : 'target files only';
+        const scopeText = options.targetOnly
+            ? 'target files only'
+            : 'target numbered markers, all incoming references';
         console.log(`Scope: ${scopeText}. Run on later chapters/volumes as you migrate them.`);
     }
     await prepare({ exitOnError: true });
@@ -449,9 +455,18 @@ function parseMigrationArgs(args) {
         apply: args.includes('--apply'),
         dryRun: args.includes('--dry-run') || !args.includes('--apply'),
         all: args.includes('--all'),
-        updateRefsAll: args.includes('--update-refs-all'),
+        targetOnly: args.includes('--target-only'),
         paths: args.filter(arg => !arg.startsWith('--'))
     };
+}
+
+function migrationRewriteFiles(options, allFiles, targetFiles) {
+    return options.all || !options.targetOnly ? allFiles : targetFiles;
+}
+
+function migrationReferenceScope(options) {
+    if (options.all) return 'all files';
+    return options.targetOnly ? 'target files only' : 'target files plus incoming refs across all files';
 }
 
 const TEXT_REF_NUMBER = '[A-Z]+(?:[.．]\\d+)+|\\d+(?:[.．]\\d+)+';
@@ -857,7 +872,7 @@ function renderTextReferenceMigrationReport(result) {
 
     if (result.sectionHeadings.length > 0) {
         lines.push('## Section Headings Needing Numbered Markers', '');
-        lines.push('Plain Markdown headings are navigable as prose, but they are not stable numbered anchors. For referenced sections, write the heading as `## #tmp-* Title` and run `finalize`.', '');
+        lines.push('Plain Markdown headings are navigable as prose, but they are not stable numbered anchors. For referenced sections, write the heading as `## #tmp-* Title` and run `finish`.', '');
         result.sectionHeadings.forEach(item => {
             lines.push(`- ${item.file}:${item.line}: ${item.text}`);
         });
@@ -870,11 +885,8 @@ function renderTextReferenceMigrationReport(result) {
 async function migrateTextRefs(args) {
     const options = parseMigrationArgs(args);
     if (!options.all && options.paths.length === 0) {
-        console.error('Usage: npm run formal -- migrate-text-refs --dry-run <file-or-dir> [...]');
-        console.error('       npm run formal -- migrate-text-refs --apply <file-or-dir> [...]');
-        console.error('       npm run formal -- migrate-text-refs --dry-run --update-refs-all <file-or-dir> [...]');
-        console.error('       npm run formal -- migrate-text-refs --apply --update-refs-all <file-or-dir> [...]');
-        console.error('       npm run formal -- migrate-text-refs --dry-run --all');
+        console.error('Usage: npm run formal -- migrate-text-refs <file-or-dir> [...] [--apply] [--target-only]');
+        console.error('       npm run formal -- migrate-text-refs --all [--apply]');
         process.exitCode = 1;
         return;
     }
@@ -896,10 +908,10 @@ async function migrateTextRefs(args) {
         : state.definitions.filter(def => targetFileSet.has(def.file));
     const targetNumberedEntries = targetDefinitions.filter(displayNumber);
     const targetByAlias = buildTextReferenceIndex(targetDefinitions, state.config);
-    const rewriteFiles = options.all || options.updateRefsAll ? allFiles : targetFiles;
+    const rewriteFiles = migrationRewriteFiles(options, allFiles, targetFiles);
     const result = {
         apply: options.apply,
-        referenceScope: options.all ? 'all files' : options.updateRefsAll ? 'target files plus incoming refs across all files' : 'target files only',
+        referenceScope: migrationReferenceScope(options),
         definitionFiles: targetFiles.length,
         definitionsInScope: targetNumberedEntries.length,
         files: rewriteFiles.length,
@@ -1028,36 +1040,57 @@ function parsePerfArgs(args) {
     return options;
 }
 
-function printHelp() {
-    console.log(`Usage:
+function printHelp({ all = false } = {}) {
+    if (!all) {
+        console.log(`Usage:
   npm run formal -- prepare
-  npm run formal -- lint
+  npm run formal -- finish <file-or-dir> [...] [--all]
+  npm run formal -- migrate-text-refs <file-or-dir> [...] [--apply] [--target-only] [--all]
+  npm run formal -- migrate-ids <file-or-dir> [...] [--apply] [--target-only] [--all]
   npm run formal -- verify [--strict-chapters]
-  npm run formal -- finalize <file-or-dir> [...] [--all]
-  npm run formal -- migrate-text-refs --dry-run <file-or-dir> [...] [--all]
-  npm run formal -- migrate-text-refs --apply <file-or-dir> [...] [--all]
-  npm run formal -- migrate-text-refs --dry-run --update-refs-all <file-or-dir> [...]
-  npm run formal -- migrate-text-refs --apply --update-refs-all <file-or-dir> [...]
-  npm run formal -- migrate-ids --dry-run <file-or-dir> [...]
-  npm run formal -- migrate-ids --apply <file-or-dir> [...]
-  npm run formal -- migrate-ids --apply --update-refs-all <file-or-dir> [...]
-  npm run formal -- migrate-ids --dry-run --all
-  npm run formal -- migrate-ids --apply --all
-  npm run formal -- perf-dummy [chapters] [blocks-per-chapter] [--max-ms N] [--max-heap-mb N]
-  npm run formal -- report
+
+Migrations are dry-run by default. Pass --apply to edit files.
 
 Agent workflow:
   1. Run prepare.
   2. Read .markdown-formal/agent-guide.md and .markdown-formal/reference-map.md.
-  3. Use tmp-* for new objects, then run finalize on the edited file or directory.
-  4. Run verify before treating generated or migrated content as complete.`);
+  3. Use tmp-* for new objects, then run finish on the edited file or directory.
+  4. For old numbered prose, migrate-text-refs <scope> updates target files plus incoming references by default.
+  5. If you use finalize directly, run verify before treating generated or migrated content as complete.
+
+Advanced commands:
+  npm run formal -- help --all`);
+        return;
+    }
+
+    console.log(`Usage:
+  npm run formal -- prepare
+  npm run formal -- finish <file-or-dir> [...] [--all]
+  npm run formal -- migrate-text-refs <file-or-dir> [...] [--apply] [--target-only] [--all]
+  npm run formal -- migrate-ids <file-or-dir> [...] [--apply] [--target-only] [--all]
+  npm run formal -- verify [--strict-chapters]
+
+Advanced:
+  npm run formal -- finalize <file-or-dir> [...] [--all]
+  npm run formal -- lint
+  npm run formal -- perf-dummy [chapters] [blocks-per-chapter] [--max-ms N] [--max-heap-mb N]
+  npm run formal -- report
+
+Migrations are dry-run by default. Pass --apply to edit files.
+
+Agent workflow:
+  1. Run prepare.
+  2. Read .markdown-formal/agent-guide.md and .markdown-formal/reference-map.md.
+  3. Use tmp-* for new objects, then run finish on the edited file or directory.
+  4. For old numbered prose, migrate-text-refs <scope> updates target files plus incoming references by default.
+  5. If you use finalize directly, run verify before treating generated or migrated content as complete.`);
 }
 
 async function main() {
     const [command, ...args] = process.argv.slice(2);
 
     if (!command || command === 'help' || command === '--help') {
-        printHelp();
+        printHelp({ all: args.includes('--all') });
     } else if (command === 'prepare' || command === 'doctor') {
         await prepare({ exitOnError: true });
     } else if (command === 'lint') {
@@ -1066,6 +1099,8 @@ async function main() {
         await verify(args);
     } else if (command === 'finalize') {
         await finalize(args);
+    } else if (command === 'finish') {
+        await finish(args);
     } else if (command === 'migrate-text-refs') {
         await migrateTextRefs(args);
     } else if (command === 'migrate-ids') {

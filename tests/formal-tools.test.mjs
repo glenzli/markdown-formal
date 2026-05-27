@@ -69,6 +69,26 @@ async function testFinalizeCrossFileSafety() {
     assert.match(chapter1, /Fenced @tmp-1 #tmp-1 must stay unchanged\./);
 }
 
+async function testFinishFinalizesAndVerifies() {
+    const root = await makeWorkspace('finish');
+    await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
+        '# Chapter 1',
+        '',
+        '定理 #tmp-1（Tmp Main）：A.',
+        '',
+        'Local @tmp-1.',
+        ''
+    ].join('\n'));
+
+    const finish = runCli(root, ['finish', 'book1/01-a.md']);
+    assert.equal(finish.status, 0, combinedOutput(finish));
+    assert.match(combinedOutput(finish), /OK verify: generated\/ migrated content gate passed/);
+    const chapter = await read(root, 'book1/01-a.md');
+    assert.doesNotMatch(chapter, /tmp-1/);
+    assert.match(chapter, /#h-[a-f0-9]{16}/);
+    assert.match(chapter, /@h-[a-f0-9]{16}/);
+}
+
 async function testMigrateIdsScopedSafety() {
     const root = await makeWorkspace('migrate-ids');
     await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
@@ -95,14 +115,15 @@ async function testMigrateIdsScopedSafety() {
         ''
     ].join('\n'));
 
-    const scoped = runCli(root, ['migrate-ids', '--apply', 'book1/01-a.md']);
-    assert.notEqual(scoped.status, 0, combinedOutput(scoped));
-    assert.match(combinedOutput(scoped), /Refusing to apply/);
+    const targetOnly = runCli(root, ['migrate-ids', '--apply', '--target-only', 'book1/01-a.md']);
+    assert.notEqual(targetOnly.status, 0, combinedOutput(targetOnly));
+    assert.match(combinedOutput(targetOnly), /Refusing to apply/);
     assert.match(await read(root, 'book1/01-a.md'), /定理 #old-main/);
     assert.match(await read(root, 'book1/02-b.md'), /@old-main/);
 
-    const updateRefs = runCli(root, ['migrate-ids', '--apply', '--update-refs-all', 'book1/01-a.md']);
-    assert.equal(updateRefs.status, 0, combinedOutput(updateRefs));
+    const scoped = runCli(root, ['migrate-ids', '--apply', 'book1/01-a.md']);
+    assert.equal(scoped.status, 0, combinedOutput(scoped));
+    assert.match(combinedOutput(scoped), /Incoming references outside target scope will be updated: 1/);
     const chapter1 = await read(root, 'book1/01-a.md');
     const chapter2 = await read(root, 'book1/02-b.md');
     assert.doesNotMatch(chapter1, /定理 #old-main/);
@@ -257,7 +278,7 @@ async function testMigrateTextRefsSectionsAndAudits() {
     assert.match(report, /book1\/01-a\.md:14: ## 1\.2 旧小节标题/);
 }
 
-async function testMigrateTextRefsUpdateRefsAllIncoming() {
+async function testMigrateTextRefsUpdatesIncomingByDefault() {
     const root = await makeWorkspace('text-refs-incoming');
     await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
         '# Chapter 1',
@@ -279,7 +300,7 @@ async function testMigrateTextRefsUpdateRefsAllIncoming() {
         ''
     ].join('\n'));
 
-    const apply = runCli(root, ['migrate-text-refs', '--apply', '--update-refs-all', 'book1/01-a.md']);
+    const apply = runCli(root, ['migrate-text-refs', '--apply', 'book1/01-a.md']);
     assert.equal(apply.status, 0, combinedOutput(apply));
     const chapter1 = await read(root, 'book1/01-a.md');
     const chapter2 = await read(root, 'book1/02-b.md');
@@ -324,12 +345,13 @@ async function testPerfDummyThresholds() {
 
 const tests = [
     ['finalize cross-file safety', testFinalizeCrossFileSafety],
+    ['finish finalizes and verifies', testFinishFinalizesAndVerifies],
     ['migrate-ids scoped safety', testMigrateIdsScopedSafety],
     ['migrate-text-refs report', testMigrateTextRefsReport],
     ['custom dictionary text refs', testCustomDictionaryTextRefs],
     ['symbol cache', testSymbolCache],
     ['migrate-text-refs sections and audits', testMigrateTextRefsSectionsAndAudits],
-    ['migrate-text-refs update incoming refs', testMigrateTextRefsUpdateRefsAllIncoming],
+    ['migrate-text-refs updates incoming refs by default', testMigrateTextRefsUpdatesIncomingByDefault],
     ['verify rejects non-hash ids', testVerifyRejectsNonHashIds],
     ['perf-dummy thresholds', testPerfDummyThresholds]
 ];

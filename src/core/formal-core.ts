@@ -935,7 +935,7 @@ function lintDefinitions(definitions: FormalDefinition[]): FormalIssue[] {
                 code: 'tmp-id-left',
                 file: def.file,
                 line: def.line,
-                message: `Temporary marker #${def.id} remains. Run npm run formal -- finalize <file>.`
+                message: `Temporary marker #${def.id} remains. Run npm run formal -- finish <file>.`
             });
         } else if (!HASH_ID_RE.test(def.id)) {
             issues.push({
@@ -974,7 +974,7 @@ function lintReferences(references: FormalReference[], labels: Record<string, La
                 code: 'tmp-ref-left',
                 file: ref.file,
                 line: ref.line,
-                message: `Temporary reference @${ref.id} remains. Run finalize before committing.`
+                message: `Temporary reference @${ref.id} remains. Run finish before committing.`
             });
             continue;
         }
@@ -1149,8 +1149,8 @@ export function renderAgentGuide(state: any): string {
         '3. Put stable IDs directly where numbers used to appear: `## #tmp-1 Section`, `定理 #tmp-2（Title）：...`, or `Theorem #tmp-2 (Title): ...`. Definitions stay plain: `定义（Term）：...` or `Definition (Term): ...`.',
         '4. Reference numbered objects with `@h-...`; never handwrite display numbers as references.',
         '5. Keep Markdown and LaTeX unescaped.',
-        '6. Run `npm run formal -- finalize <file-or-dir>` after editing.',
-        '7. Run `npm run formal -- verify` before treating generated or migrated content as complete.',
+        '6. Run `npm run formal -- finish <file-or-dir>` after editing; it finalizes temporary IDs and verifies the workspace.',
+        '7. If you use `finalize` directly, also run `npm run formal -- verify` before treating generated or migrated content as complete.',
         '',
         '## Lightweight Syntax',
         '',
@@ -1166,6 +1166,11 @@ export function renderAgentGuide(state: any): string {
         '- `.markdown-formal/preview-cache.json`: runtime preview/navigation/definition/symbol lookup cache.',
         '- `.markdown-formal/report.md`: lint/verify details.',
         '- `.markdown-formal/text-ref-migration.md`: generated only after text-reference migration.',
+        '',
+        '## Migration',
+        '',
+        '- Use `npm run formal -- migrate-text-refs <file-or-dir>` before applying old numbered prose migration; migration commands are dry-run by default.',
+        '- Scoped migrations update target files plus incoming references by default. Use `--target-only` only when intentionally restricting rewrites to the target files.',
         ''
     ];
     return `${lines.join('\n')}\n`;
