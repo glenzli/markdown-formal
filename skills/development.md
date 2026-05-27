@@ -1,8 +1,8 @@
-# markdown-formal 开发者版安装指南
+# markdown-formal 项目开发指南
 
-在日常的插件开发和调试阶段，直接将源代码目录软链接至扩展目录是最高效的做法，这免去了繁琐的打包流程。
+这个文件用于维护本仓库自身的开发、调试、校验、release 和依赖安全流程。AI 写作和旧项目迁移流程不放在本文档，见 [AI 能力融合指南](integrator.md) 和 [AI 写作规范](editor.md)。
 
-## 开发者版 (Dev) 安装步骤
+## 本地扩展调试
 
 1. 打开终端（Terminal）。
 2. 执行以下命令，将当前 `markdown-formal` 绝对路径软链接到您的扩展目录下：
@@ -19,7 +19,7 @@
 
 3. 重新加载编辑器，在命令面板中执行：**`Developer: Reload Window`**。
 
-## 开发者版热更新
+## 热更新
 
 基于软链接机制，当您或 AI Agent 通过 `npm run build` 更新了 TypeScript 编译产物后，只需要在编辑器中重新加载窗口（`Developer: Reload Window`），最新逻辑即可立刻生效。
 
@@ -64,8 +64,6 @@ npm run release:local
 - `checksums.txt`：所有产物文件的 sha256。
 
 `.vsix` 和单文件 CLI 暂不生成；需要时再单独审查相关打包依赖。
-
-AI 写作和旧项目迁移流程不放在本文档，见 [工作流接入指南](installer.md) 和 [AI 写作规范](editor.md)。
 
 ## 依赖安全
 

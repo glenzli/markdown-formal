@@ -23,11 +23,13 @@ By @tmp-2, the sequence is tight.
 
 Supported markers:
 
-- Sections: `## #h-... Title`
+- Sections: `## #h-... Title` render as numbered anchors and links, but do not generate hover recall previews.
 - Numbered together per chapter or appendix: `命题 #h-...`, `引理 #h-...`, `定理 #h-...`, `推论 #h-...`
 - English numbered markers are also supported: `Proposition #h-...`, `Lemma #h-...`, `Theorem #h-...`, `Corollary #h-...`
 - Definition lookup entries: `定义（Term）：...` or `Definition (Term): ...`
-- Also recognized: `注 #h-...`, `例 #h-...`
+- Optional indexed blocks: write plain `注（...）` / `例（...）` by default; only add `#h-...` later when a remark/example is explicitly cited.
+
+Hover recall is generated for propositions, lemmas, theorems, corollaries, and explicitly cited remarks/examples. For theorem-like blocks, the preview captures the statement and stops before `证明` / `Proof`.
 
 References:
 
@@ -213,7 +215,7 @@ For another project, copy `dist/markdown-formal-<version>/cli` into `tools/markd
 }
 ```
 
-Check `checksums.txt` before copying release artifacts. Do not auto-install or auto-update skills from remote sources. Put the prompt block from **AI Workflow** into the target project's AI instructions, such as `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, or the repository README.
+Check `checksums.txt` before copying release artifacts. Do not auto-install or auto-update skills from remote sources. Then use `skills/integrator.md` as an integration patch: merge the markdown-formal rules into the target project's native AI writing instructions, such as `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, an existing writing skill, or the repository README. Do not leave it as a detached extra skill if the project already has its own writing workflow.
 
 ## Development
 

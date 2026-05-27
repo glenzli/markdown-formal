@@ -492,6 +492,8 @@ function numberedReferenceAliases(def, config) {
         lemma: '引理',
         prop: '命题',
         cor: '推论',
+        remark: '注',
+        example: '例',
         section: '节'
     };
     const enTypes = {
@@ -499,6 +501,8 @@ function numberedReferenceAliases(def, config) {
         lemma: 'Lemma',
         prop: 'Proposition',
         cor: 'Corollary',
+        remark: 'Remark',
+        example: 'Example',
         section: 'Section'
     };
     const shortEnTypes = {
@@ -506,6 +510,8 @@ function numberedReferenceAliases(def, config) {
         lemma: 'Lem.',
         prop: 'Prop.',
         cor: 'Cor.',
+        remark: 'Rem.',
+        example: 'Ex.',
         section: 'Sec.'
     };
     const shortEnNoDotTypes = {
@@ -513,6 +519,8 @@ function numberedReferenceAliases(def, config) {
         lemma: 'Lem',
         prop: 'Prop',
         cor: 'Cor',
+        remark: 'Rem',
+        example: 'Ex',
         section: 'Sec'
     };
 
@@ -577,7 +585,7 @@ function buildTextReferenceIndex(definitions, config) {
 function normalizeTextReferenceAlias(value) {
     const alias = value.trim().replace(/．/g, '.').replace(/\s+/g, ' ');
     const number = `(${TEXT_REF_NUMBER.replace(/．/g, '.')})`;
-    const cjk = alias.match(new RegExp(`^(定理|引理|命题|推论)\\s*${number}$`));
+    const cjk = alias.match(new RegExp(`^(定理|引理|命题|推论|注|例)\\s*${number}$`));
     if (cjk) return `${cjk[1]}${normalizeReferenceNumber(cjk[2])}`;
     const cjkSectionPrefix = alias.match(new RegExp(`^第\\s*${number}\\s*节$`));
     if (cjkSectionPrefix) return `§${normalizeReferenceNumber(cjkSectionPrefix[1])}`;
@@ -604,6 +612,8 @@ function makeTextReferencePattern(config) {
         'Lemma',
         'Proposition',
         'Corollary',
+        'Remark',
+        'Example',
         'Section',
         'Thm\\.',
         'Thm',
@@ -613,6 +623,10 @@ function makeTextReferencePattern(config) {
         'Prop',
         'Cor\\.',
         'Cor',
+        'Rem\\.',
+        'Rem',
+        'Ex\\.',
+        'Ex',
         'Sec\\.',
         'Sec',
         ...configuredTypes.map(escapeRegExp)

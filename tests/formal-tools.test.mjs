@@ -243,6 +243,51 @@ async function testSymbolCache() {
     assert.equal(previewCache.symbols[0].sourceLine, 3);
 }
 
+async function testRecallBoundariesAndOptionalBlocks() {
+    const root = await makeWorkspace('recall-boundaries');
+    await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
+        '# Chapter 1',
+        '',
+        '## #h-1111111111111111 Boundary Section',
+        '',
+        'Theorem #h-2222222222222222 (Boundary): First line of the statement.',
+        'Second statement line with $x$.',
+        '',
+        'Proof.',
+        'The proof body should not enter recall preview.',
+        '',
+        'Remark #h-3333333333333333 (Important): This remark is explicitly indexed.',
+        'It has a second line.',
+        '',
+        'Theorem #h-4444444444444444 (After remark): The theorem counter should ignore remark numbering.',
+        '',
+        'Example #h-5555555555555555 (Model): A referenced example.',
+        '',
+        'Later text cites @h-3333333333333333 and @h-5555555555555555.',
+        ''
+    ].join('\n'));
+
+    const prepare = runCli(root, ['prepare']);
+    assert.equal(prepare.status, 0, combinedOutput(prepare));
+    const previewCache = JSON.parse(await read(root, '.markdown-formal/preview-cache.json'));
+
+    assert.equal(previewCache.entries['h-1111111111111111'].content, undefined);
+    assert.equal(previewCache.entries['h-2222222222222222'].content, [
+        'Theorem (Boundary): First line of the statement.',
+        'Second statement line with $x$.'
+    ].join('\n'));
+    assert.doesNotMatch(previewCache.entries['h-2222222222222222'].content, /proof body/i);
+    assert.match(previewCache.entries['h-3333333333333333'].content, /second line/);
+    assert.equal(previewCache.entries['h-2222222222222222'].number, 1);
+    assert.equal(previewCache.entries['h-4444444444444444'].number, 2);
+    assert.equal(previewCache.entries['h-3333333333333333'].number, 1);
+    assert.equal(previewCache.entries['h-5555555555555555'].number, 1);
+
+    const referenceMap = await read(root, '.markdown-formal/reference-map.md');
+    assert.match(referenceMap, /注 1\.1/);
+    assert.match(referenceMap, /例 1\.1/);
+}
+
 async function testMigrateTextRefsSectionsAndAudits() {
     const root = await makeWorkspace('text-refs-audit');
     await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
@@ -350,6 +395,7 @@ const tests = [
     ['migrate-text-refs report', testMigrateTextRefsReport],
     ['custom dictionary text refs', testCustomDictionaryTextRefs],
     ['symbol cache', testSymbolCache],
+    ['recall boundaries and optional blocks', testRecallBoundariesAndOptionalBlocks],
     ['migrate-text-refs sections and audits', testMigrateTextRefsSectionsAndAudits],
     ['migrate-text-refs updates incoming refs by default', testMigrateTextRefsUpdatesIncomingByDefault],
     ['verify rejects non-hash ids', testVerifyRejectsNonHashIds],

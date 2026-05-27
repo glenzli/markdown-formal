@@ -1710,7 +1710,7 @@
 
     function collectTocItems(): TocItem[] {
         const items: TocItem[] = [];
-        document.querySelectorAll<HTMLElement>('.formal-section, .formal-prop, .formal-lemma, .formal-theorem, .formal-cor').forEach(el => {
+        document.querySelectorAll<HTMLElement>('.formal-section, .formal-prop, .formal-lemma, .formal-theorem, .formal-cor, .formal-remark, .formal-example').forEach(el => {
             if (!el.id) return;
 
             const display = (el.getAttribute('data-formal-display') || '').trim();

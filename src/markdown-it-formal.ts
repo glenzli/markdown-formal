@@ -571,7 +571,7 @@ export = function formalPlugin(md: any, options: any) {
         const targetLineAttr = labelData.startLine !== undefined ? ` data-target-line="${labelData.startLine + 1}"` : '';
         
         let tooltipHtml = '';
-        if (labelData.content && (env.tooltipDepth || 0) === 0) {
+        if (labelData.type !== 'section' && labelData.content && (env.tooltipDepth || 0) === 0) {
             env.formalTooltipCache = env.formalTooltipCache || {};
             
             if (env.formalTooltipCache[id] !== undefined) {

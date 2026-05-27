@@ -87,10 +87,13 @@ Definition (Evolution system): Given a network topology driven by linear operato
 ## 编号规则
 
 - `命题`、`引理`、`定理`、`推论` 在同一章或同一附录内共享主计数器。
-- 英文项目可使用 `Proposition`、`Lemma`、`Theorem`、`Corollary`、`Definition`。
-- `## #h-...` 使用小节计数器。
-- `定义`、`注`、`例` 不参与主计数器。
+- 英文项目可使用 `Proposition`、`Lemma`、`Theorem`、`Corollary`、`Definition`、`Remark`、`Example`。
+- `## #h-...` 使用小节计数器，只用于跳转，不生成 recall 预览。
+- `定义` 不参与编号；它只进入定义搜索。
+- `注`、`例` 默认写成普通段落，不加 hash。只有后文已经需要明确引用某个注/例时，才反向把那个注/例改成 `注 #tmp-*` 或 `例 #tmp-*`，运行 `finish` 后作为 indexed block 独立编号并生成 recall。
 - `appendix-a-*.md` 中的编号显示为 `A.1`、`A.2`；不同卷里的附录 A 可以各自从 `A.1` 开始。
+
+定理类 recall 只应覆盖陈述，不覆盖证明。写多行命题/引理/定理/推论时，保持陈述在 `证明` / `Proof` 之前；工具会从 marker 行收集到证明标记前。
 
 ## 引用语法
 
@@ -105,6 +108,7 @@ Definition (Evolution system): Given a network topology driven by linear operato
 - 不要写 `命题 @h-...` 这类重复前缀；`@h-...` 渲染时已经包含类型和编号。
 - 定义术语一般直接写术语本身；定义查找交给预览里的定义搜索能力。
 - 特殊符号的解释交给 `formal-symbols.json` 和预览里的符号召回能力。
+- 不要预判“这个注/例可能重要”就提前加 hash；等实际出现跨段落/跨章节引用需求时再补。
 
 ## 目录结构
 

@@ -142,7 +142,8 @@ export interface FormalMarker {
 }
 
 export const FORMAL_TYPES = ['prop', 'lemma', 'theorem', 'cor', 'def', 'remark', 'example', 'section'];
-export const INCREMENTAL_TYPES = new Set(['prop', 'lemma', 'theorem', 'cor']);
+export const THEOREM_COUNTER_TYPES = new Set(['prop', 'lemma', 'theorem', 'cor']);
+export const RECALL_TYPES = new Set(['prop', 'lemma', 'theorem', 'cor', 'remark', 'example']);
 export const SECTION_TYPES = new Set(['section']);
 export const HASH_ID_RE = /^h-[a-f0-9]{16,32}$/;
 export const TMP_ID_RE = /^tmp-[A-Za-z0-9_-]+$/;
@@ -496,7 +497,9 @@ const MARKER_TYPE_ALIASES: Record<string, string> = {
     definition: 'def',
     def: 'def',
     remark: 'remark',
-    example: 'example'
+    rem: 'remark',
+    example: 'example',
+    ex: 'example'
 };
 
 function normalizeMarkerType(value: string): string | undefined {
@@ -532,7 +535,7 @@ export function parseFormalMarkerLine(line: string): FormalMarker | undefined {
     }
 
     const text = line.trim();
-    const typePattern = '定理|引理|命题|推论|定义|注|例|Theorem|Thm\\.?|Lemma|Lem\\.?|Proposition|Prop\\.?|Corollary|Cor\\.?|Definition|Def\\.?|Remark|Example';
+    const typePattern = '定理|引理|命题|推论|定义|注|例|Theorem|Thm\\.?|Lemma|Lem\\.?|Proposition|Prop\\.?|Corollary|Cor\\.?|Definition|Def\\.?|Remark|Rem\\.?|Example|Ex\\.?';
     const typed = text.match(new RegExp(`^(${typePattern})\\s*(.*)$`, 'i'));
     if (!typed) return undefined;
 
@@ -676,23 +679,87 @@ function sourceMarkerLabel(marker: FormalMarker): string {
     return marker.markerText.replace(/\s+#[A-Za-z0-9_-]+\b$/, '').trim();
 }
 
+function normalizeProofBoundaryLine(line: string): string {
+    return line
+        .trim()
+        .replace(/^>\s*/, '')
+        .replace(/^\s*[-+*]\s+/, '')
+        .replace(/^\*\*(.+?)\*\*/, '$1')
+        .replace(/^__(.+?)__/, '$1')
+        .replace(/^\*(.+?)\*/, '$1')
+        .replace(/^_(.+?)_/, '$1')
+        .trim();
+}
+
+function isProofBoundaryLine(line: string): boolean {
+    const text = normalizeProofBoundaryLine(line);
+    return /^(?:证明(?:概要|草图|思路|如下|在此略去)?|Proof(?:\s+sketch)?|Sketch of proof)\s*(?:[：:。.．.]|$|\s)/i.test(text);
+}
+
+function isMarkerBoundaryLine(line: string): boolean {
+    return /^#{1,6}\s+/.test(line) || !!parseFormalMarkerLine(line);
+}
+
+function trimTrailingBlankLines(lines: string[]): string[] {
+    const trimmed = [...lines];
+    while (trimmed.length > 0 && !trimmed[trimmed.length - 1].trim()) trimmed.pop();
+    return trimmed;
+}
+
+function collectRecallMarkerContent(lines: string[], startLine: number, marker: FormalMarker): { contentLines: string[]; endLine: number } {
+    const contentLines = [markerLineContent(lines[startLine], marker)];
+    let endLine = startLine;
+    let proofLine = -1;
+
+    for (let i = startLine + 1; i < lines.length; i++) {
+        const line = lines[i];
+        if (isMarkerBoundaryLine(line)) break;
+        if (isProofBoundaryLine(line)) {
+            proofLine = i;
+            break;
+        }
+    }
+
+    if (proofLine >= 0) {
+        for (let i = startLine + 1; i < proofLine; i++) {
+            contentLines.push(lines[i]);
+            endLine = i;
+        }
+        return { contentLines: trimTrailingBlankLines(contentLines), endLine };
+    }
+
+    for (let i = startLine + 1; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line.trim()) break;
+        if (isMarkerBoundaryLine(line)) break;
+        contentLines.push(line);
+        endLine = i;
+    }
+
+    return { contentLines: trimTrailingBlankLines(contentLines), endLine };
+}
+
 function collectMarkerContent(lines: string[], startLine: number, marker: FormalMarker): { contentLines: string[]; endLine: number } {
+    if (RECALL_TYPES.has(marker.type)) {
+        return collectRecallMarkerContent(lines, startLine, marker);
+    }
+
     const contentLines = [markerLineContent(lines[startLine], marker)];
     let endLine = startLine;
 
     for (let i = startLine + 1; i < lines.length; i++) {
         const line = lines[i];
         if (!line.trim()) break;
-        if (/^#{1,6}\s+/.test(line) || parseFormalMarkerLine(line)) break;
+        if (isMarkerBoundaryLine(line)) break;
         contentLines.push(line);
         endLine = i;
     }
 
-    return { contentLines, endLine };
+    return { contentLines: trimTrailingBlankLines(contentLines), endLine };
 }
 
-function makeLabelData(marker: FormalMarker, unitFile: UnitFile, startLine: number, contentLines: string[], itemNumber?: number, sectionNumber?: number, endLine?: number): LabelData {
-    const content = contentLines.join('\n');
+function makeLabelData(marker: FormalMarker, unitFile: UnitFile, startLine: number, contentLines: string[], markerNumber?: number, endLine?: number): LabelData {
+    const content = RECALL_TYPES.has(marker.type) ? contentLines.join('\n') : undefined;
     const label: LabelData = {
         type: marker.type,
         title: marker.title,
@@ -704,15 +771,14 @@ function makeLabelData(marker: FormalMarker, unitFile: UnitFile, startLine: numb
         unitKey: unitFile.unit.key,
         unitLabel: unitFile.unit.label,
         unitOrder: unitFile.unit.order,
-        content,
         startLine,
         endLine
     };
 
+    if (content) label.content = content;
     if (unitFile.unit.chapter !== undefined) label.chapter = unitFile.unit.chapter;
     if (unitFile.unit.appendix !== undefined) label.appendix = unitFile.unit.appendix;
-    if (INCREMENTAL_TYPES.has(marker.type)) label.number = itemNumber;
-    if (SECTION_TYPES.has(marker.type)) label.number = sectionNumber;
+    if (markerNumber !== undefined) label.number = markerNumber;
     if (unitFile.volume) {
         label.volumeKey = unitFile.volume.key;
         label.volumeTitle = unitFile.volume.title;
@@ -833,6 +899,8 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
         groupFiles.sort((a, b) => a.filePath.localeCompare(b.filePath));
         let itemCounter = 1;
         let sectionCounter = 1;
+        let remarkCounter = 1;
+        let exampleCounter = 1;
 
         for (const unitFile of groupFiles) {
             const lines = unitFile.content.split(/\r?\n/);
@@ -849,10 +917,18 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
                 if (!marker) continue;
                 if (marker.type === 'def') continue;
 
-                const itemNumber = INCREMENTAL_TYPES.has(marker.type) ? itemCounter++ : undefined;
-                const sectionNumber = SECTION_TYPES.has(marker.type) ? sectionCounter++ : undefined;
+                let markerNumber: number | undefined;
+                if (THEOREM_COUNTER_TYPES.has(marker.type)) {
+                    markerNumber = itemCounter++;
+                } else if (SECTION_TYPES.has(marker.type)) {
+                    markerNumber = sectionCounter++;
+                } else if (marker.type === 'remark') {
+                    markerNumber = remarkCounter++;
+                } else if (marker.type === 'example') {
+                    markerNumber = exampleCounter++;
+                }
                 const content = collectMarkerContent(lines, lineIndex, marker);
-                const label = makeLabelData(marker, unitFile, lineIndex, content.contentLines, itemNumber, sectionNumber, content.endLine);
+                const label = makeLabelData(marker, unitFile, lineIndex, content.contentLines, markerNumber, content.endLine);
                 labels[marker.id!] = label;
                 definitions.push({
                     id: marker.id!,
@@ -1154,9 +1230,11 @@ export function renderAgentGuide(state: any): string {
         '',
         '## Lightweight Syntax',
         '',
-        '- Sections: `## #h-... Title` renders as the current section number plus title.',
+        '- Sections: `## #h-... Title` renders as the current section number plus title, and links jump to the section without hover recall.',
         '- Numbered objects: `命题 #h-...（Title）：...`, `引理 #h-...`, `定理 #h-...`, `推论 #h-...` share the theorem counter per chapter or appendix.',
+        '- Theorem-like recall captures the statement before `证明` / `Proof`; keep proofs after an explicit proof marker.',
         '- Definitions: `定义（Term）：...` and `Definition (Term): ...` enter the preview definition search only; they do not have hash IDs and do not participate in automatic reference migration.',
+        '- Remarks/examples stay plain by default. Only when later text already cites one, convert that exact item to `注 #tmp-*` / `例 #tmp-*` and run `finish`.',
         '- Symbols: maintain only project-specific `source`, `pattern`, and `meaning` entries in `formal-symbols.json`; do not list generic math notation.',
         '- Appendices use the appendix file prefix, so markers in `appendix-a-*.md` render as `A.1`, `A.2`, etc.',
         '',
