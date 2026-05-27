@@ -4,10 +4,11 @@
 
 ## 接入目标
 
-接入后，AI 应遵守三条规则：
+接入后，AI 应遵守这些规则：
 
 - 显示编号由工具生成，正文引用编号对象时只写稳定 hash ID。
 - AI 新增编号 marker 时只写 `tmp-*`，不手动生成正式 hash。
+- 特殊 LaTeX 符号约定写入 `formal-symbols.json`，只维护 `source`、`pattern`、`meaning` 等源信息，由预览端做符号召回。
 - 每次写完用工具统一生成 ID、刷新索引并检查引用。
 
 ## 给 AI 的最小提示
@@ -20,6 +21,7 @@
 优先读取 .markdown-formal/agent-guide.md，再读取目标原文和 .markdown-formal/reference-map.md。
 引用已有对象时，只能从 reference-map.md 复制 @h-... 或 @h-....title。
 新增小节、命题、引理、定理、推论等 marker 使用 tmp-1/tmp-2/...，不要手动生成 hash。
+只把项目特有的符号约定写入 formal-symbols.json，不记录通用数学符号。
 写完运行 npm run formal -- finalize <file-or-dir>，再运行 npm run formal -- verify。
 保持 Markdown 和 LaTeX 原样。
 ```
@@ -38,10 +40,10 @@ npm run formal -- verify
 
 - `.markdown-formal/agent-guide.md`：极简操作卡。
 - `.markdown-formal/reference-map.md`：显示编号到 hash ID 的表。
-- `.markdown-formal/preview-cache.json`：预览、导航和定义搜索运行时缓存，通常不需要 AI 读取。
+- `.markdown-formal/preview-cache.json`：预览、导航、定义搜索和符号召回运行时缓存，通常不需要 AI 读取。
 - `.markdown-formal/report.md`：lint/verify 详情。
 
-AI 只需要优先读 `agent-guide.md` 和 `reference-map.md`；定义查找交给预览搜索。不要直接编辑 `.markdown-formal/` 下的生成文件。
+AI 只需要优先读 `agent-guide.md` 和 `reference-map.md`；定义和符号查找交给预览搜索。不要直接编辑 `.markdown-formal/` 下的生成文件。
 
 ## Release 接入
 

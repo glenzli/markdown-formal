@@ -71,6 +71,27 @@ export interface RuntimeDefinitionData {
     volumeOrder?: number;
 }
 
+export interface FormalSymbolInput {
+    pattern: string;
+    display?: string;
+    meaning: string;
+    scope?: string;
+    source?: string;
+}
+
+export interface RuntimeSymbolData {
+    pattern: string;
+    normalizedPattern: string;
+    regex: string;
+    captures: string[];
+    display: string;
+    meaning: string;
+    scope: string;
+    source?: string;
+    sourceFilePath?: string;
+    sourceLine?: number;
+}
+
 export interface FormalReference {
     id: string;
     file: string;
@@ -125,6 +146,22 @@ export const INCREMENTAL_TYPES = new Set(['prop', 'lemma', 'theorem', 'cor']);
 export const SECTION_TYPES = new Set(['section']);
 export const HASH_ID_RE = /^h-[a-f0-9]{16,32}$/;
 export const TMP_ID_RE = /^tmp-[A-Za-z0-9_-]+$/;
+const SYMBOL_PLACEHOLDER_RE = /\$\{([A-Za-z][A-Za-z0-9_]*)\}/g;
+const SYMBOL_SAMPLE_VALUES: Record<string, string> = {
+    operator: 'T',
+    ellipticOperator: 'D',
+    parameter: '\\lambda',
+    param: '\\lambda',
+    time: 't',
+    index: 'i',
+    base: 'U',
+    object: 'E',
+    space: 'X',
+    radius: 'R',
+    mesh: 'h',
+    left: 'x',
+    right: 'y'
+};
 
 export const DEFAULT_CONFIG = {
     language: 'zh',
@@ -229,6 +266,207 @@ export function getContentPreview(content: string, maxLength = 240): string {
         .replace(/\s+/g, ' ')
         .trim();
     return text.length > maxLength ? `${text.slice(0, maxLength).trimEnd()}...` : text;
+}
+
+export function normalizeLatexSymbol(value: string): string {
+    return String(value || '')
+        .trim()
+        .replace(/^\$+|\$+$/g, '')
+        .replace(/\\left\s*/g, '')
+        .replace(/\\right\s*/g, '')
+        .replace(/\\operatorname\s*\{([^{}]+)\}/g, '\\$1')
+        .replace(/\\([A-Za-z]+)\s+\{([^{}]+)\}/g, '\\$1{$2}')
+        .replace(/\s+/g, '')
+        .replace(/([_^])([A-Za-z0-9\\])(?![A-Za-z0-9{])/g, '$1{$2}');
+}
+
+function escapeRegex(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function compileSymbolPattern(pattern: string): { normalizedPattern: string; regex: string; captures: string[] } {
+    const normalizedPattern = normalizeLatexSymbol(pattern);
+    const captures: string[] = [];
+    let regex = '^';
+    let cursor = 0;
+    let match: RegExpExecArray | null;
+    SYMBOL_PLACEHOLDER_RE.lastIndex = 0;
+
+    while ((match = SYMBOL_PLACEHOLDER_RE.exec(normalizedPattern))) {
+        regex += escapeRegex(normalizedPattern.slice(cursor, match.index));
+        captures.push(match[1]);
+        regex += '(.+?)';
+        cursor = match.index + match[0].length;
+    }
+
+    regex += escapeRegex(normalizedPattern.slice(cursor));
+    regex += '$';
+    return { normalizedPattern, regex, captures };
+}
+
+function parseSymbolSource(source: string | undefined): { sourceFilePath?: string; sourceLine?: number } {
+    if (!source) return {};
+    const match = String(source).match(/^(.+?)(?::(\d+))?$/);
+    if (!match) return {};
+    return {
+        sourceFilePath: toPosix(match[1]).replace(/^\/+/, ''),
+        sourceLine: match[2] ? Number(match[2]) : undefined
+    };
+}
+
+function symbolSampleValue(name: string): string {
+    return SYMBOL_SAMPLE_VALUES[name] || 'x';
+}
+
+function makeSymbolDisplay(pattern: string): string {
+    return `$${pattern.replace(/\$\{([A-Za-z][A-Za-z0-9_]*)\}/g, (_match, name) => symbolSampleValue(name))}$`;
+}
+
+function normalizeSymbolDocuments(documents: Array<FormalDocument | string>): FormalDocument[] {
+    return documents.map(document => typeof document === 'string'
+        ? { filePath: document, content: '' }
+        : document
+    );
+}
+
+export function parseFormalSymbols(input: unknown, documents: Array<FormalDocument | string> = []): { symbols: RuntimeSymbolData[]; issues: FormalIssue[] } {
+    const issues: FormalIssue[] = [];
+    const rawSymbols = Array.isArray(input)
+        ? input
+        : input && typeof input === 'object' && Array.isArray((input as any).symbols)
+            ? (input as any).symbols
+            : [];
+
+    if (input !== undefined && input !== null && !Array.isArray(input) && !(typeof input === 'object' && Array.isArray((input as any).symbols))) {
+        issues.push({
+            severity: 'error',
+            code: 'invalid-symbols-file',
+            file: 'formal-symbols.json',
+            message: 'formal-symbols.json must be an array, or an object with a symbols array.'
+        });
+        return { symbols: [], issues };
+    }
+
+    const normalizedDocuments = normalizeSymbolDocuments(documents);
+    const fileSet = new Set(normalizedDocuments.map(document => toPosix(document.filePath).replace(/^\/+/, '')));
+    const lineCounts = new Map(normalizedDocuments.map(document => [
+        toPosix(document.filePath).replace(/^\/+/, ''),
+        document.content ? document.content.split(/\r\n|\r|\n/).length : 0
+    ]));
+    const seen = new Map<string, number>();
+    const symbols: RuntimeSymbolData[] = [];
+    rawSymbols.forEach((item: any, index: number) => {
+        if (!item || typeof item !== 'object') {
+            issues.push({
+                severity: 'error',
+                code: 'invalid-symbol-entry',
+                file: 'formal-symbols.json',
+                line: index + 1,
+                message: 'Symbol entry must be an object.'
+            });
+            return;
+        }
+
+        const pattern = typeof item.pattern === 'string' ? item.pattern.trim() : '';
+        const meaning = typeof item.meaning === 'string' ? item.meaning.trim() : '';
+        const source = typeof item.source === 'string' && item.source.trim() ? item.source.trim() : '';
+        if (!pattern || !meaning || !source) {
+            issues.push({
+                severity: 'error',
+                code: 'invalid-symbol-entry',
+                file: 'formal-symbols.json',
+                line: index + 1,
+                message: 'Symbol entry requires non-empty source, pattern, and meaning.'
+            });
+            return;
+        }
+
+        const compiled = compileSymbolPattern(pattern);
+        const display = typeof item.display === 'string' && item.display.trim() ? item.display.trim() : makeSymbolDisplay(pattern);
+        const scope = typeof item.scope === 'string' && item.scope.trim() ? item.scope.trim() : 'book';
+        const parsedSource = parseSymbolSource(source);
+
+        if (!parsedSource.sourceFilePath || parsedSource.sourceLine === undefined) {
+            issues.push({
+                severity: 'error',
+                code: 'symbol-source-invalid',
+                file: 'formal-symbols.json',
+                line: index + 1,
+                message: `Symbol source ${source} must use path.md:line format.`
+            });
+            return;
+        }
+
+        if (fileSet.size > 0 && !fileSet.has(parsedSource.sourceFilePath)) {
+            issues.push({
+                severity: 'error',
+                code: 'symbol-source-missing',
+                file: 'formal-symbols.json',
+                line: index + 1,
+                message: `Symbol source ${source} does not point to a known Markdown file.`
+            });
+            return;
+        }
+
+        const lineCount = lineCounts.get(parsedSource.sourceFilePath) || 0;
+        if (lineCount > 0 && (parsedSource.sourceLine < 1 || parsedSource.sourceLine > lineCount)) {
+            issues.push({
+                severity: 'error',
+                code: 'symbol-source-line-missing',
+                file: 'formal-symbols.json',
+                line: index + 1,
+                message: `Symbol source ${source} points outside the source file.`
+            });
+            return;
+        }
+
+        if (!new RegExp(compiled.regex).test(normalizeLatexSymbol(display))) {
+            issues.push({
+                severity: 'warn',
+                code: 'symbol-display-mismatch',
+                file: 'formal-symbols.json',
+                line: index + 1,
+                message: `Symbol display ${display} does not match pattern ${pattern}.`
+            });
+        }
+
+        if (/^\$\{[A-Za-z][A-Za-z0-9_]*\}$/.test(compiled.normalizedPattern)) {
+            issues.push({
+                severity: 'warn',
+                code: 'symbol-pattern-too-broad',
+                file: 'formal-symbols.json',
+                line: index + 1,
+                message: `Symbol pattern ${pattern} is only a placeholder and may match unrelated formulas.`
+            });
+        }
+
+        const duplicateKey = `${scope}:${compiled.normalizedPattern}:${parsedSource.sourceFilePath}`;
+        const previousIndex = seen.get(duplicateKey);
+        if (previousIndex !== undefined) {
+            issues.push({
+                severity: 'warn',
+                code: 'duplicate-symbol-pattern',
+                file: 'formal-symbols.json',
+                line: index + 1,
+                message: `Symbol pattern duplicates entry ${previousIndex + 1} in the same scope and source file.`
+            });
+        }
+        seen.set(duplicateKey, index);
+
+        symbols.push({
+            pattern,
+            normalizedPattern: compiled.normalizedPattern,
+            regex: compiled.regex,
+            captures: compiled.captures,
+            display,
+            meaning,
+            scope,
+            source,
+            ...parsedSource
+        });
+    });
+
+    return { symbols, issues };
 }
 
 export function stripIgnoredMarkdown(content: string): string {
@@ -504,7 +742,7 @@ function makeDefinitionLabelData(marker: FormalMarker, document: FormalDocument,
     return label;
 }
 
-export function scanFormalDocuments(documents: FormalDocument[], configInput: any) {
+export function scanFormalDocuments(documents: FormalDocument[], configInput: any, symbolsInput?: unknown) {
     const config = mergeConfig(configInput);
     const files = [...documents].sort((a, b) => a.filePath.localeCompare(b.filePath));
     const labels: Record<string, LabelData> = {};
@@ -628,13 +866,15 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
         }
     }
 
+    const symbolResult = parseFormalSymbols(symbolsInput, files);
+    issues.push(...symbolResult.issues);
     issues.push(...lintDefinitions(definitions));
     issues.push(...lintReferences(references, labels, definitions));
     issues.push(...lintPages(pages));
 
     definitions.sort(compareDefinitionRecords);
     pages.sort(comparePages);
-    return { config, files: files.map(file => file.filePath), labels, pages, definitions, references, issues };
+    return { config, files: files.map(file => file.filePath), labels, pages, definitions, references, symbols: symbolResult.symbols, issues };
 }
 
 function collectMarkerStarts(content: string, filePath: string): any[] {
@@ -887,7 +1127,8 @@ export function buildPreviewCache(state: any) {
     return {
         entries: state.labels,
         pages: state.pages,
-        definitions: buildRuntimeDefinitions(state.definitions || [])
+        definitions: buildRuntimeDefinitions(state.definitions || []),
+        symbols: state.symbols || []
     };
 }
 
@@ -899,7 +1140,7 @@ export function renderAgentGuide(state: any): string {
         '',
         'Generated by `npm run formal -- prepare`. This is the compact workflow card for AI agents.',
         '',
-        `Current cache: ${Object.keys(state.labels).length} preview entries, ${state.pages.length} pages, ${errors} errors, ${warnings} warnings.`,
+        `Current cache: ${Object.keys(state.labels).length} preview entries, ${state.pages.length} pages, ${(state.symbols || []).length} symbols, ${errors} errors, ${warnings} warnings.`,
         '',
         '## Normal Writing',
         '',
@@ -916,12 +1157,13 @@ export function renderAgentGuide(state: any): string {
         '- Sections: `## #h-... Title` renders as the current section number plus title.',
         '- Numbered objects: `命题 #h-...（Title）：...`, `引理 #h-...`, `定理 #h-...`, `推论 #h-...` share the theorem counter per chapter or appendix.',
         '- Definitions: `定义（Term）：...` and `Definition (Term): ...` enter the preview definition search only; they do not have hash IDs and do not participate in automatic reference migration.',
+        '- Symbols: maintain only project-specific `source`, `pattern`, and `meaning` entries in `formal-symbols.json`; do not list generic math notation.',
         '- Appendices use the appendix file prefix, so markers in `appendix-a-*.md` render as `A.1`, `A.2`, etc.',
         '',
         '## Generated Files',
         '',
         '- `.markdown-formal/reference-map.md`: compact display-number to hash-ID table.',
-        '- `.markdown-formal/preview-cache.json`: runtime preview/navigation/definition lookup cache.',
+        '- `.markdown-formal/preview-cache.json`: runtime preview/navigation/definition/symbol lookup cache.',
         '- `.markdown-formal/report.md`: lint/verify details.',
         '- `.markdown-formal/text-ref-migration.md`: generated only after text-reference migration.',
         ''
@@ -941,6 +1183,7 @@ export function renderReport(state: any): string {
         '',
         `Labels: ${Object.keys(state.labels).length}`,
         `Pages: ${state.pages.length}`,
+        `Symbols: ${(state.symbols || []).length}`,
         `Errors: ${errors.length}`,
         `Warnings: ${warnings.length}`,
         ''

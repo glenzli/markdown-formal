@@ -187,6 +187,41 @@ async function testCustomDictionaryTextRefs() {
     await assert.rejects(read(root, '.markdown-formal/definition-index.md'), /ENOENT/);
 }
 
+async function testSymbolCache() {
+    const root = await makeWorkspace('symbols');
+    await fs.writeFile(path.join(root, 'formal-symbols.json'), JSON.stringify([
+        {
+            pattern: '\\sigma(${operator})',
+            meaning: 'Spectrum of the captured operator.',
+            scope: 'book',
+            source: 'book1/01-a.md:3'
+        },
+        {
+            pattern: '\\lambda',
+            meaning: 'A local spectral parameter.',
+            scope: 'file',
+            source: 'book1/01-a.md:3'
+        }
+    ], null, 2));
+    await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
+        '# Chapter 1',
+        '',
+        '定义（算子谱）：The spectrum $\\sigma(T)$ contains values $\\lambda$.',
+        ''
+    ].join('\n'));
+
+    const prepare = runCli(root, ['prepare']);
+    assert.equal(prepare.status, 0, combinedOutput(prepare));
+    const previewCache = JSON.parse(await read(root, '.markdown-formal/preview-cache.json'));
+    assert.equal(previewCache.symbols.length, 2);
+    assert.equal(previewCache.symbols[0].display, '$\\sigma(T)$');
+    assert.equal(previewCache.symbols[1].display, '$\\lambda$');
+    assert.equal(previewCache.symbols[0].regex, '^\\\\sigma\\((.+?)\\)$');
+    assert.deepEqual(previewCache.symbols[0].captures, ['operator']);
+    assert.equal(previewCache.symbols[0].sourceFilePath, 'book1/01-a.md');
+    assert.equal(previewCache.symbols[0].sourceLine, 3);
+}
+
 async function testMigrateTextRefsSectionsAndAudits() {
     const root = await makeWorkspace('text-refs-audit');
     await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
@@ -292,6 +327,7 @@ const tests = [
     ['migrate-ids scoped safety', testMigrateIdsScopedSafety],
     ['migrate-text-refs report', testMigrateTextRefsReport],
     ['custom dictionary text refs', testCustomDictionaryTextRefs],
+    ['symbol cache', testSymbolCache],
     ['migrate-text-refs sections and audits', testMigrateTextRefsSectionsAndAudits],
     ['migrate-text-refs update incoming refs', testMigrateTextRefsUpdateRefsAllIncoming],
     ['verify rejects non-hash ids', testVerifyRejectsNonHashIds],

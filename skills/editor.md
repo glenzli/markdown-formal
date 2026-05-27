@@ -22,6 +22,7 @@ npm run formal -- prepare
 - 新增编号对象：在原本编号位置写 `#tmp-1`、`#tmp-2`。
 - 不手写“定理 2.1”“小节 3.2”这类会随结构变化的编号。
 - 定义只进入预览搜索索引，不主动把正文中的术语全部引用化。
+- 只有本文特殊约定的 LaTeX 符号才写入 `formal-symbols.json`；不要记录通用数学符号。
 
 写完后：
 
@@ -58,6 +59,31 @@ Definition (Evolution system): Given a network topology driven by linear operato
 
 定义 marker 用于生成预览搜索材料，不需要 hash ID。除非用户明确要求建立引用，AI 不要把所有术语出现都改成显式引用。
 
+## 符号召回
+
+把项目特有的符号约定写入根目录 `formal-symbols.json`，不要写进 `.markdown-formal/`。
+
+```json
+[
+  {
+    "pattern": "\\sigma(${operator})",
+    "meaning": "匹配到的算子的谱。",
+    "scope": "book",
+    "source": "examples/book1/03-spectral-theory.md:7"
+  }
+]
+```
+
+规则：
+
+- `pattern` 使用 LaTeX，`${name}` 表示一个可捕获参数。
+- `meaning` 用自然语言说明这个符号族的约定含义，可以包含 Markdown 和 LaTeX。
+- `scope` 可用 `file`、`chapter`、`book` 或 `workspace`；默认按书生效。
+- `source` 必须指向引入该约定的正文位置，格式为 `path/to/file.md:line`。
+- `display` 通常不用写，工具会从 `pattern` 生成搜索展示公式；只有默认样例不合适时才手动补。
+
+只维护“记作/denote/write/令/设/where”等句式明确约定过的符号。普通变量、通用函数、一次性推导公式不进入符号表。AI 提取符号时只需要维护源位置、pattern、meaning，参数化匹配和运行时缓存由工具生成。
+
 ## 编号规则
 
 - `命题`、`引理`、`定理`、`推论` 在同一章或同一附录内共享主计数器。
@@ -77,6 +103,7 @@ Definition (Evolution system): Given a network topology driven by linear operato
 - 数学推导依赖某个命题/引理/定理/推论时，用 `@h-...`。
 - 需要自然语言标题时用 `@h-....title`。
 - 定义术语一般直接写术语本身；定义查找交给预览里的定义搜索能力。
+- 特殊符号的解释交给 `formal-symbols.json` 和预览里的符号召回能力。
 
 ## 目录结构
 

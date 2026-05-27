@@ -1,0 +1,98 @@
+[
+  {
+    "pattern": "\\sigma(${operator})",
+    "meaning": "匹配到的算子的谱，即使该算子减去 $\\lambda I$ 后不可逆的复数集合。",
+    "scope": "book",
+    "source": "examples/book1/03-spectral-theory.md:7"
+  },
+  {
+    "pattern": "\\lambda",
+    "meaning": "在谱理论语境中表示算子谱中的复特征值或谱参数。",
+    "scope": "file",
+    "source": "examples/book1/03-spectral-theory.md:7"
+  },
+  {
+    "pattern": "\\mathcal{C}",
+    "meaning": "纤维化站点中的基范畴，带有 Grothendieck 拓扑。",
+    "scope": "book",
+    "source": "examples/book2/vol-1-foundations/01-categorical-background.md:7"
+  },
+  {
+    "pattern": "\\mathcal{E}",
+    "meaning": "纤维化站点中的总范畴，借由函子 $p:\\mathcal{E}\\to\\mathcal{C}$ 投向基范畴。",
+    "scope": "book",
+    "source": "examples/book2/vol-1-foundations/01-categorical-background.md:7"
+  },
+  {
+    "pattern": "\\mathcal{E}_{${base}}",
+    "meaning": "纤维化站点中匹配到的对象上的纤维范畴。",
+    "scope": "book",
+    "source": "examples/book2/vol-1-foundations/01-categorical-background.md:13"
+  },
+  {
+    "pattern": "\\mathcal{E}(${space})",
+    "meaning": "在空间或对象上形成的全局下降范畴。",
+    "scope": "book",
+    "source": "examples/book2/vol-1-foundations/02-compactness-machinery.md:13"
+  },
+  {
+    "pattern": "\\mathrm{Hom}(${object},-)",
+    "meaning": "用于判定紧生成元的 Hom 函子；它需要与滤过余极限交换。",
+    "scope": "book",
+    "source": "examples/book2/vol-1-foundations/02-compactness-machinery.md:7"
+  },
+  {
+    "pattern": "\\mathfrak{M}",
+    "meaning": "满足紧生成下降条件的对象族所形成的预栈。",
+    "scope": "book",
+    "source": "examples/book2/volume-2-geometry/03-moduli-and-sheaves.md:5"
+  },
+  {
+    "pattern": "\\mathcal{P}_${base}(\\phi)",
+    "meaning": "相对切片在匹配纤维范畴上的 Bridgeland 切片。",
+    "scope": "book",
+    "source": "examples/book2/volume-2-geometry/04-derived-stability.md:7"
+  },
+  {
+    "pattern": "F_\\bullet ${object}",
+    "meaning": "相容滤过对象中附加在匹配对象上的有限递增滤过。",
+    "scope": "book",
+    "source": "examples/book2/vol-III-computations/05-spectral-sequences.md:7"
+  },
+  {
+    "pattern": "\\langle ${left}, ${right}\\rangle",
+    "meaning": "指标配对，把 $K^0(X)$ 与 $K_0(X)$ 的元素配对到整数。",
+    "scope": "book",
+    "source": "examples/book3/vol-1-theory/02-duality.md:9"
+  },
+  {
+    "pattern": "\\chi_${radius}",
+    "meaning": "依赖截断尺度的统一截断函数。",
+    "scope": "book",
+    "source": "examples/book3/vol-1-theory/appendix-a-estimates.md:7"
+  },
+  {
+    "pattern": "\\alpha(${ellipticOperator})",
+    "meaning": "由 $\\widehat{A}(TX)\\operatorname{ch}(\\sigma(D))$ 给出的指标密度微分形式。",
+    "scope": "book",
+    "source": "examples/book3/vol-2-computation/03-index-formula.md:9"
+  },
+  {
+    "pattern": "\\sigma(${ellipticOperator})",
+    "meaning": "椭圆算子的主符号类。",
+    "scope": "book",
+    "source": "examples/book3/vol-2-computation/03-index-formula.md:11"
+  },
+  {
+    "pattern": "\\lambda_${mesh}",
+    "meaning": "数值表格中随网格尺度变化的离散谱截断。",
+    "scope": "book",
+    "source": "examples/book3/vol-2-computation/appendix-a-tables.md:7"
+  },
+  {
+    "pattern": "\\eta_${mesh}",
+    "meaning": "数值表格中随网格尺度变化的 eta 不变量边界修正。",
+    "scope": "book",
+    "source": "examples/book3/vol-2-computation/appendix-a-tables.md:7"
+  }
+]

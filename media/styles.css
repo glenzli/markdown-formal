@@ -266,6 +266,51 @@
     white-space: nowrap !important;
 }
 
+.formal-symbol-match {
+    cursor: help !important;
+    border-radius: 3px !important;
+    outline: 1px solid transparent !important;
+    transition: background-color 0.12s ease, outline-color 0.12s ease !important;
+}
+
+.formal-symbol-match:hover {
+    background: var(--vscode-editor-hoverHighlightBackground, rgba(128, 128, 128, 0.1)) !important;
+    outline-color: var(--vscode-editorWidget-border, rgba(127, 127, 127, 0.28)) !important;
+}
+
+.formal-symbol-popover-title {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+}
+
+.formal-symbol-popover-title .katex,
+.formal-symbol-search-title .katex {
+    font-size: 1em !important;
+}
+
+.formal-symbol-content {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+}
+
+.formal-symbol-captures {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    margin-top: 8px !important;
+}
+
+.formal-symbol-capture {
+    border-radius: 5px !important;
+    background: var(--vscode-badge-background, rgba(127, 127, 127, 0.14)) !important;
+    color: var(--vscode-badge-foreground, var(--vscode-foreground, inherit)) !important;
+    font-size: 12px !important;
+    padding: 2px 6px !important;
+    font-family: var(--vscode-editor-font-family, monospace) !important;
+}
+
 /* Floating Nav Bar */
 .formal-nav-bar {
     --formal-nav-bg: var(--vscode-editorWidget-background, var(--vscode-editor-background, #1f1f1f)) !important;
@@ -415,6 +460,17 @@
 
 .formal-definition-search-preview * {
     max-width: 100% !important;
+}
+
+.formal-symbol-search-title {
+    display: flex !important;
+    align-items: center !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+}
+
+.formal-symbol-search-preview .formal-symbol-captures {
+    display: none !important;
 }
 
 .formal-definition-search-empty {

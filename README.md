@@ -4,7 +4,7 @@
 
 The project is designed for AI-assisted writing:
 
-- Preview renders lightweight numbered markers, references, LaTeX, chapter navigation, volumes, intro/summary pages, appendices, and definition lookup.
+- Preview renders lightweight numbered markers, references, LaTeX, chapter navigation, volumes, intro/summary pages, appendices, definition lookup, and declared-symbol recall.
 - Source Markdown stores stable hash IDs for numbered objects, such as `#h-8f2a91c4d7e03b6a`.
 - AI agents write new numbered markers with temporary IDs such as `tmp-1`, then the CLI finalizes them.
 - Generated or migrated content is checked with a strict `verify` gate.
@@ -35,6 +35,21 @@ References:
 - `@h-....title` renders the object title.
 - Definitions are indexed for lookup; do not mechanically reference every use of a defined term.
 
+Project-specific symbols can be declared in `formal-symbols.json`:
+
+```json
+[
+  {
+    "pattern": "\\sigma(${operator})",
+    "meaning": "匹配到的算子的谱。",
+    "scope": "book",
+    "source": "examples/book1/03-spectral-theory.md:7"
+  }
+]
+```
+
+Only record symbols with local conventions. Do not list generic math notation. `source`, `pattern`, and `meaning` are required; `display` is optional and normally generated from the pattern.
+
 ## AI Workflow
 
 Give AI agents this instruction:
@@ -46,6 +61,7 @@ Read .markdown-formal/agent-guide.md, the target Markdown file, and .markdown-fo
 Reference existing numbered objects only by copying @h-... or @h-....title from reference-map.md.
 Use tmp-1/tmp-2/... for new markers; do not generate hash IDs manually.
 Use plain definition markers for terms; do not automatically reference every definition term.
+Maintain formal-symbols.json only for project-specific symbol conventions.
 After editing, run npm run formal -- finalize <file-or-dir>, then npm run formal -- verify.
 Keep Markdown and LaTeX unescaped.
 ```
@@ -62,7 +78,7 @@ npm run formal -- verify
 
 - `agent-guide.md`: compact AI workflow card
 - `reference-map.md`: display number to hash ID map
-- `preview-cache.json`: runtime preview/navigation/definition lookup cache
+- `preview-cache.json`: runtime preview/navigation/definition/symbol lookup cache
 - `report.md`: lint/verify details
 
 Do not edit generated `.markdown-formal/` files by hand, except `.markdown-formal/config.json`.

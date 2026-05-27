@@ -5,7 +5,8 @@ import {
     getLanguage,
     mergeConfig,
     parseFormalMarkerLine,
-    type RuntimeDefinitionData
+    type RuntimeDefinitionData,
+    type RuntimeSymbolData
 } from './core/formal-core';
 
 interface LabelData {
@@ -47,6 +48,11 @@ interface PageData {
     unitOrder?: number;
     chapter?: number;
     appendix?: string;
+}
+
+interface FormulaData {
+    latex: string;
+    display: boolean;
 }
 
 function getDictionary(config: any): Record<string, string> {
@@ -201,6 +207,101 @@ function renderDefinitionTemplates(md: any, definitions: RuntimeDefinitionData[]
     }).join('\n');
 }
 
+function renderSymbolTemplates(md: any, symbols: RuntimeSymbolData[], env: any): string {
+    return symbols.map((symbol, index) => {
+        const display = symbol.display ? md.render(symbol.display, { ...env, tooltipDepth: 1 }) : '';
+        const meaning = symbol.meaning ? md.render(symbol.meaning, { ...env, tooltipDepth: 1 }) : '';
+        const safeDisplay = inlineSafeRenderedMarkdown(display).replace(/<\/template/gi, '&lt;/template');
+        const safeMeaning = inlineSafeRenderedMarkdown(meaning).replace(/<\/template/gi, '&lt;/template');
+        return `<template data-symbol-display-index="${index}">${safeDisplay}</template>\n<template data-symbol-meaning-index="${index}">${safeMeaning}</template>`;
+    }).join('\n');
+}
+
+function isEscaped(src: string, index: number): boolean {
+    let slashes = 0;
+    for (let i = index - 1; i >= 0 && src[i] === '\\'; i--) slashes++;
+    return slashes % 2 === 1;
+}
+
+function extractLatexFormulas(src: string): FormulaData[] {
+    const formulas: FormulaData[] = [];
+    let inFence = false;
+    let blockDelimiter = '';
+    let blockBuffer: string[] = [];
+
+    const lines = String(src || '').split(/\r?\n/);
+    for (const line of lines) {
+        if (/^\s*(```|~~~)/.test(line)) {
+            inFence = !inFence;
+            continue;
+        }
+        if (inFence) continue;
+
+        if (blockDelimiter) {
+            const close = line.indexOf(blockDelimiter);
+            if (close >= 0) {
+                const delimiter = blockDelimiter;
+                blockBuffer.push(line.slice(0, close));
+                formulas.push({ latex: blockBuffer.join('\n').trim(), display: true });
+                blockDelimiter = '';
+                blockBuffer = [];
+                scanInlineMath(line.slice(close + delimiter.length), formulas);
+            } else {
+                blockBuffer.push(line);
+            }
+            continue;
+        }
+
+        const blockStart = line.search(/(?:\$\$|\\\[)/);
+        if (blockStart >= 0) {
+            const delimiter = line.slice(blockStart, blockStart + 2);
+            const closeDelimiter = delimiter === '$$' ? '$$' : '\\]';
+            const close = line.indexOf(closeDelimiter, blockStart + 2);
+            if (close >= 0) {
+                scanInlineMath(line.slice(0, blockStart), formulas);
+                formulas.push({ latex: line.slice(blockStart + 2, close).trim(), display: true });
+                scanInlineMath(line.slice(close + 2), formulas);
+            } else {
+                scanInlineMath(line.slice(0, blockStart), formulas);
+                blockDelimiter = closeDelimiter;
+                blockBuffer = [line.slice(blockStart + 2)];
+            }
+            continue;
+        }
+
+        scanInlineMath(line, formulas);
+    }
+
+    return formulas.filter(formula => formula.latex);
+}
+
+function scanInlineMath(line: string, formulas: FormulaData[]) {
+    for (let i = 0; i < line.length; i++) {
+        if (line[i] === '\\' && line[i + 1] === '(' && !isEscaped(line, i)) {
+            const end = line.indexOf('\\)', i + 2);
+            if (end >= 0) {
+                formulas.push({ latex: line.slice(i + 2, end).trim(), display: false });
+                i = end + 1;
+            }
+            continue;
+        }
+
+        if (line[i] !== '$' || line[i + 1] === '$' || isEscaped(line, i)) continue;
+        const end = findInlineDollarEnd(line, i + 1);
+        if (end >= 0) {
+            formulas.push({ latex: line.slice(i + 1, end).trim(), display: false });
+            i = end;
+        }
+    }
+}
+
+function findInlineDollarEnd(line: string, start: number): number {
+    for (let i = start; i < line.length; i++) {
+        if (line[i] === '$' && line[i + 1] !== '$' && !isEscaped(line, i)) return i;
+    }
+    return -1;
+}
+
 function applyLightweightMarker(tokens: any[], inlineIndex: number, labels: Record<string, LabelData>, definitions: RuntimeDefinitionData[], currentFilePath: string, config: any) {
     const inlineToken = tokens[inlineIndex];
     const openToken = tokens[inlineIndex - 1];
@@ -307,6 +408,7 @@ export = function formalPlugin(md: any, options: any) {
     let cachedLabels: Record<string, LabelData> = {};
     let cachedPages: PageData[] = [];
     let cachedDefinitions: RuntimeDefinitionData[] = [];
+    let cachedSymbols: RuntimeSymbolData[] = [];
     let cachedConfig: any = mergeConfig(DEFAULT_CONFIG);
     
     // Core rule to load the preview index once per render.
@@ -315,6 +417,7 @@ export = function formalPlugin(md: any, options: any) {
             state.env.labels = cachedLabels;
             state.env.pages = cachedPages;
             state.env.definitions = cachedDefinitions;
+            state.env.symbols = cachedSymbols;
             return;
         }
 
@@ -326,19 +429,23 @@ export = function formalPlugin(md: any, options: any) {
                 cachedLabels = data.entries || {};
                 cachedPages = Array.isArray(data.pages) ? data.pages : [];
                 cachedDefinitions = Array.isArray(data.definitions) ? data.definitions : [];
+                cachedSymbols = Array.isArray(data.symbols) ? data.symbols : [];
                 state.env.labels = cachedLabels;
                 state.env.pages = cachedPages;
                 state.env.definitions = cachedDefinitions;
+                state.env.symbols = cachedSymbols;
             } else {
                 cachedLabels = {};
                 cachedPages = [];
                 cachedDefinitions = [];
+                cachedSymbols = [];
             }
         } catch (e: any) {
             console.error('[markdown-formal] Failed to load preview-cache.json:', e);
             cachedLabels = {};
             cachedPages = [];
             cachedDefinitions = [];
+            cachedSymbols = [];
         }
         
         const configPath = path.join(rootPath, '.markdown-formal', 'config.json');
@@ -361,10 +468,13 @@ export = function formalPlugin(md: any, options: any) {
         const dataStr = escapeHtml(JSON.stringify(cachedLabels || {}));
         const pagesStr = escapeHtml(JSON.stringify(cachedPages || []));
         const definitionsStr = escapeHtml(JSON.stringify(cachedDefinitions || []));
+        const symbolsStr = escapeHtml(JSON.stringify(cachedSymbols || []));
+        const formulasStr = escapeHtml(JSON.stringify(extractLatexFormulas(state.src || '')));
         const configStr = escapeHtml(JSON.stringify(cachedConfig || mergeConfig(DEFAULT_CONFIG)));
         const currentFilePath = escapeHtml(getCurrentFilePathFromEnv(rootPath, state.env));
         const definitionTemplates = renderDefinitionTemplates(md, cachedDefinitions || [], state.env || {});
-        token.content = `<div id="formal-labels-data" style="display:none;" data-labels="${dataStr}"></div>\n<div id="formal-pages-data" style="display:none;" data-pages="${pagesStr}" data-current-file="${currentFilePath}"></div>\n<div id="formal-definitions-data" style="display:none;" data-definitions="${definitionsStr}"></div>\n<div id="formal-definition-templates" style="display:none;">${definitionTemplates}</div>\n<div id="formal-config-data" style="display:none;" data-config="${configStr}"></div>\n`;
+        const symbolTemplates = renderSymbolTemplates(md, cachedSymbols || [], state.env || {});
+        token.content = `<div id="formal-labels-data" style="display:none;" data-labels="${dataStr}"></div>\n<div id="formal-pages-data" style="display:none;" data-pages="${pagesStr}" data-current-file="${currentFilePath}"></div>\n<div id="formal-definitions-data" style="display:none;" data-definitions="${definitionsStr}"></div>\n<div id="formal-symbols-data" style="display:none;" data-symbols="${symbolsStr}"></div>\n<div id="formal-formulas-data" style="display:none;" data-formulas="${formulasStr}"></div>\n<div id="formal-definition-templates" style="display:none;">${definitionTemplates}</div>\n<div id="formal-symbol-templates" style="display:none;">${symbolTemplates}</div>\n<div id="formal-config-data" style="display:none;" data-config="${configStr}"></div>\n`;
         state.tokens.push(token);
     });
 

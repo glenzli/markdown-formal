@@ -25,10 +25,12 @@
                 book: '第 {number} 本',
                 workspace: '工作区',
                 definitionSearch: '查定义',
-                definitionSearchPlaceholder: '搜索定义',
-                definitionSearchEmpty: '无匹配定义',
+                definitionSearchPlaceholder: '搜索定义/符号',
+                definitionSearchEmpty: '无匹配定义或符号',
                 definitionContextTitle: '定义',
-                definitionLocate: '定位'
+                definitionLocate: '定位',
+                symbolContextTitle: '符号',
+                symbolSource: '来源'
             },
             en: {
                 back: 'Back',
@@ -46,15 +48,18 @@
                 book: 'Book {number}',
                 workspace: 'Workspace',
                 definitionSearch: 'Definitions',
-                definitionSearchPlaceholder: 'Search definitions',
-                definitionSearchEmpty: 'No matching definitions',
+                definitionSearchPlaceholder: 'Search definitions/symbols',
+                definitionSearchEmpty: 'No matching definitions or symbols',
                 definitionContextTitle: 'Definition',
-                definitionLocate: 'Locate'
+                definitionLocate: 'Locate',
+                symbolContextTitle: 'Symbol',
+                symbolSource: 'Source'
             }
         }
     };
     let lastNavSignature = '';
     let retryCount = 0;
+    let symbolRetryCount = 0;
     let appliedNavigationHash = '';
     function readJson(key, fallback) {
         try {
@@ -171,6 +176,36 @@
         }
         catch (err) {
             console.error('[markdown-formal] Failed to parse definitions', err);
+            return [];
+        }
+    }
+    function readSymbols() {
+        const dataDiv = document.getElementById('formal-symbols-data');
+        if (!dataDiv)
+            return [];
+        try {
+            const raw = dataDiv.getAttribute('data-symbols');
+            const symbols = raw ? JSON.parse(raw) : [];
+            return Array.isArray(symbols)
+                ? symbols.map((symbol, index) => ({ ...symbol, index }))
+                : [];
+        }
+        catch (err) {
+            console.error('[markdown-formal] Failed to parse symbols', err);
+            return [];
+        }
+    }
+    function readFormulas() {
+        const dataDiv = document.getElementById('formal-formulas-data');
+        if (!dataDiv)
+            return [];
+        try {
+            const raw = dataDiv.getAttribute('data-formulas');
+            const formulas = raw ? JSON.parse(raw) : [];
+            return Array.isArray(formulas) ? formulas.filter(formula => formula && formula.latex) : [];
+        }
+        catch (err) {
+            console.error('[markdown-formal] Failed to parse formulas', err);
             return [];
         }
     }
@@ -650,6 +685,149 @@
             .slice(0, limit)
             .map(item => item.definition);
     }
+    function normalizeLatexSymbol(value) {
+        return String(value || '')
+            .trim()
+            .replace(/^\$+|\$+$/g, '')
+            .replace(/\\left\s*/g, '')
+            .replace(/\\right\s*/g, '')
+            .replace(/\\operatorname\s*\{([^{}]+)\}/g, '\\$1')
+            .replace(/\\([A-Za-z]+)\s+\{([^{}]+)\}/g, '\\$1{$2}')
+            .replace(/\s+/g, '')
+            .replace(/([_^])([A-Za-z0-9\\])(?![A-Za-z0-9{])/g, '$1{$2}');
+    }
+    function symbolInScope(symbol, currentFilePath, config) {
+        if (!symbol.sourceFilePath)
+            return true;
+        const sourcePath = normalizePath(symbol.sourceFilePath);
+        const scope = (symbol.scope || 'book').toLowerCase();
+        if (scope === 'workspace' || scope === 'global')
+            return true;
+        if (scope === 'file' || scope === 'chapter')
+            return sourcePath === currentFilePath;
+        if (scope === 'book') {
+            return inferBookInfoFromPath(sourcePath, config).key === inferBookInfoFromPath(currentFilePath, config).key;
+        }
+        return true;
+    }
+    function symbolPatternSpecificity(symbol) {
+        return normalizeLatexSymbol(symbol.pattern).replace(/\$\{[A-Za-z][A-Za-z0-9_]*\}/g, '').length;
+    }
+    function unanchoredSymbolRegex(symbol) {
+        return (symbol.regex || '').replace(/^\^/, '').replace(/\$$/, '');
+    }
+    function buildSymbolMatch(symbol, latex, match, exact) {
+        const captures = {};
+        (symbol.captures || []).forEach((name, index) => {
+            captures[name] = match[index + 1] || '';
+        });
+        return { symbol, latex, captures, exact };
+    }
+    function matchSymbol(symbol, latex) {
+        try {
+            const normalizedLatex = normalizeLatexSymbol(latex);
+            const exactMatch = normalizedLatex.match(new RegExp(symbol.regex));
+            if (exactMatch)
+                return buildSymbolMatch(symbol, latex, exactMatch, true);
+            const innerRegex = unanchoredSymbolRegex(symbol);
+            if (!innerRegex || innerRegex === symbol.regex)
+                return undefined;
+            const partialMatch = normalizedLatex.match(new RegExp(innerRegex));
+            if (!partialMatch)
+                return undefined;
+            return buildSymbolMatch(symbol, latex, partialMatch, false);
+        }
+        catch (_err) {
+            return undefined;
+        }
+    }
+    function findSymbolMatches(symbols, latex, currentFilePath, config, limit = 8) {
+        return symbols
+            .filter(symbol => symbolInScope(symbol, currentFilePath, config))
+            .map(symbol => matchSymbol(symbol, latex))
+            .filter((match) => Boolean(match))
+            .sort((a, b) => {
+            if (Boolean(a.exact) !== Boolean(b.exact))
+                return a.exact ? -1 : 1;
+            return symbolPatternSpecificity(b.symbol) - symbolPatternSpecificity(a.symbol);
+        })
+            .slice(0, limit);
+    }
+    function symbolSearchScore(symbol, query) {
+        const normalizedQuery = normalizeDefinitionQuery(query);
+        const latexQuery = normalizeLatexSymbol(query);
+        const pattern = normalizeLatexSymbol(symbol.pattern);
+        const display = normalizeLatexSymbol(symbol.display);
+        const meaning = normalizeDefinitionQuery(symbol.meaning);
+        if (!normalizedQuery && !latexQuery)
+            return Number.MAX_SAFE_INTEGER;
+        if (latexQuery && (pattern === latexQuery || display === latexQuery))
+            return 0;
+        if (latexQuery && (pattern.includes(latexQuery) || display.includes(latexQuery)))
+            return 1;
+        if (normalizedQuery && meaning.includes(normalizedQuery))
+            return 3;
+        return Number.MAX_SAFE_INTEGER;
+    }
+    function searchSymbols(symbols, query, currentFilePath, config, limit = 10) {
+        return symbols
+            .filter(symbol => symbolInScope(symbol, currentFilePath, config))
+            .map(symbol => ({ symbol, score: symbolSearchScore(symbol, query) }))
+            .filter(item => item.score < Number.MAX_SAFE_INTEGER)
+            .sort((a, b) => a.score - b.score || a.symbol.pattern.localeCompare(b.symbol.pattern))
+            .slice(0, limit)
+            .map(item => item.symbol);
+    }
+    function collectFormulaNodes() {
+        const selectors = [
+            'mjx-container',
+            '.katex-display > .katex',
+            '.katex'
+        ];
+        const nodes = Array.from(document.querySelectorAll(selectors.join(',')))
+            .filter(node => !node.closest('#formal-nav-bar, #formal-definition-popover, #formal-definition-selection-action, #formal-labels-data, #formal-pages-data, #formal-definitions-data, #formal-symbols-data, #formal-formulas-data, #formal-definition-templates, #formal-symbol-templates'))
+            .filter(node => {
+            if (node.matches('.katex') && node.parentElement?.closest('.katex'))
+                return false;
+            return true;
+        });
+        return nodes;
+    }
+    function encodeCaptures(value) {
+        return encodeURIComponent(JSON.stringify(value));
+    }
+    function decodeCaptures(value) {
+        if (!value)
+            return {};
+        try {
+            return JSON.parse(decodeURIComponent(value));
+        }
+        catch (_err) {
+            return {};
+        }
+    }
+    function bindSymbolFormulas(symbols, formulas, currentFilePath, config) {
+        if (symbols.length === 0 || formulas.length === 0)
+            return 0;
+        const nodes = collectFormulaNodes();
+        const limit = Math.min(nodes.length, formulas.length);
+        for (let i = 0; i < limit; i++) {
+            const node = nodes[i];
+            const formula = formulas[i];
+            node.setAttribute('data-formal-latex', formula.latex);
+            node.classList.remove('formal-symbol-match');
+            node.removeAttribute('data-formal-symbol-index');
+            node.removeAttribute('data-formal-symbol-captures');
+            const matches = findSymbolMatches(symbols, formula.latex, currentFilePath, config, 1);
+            if (matches.length === 0)
+                continue;
+            node.classList.add('formal-symbol-match');
+            node.setAttribute('data-formal-symbol-index', String(matches[0].symbol.index));
+            node.setAttribute('data-formal-symbol-captures', encodeCaptures(matches[0].captures));
+            node.setAttribute('title', matches[0].symbol.pattern);
+        }
+        return limit;
+    }
     function getDefinitionElement(definition) {
         if (definition.targetId) {
             const target = getTargetElement(definition.targetId);
@@ -698,6 +876,18 @@
             return undefined;
         return Array.from(document.querySelectorAll('#formal-definition-templates template[data-definition-index]'))
             .find(template => Number(template.getAttribute('data-definition-index')) === definition.index);
+    }
+    function getSymbolDisplayTemplate(symbol) {
+        if (symbol.index === undefined)
+            return undefined;
+        return Array.from(document.querySelectorAll('#formal-symbol-templates template[data-symbol-display-index]'))
+            .find(template => Number(template.getAttribute('data-symbol-display-index')) === symbol.index);
+    }
+    function getSymbolMeaningTemplate(symbol) {
+        if (symbol.index === undefined)
+            return undefined;
+        return Array.from(document.querySelectorAll('#formal-symbol-templates template[data-symbol-meaning-index]'))
+            .find(template => Number(template.getAttribute('data-symbol-meaning-index')) === symbol.index);
     }
     function removeDefinitionPopover() {
         document.getElementById('formal-definition-popover')?.remove();
@@ -749,6 +939,71 @@
         const fallback = document.createElement('span');
         fallback.textContent = definition.content || definition.title;
         container.appendChild(fallback);
+    }
+    function appendSymbolDisplay(container, symbol, formulaElement) {
+        if (formulaElement) {
+            container.appendChild(formulaElement.cloneNode(true));
+            return;
+        }
+        const template = getSymbolDisplayTemplate(symbol);
+        if (template) {
+            container.appendChild(document.importNode(template.content, true));
+            return;
+        }
+        const fallback = document.createElement('code');
+        fallback.textContent = symbol.display || symbol.pattern;
+        container.appendChild(fallback);
+    }
+    function appendSymbolMeaning(container, match) {
+        const template = getSymbolMeaningTemplate(match.symbol);
+        if (template) {
+            container.appendChild(document.importNode(template.content, true));
+        }
+        else {
+            const fallback = document.createElement('span');
+            fallback.textContent = match.symbol.meaning;
+            container.appendChild(fallback);
+        }
+        const captureEntries = Object.entries(match.captures).filter(([, value]) => value);
+        if (captureEntries.length > 0) {
+            const captures = document.createElement('div');
+            captures.className = 'formal-symbol-captures';
+            captureEntries.forEach(([name, value]) => {
+                const item = document.createElement('span');
+                item.className = 'formal-symbol-capture';
+                item.textContent = `${name}: ${value}`;
+                captures.appendChild(item);
+            });
+            container.appendChild(captures);
+        }
+    }
+    function showSymbolDetail(match, origin, config) {
+        removeDefinitionSelectionAction();
+        removeDefinitionPopover();
+        const popover = document.createElement('div');
+        popover.id = 'formal-definition-popover';
+        popover.className = 'formal-definition-popover formal-symbol-popover';
+        const header = document.createElement('div');
+        header.className = 'formal-definition-popover-header';
+        const heading = document.createElement('div');
+        heading.className = 'formal-definition-popover-title formal-symbol-popover-title';
+        appendSymbolDisplay(heading, match.symbol, match.formulaElement);
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'formal-definition-close';
+        close.textContent = '×';
+        close.addEventListener('click', removeDefinitionPopover);
+        header.append(heading, close);
+        const location = document.createElement('div');
+        location.className = 'formal-definition-location';
+        location.textContent = match.symbol.source
+            ? `${uiText(config, 'symbolSource')}: ${match.symbol.source}`
+            : match.symbol.pattern;
+        const content = document.createElement('div');
+        content.className = 'formal-definition-content formal-symbol-content';
+        appendSymbolMeaning(content, match);
+        popover.append(header, location, content);
+        positionFloatingElement(popover, origin);
     }
     function showDefinitionDetail(definition, origin, config) {
         removeDefinitionSelectionAction();
@@ -828,14 +1083,15 @@
         popover.appendChild(list);
         positionFloatingElement(popover, origin);
     }
-    function renderDefinitionSearchResults(panel, definitions, query, config) {
+    function renderDefinitionSearchResults(panel, definitions, symbols, query, currentFilePath, config) {
         panel.replaceChildren();
         const normalizedQuery = normalizeDefinitionQuery(query);
         panel.classList.toggle('formal-definition-search-open', Boolean(normalizedQuery));
         if (!normalizedQuery)
             return;
         const results = searchDefinitions(definitions, query, 10);
-        if (results.length === 0) {
+        const symbolResults = searchSymbols(symbols, query, currentFilePath, config, 10);
+        if (results.length === 0 && symbolResults.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'formal-definition-search-empty';
             empty.textContent = uiText(config, 'definitionSearchEmpty');
@@ -859,6 +1115,26 @@
             const preview = document.createElement('span');
             preview.className = 'formal-definition-search-preview';
             appendDefinitionPreview(preview, definition);
+            item.append(title, meta, preview);
+            panel.appendChild(item);
+        });
+        symbolResults.forEach(symbol => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'formal-definition-search-result formal-symbol-search-result';
+            item.addEventListener('click', () => {
+                showSymbolDetail({ symbol, latex: symbol.pattern, captures: {} }, item, config);
+                panel.classList.remove('formal-definition-search-open');
+            });
+            const title = document.createElement('span');
+            title.className = 'formal-definition-search-title formal-symbol-search-title';
+            appendSymbolDisplay(title, symbol);
+            const meta = document.createElement('span');
+            meta.className = 'formal-definition-search-meta';
+            meta.textContent = symbol.source || symbol.scope || uiText(config, 'symbolContextTitle');
+            const preview = document.createElement('span');
+            preview.className = 'formal-definition-search-preview formal-symbol-search-preview';
+            appendSymbolMeaning(preview, { symbol, latex: symbol.pattern, captures: {} });
             item.append(title, meta, preview);
             panel.appendChild(item);
         });
@@ -1081,7 +1357,7 @@
         backBtn.disabled = !hasHistory;
         backBtn.classList.toggle('formal-btn-disabled', !hasHistory);
     }
-    function renderNav(currentFilePath, tocItems, chapters, definitions, config) {
+    function renderNav(currentFilePath, tocItems, chapters, definitions, symbols, config) {
         document.getElementById('formal-nav-bar')?.remove();
         const currentChapter = getCurrentChapter(chapters, currentFilePath);
         const navBar = document.createElement('div');
@@ -1197,7 +1473,7 @@
         }
         tocContainer.appendChild(tocMenu);
         navBar.appendChild(tocContainer);
-        if (definitions.length > 0) {
+        if (definitions.length > 0 || symbols.length > 0) {
             const definitionContainer = document.createElement('div');
             definitionContainer.className = 'formal-definition-search-container';
             const definitionInput = document.createElement('input');
@@ -1208,10 +1484,10 @@
             const definitionPanel = document.createElement('div');
             definitionPanel.className = 'formal-definition-search-menu';
             definitionInput.addEventListener('input', () => {
-                renderDefinitionSearchResults(definitionPanel, definitions, definitionInput.value, config);
+                renderDefinitionSearchResults(definitionPanel, definitions, symbols, definitionInput.value, currentFilePath, config);
             });
             definitionInput.addEventListener('focus', () => {
-                renderDefinitionSearchResults(definitionPanel, definitions, definitionInput.value, config);
+                renderDefinitionSearchResults(definitionPanel, definitions, symbols, definitionInput.value, currentFilePath, config);
             });
             definitionInput.addEventListener('keydown', event => {
                 if (event.key === 'Escape') {
@@ -1229,27 +1505,39 @@
         const labels = readLabels();
         const pages = readPages();
         const definitions = readDefinitions();
+        const symbols = readSymbols();
+        const formulas = readFormulas();
         const config = readConfig();
         const currentFilePath = getCurrentFilePath(labels, pages);
         const tocItems = collectTocItems();
         const chapters = collectChapters(labels, pages, currentFilePath, config);
         applyIncomingNavigation();
-        if (tocItems.length === 0 && chapters.length === 0 && definitions.length === 0 && retryCount < 40) {
+        const boundFormulaCount = bindSymbolFormulas(symbols, formulas, currentFilePath, config);
+        if (tocItems.length === 0 && chapters.length === 0 && definitions.length === 0 && symbols.length === 0 && retryCount < 40) {
             retryCount++;
             scheduleRebuild(75);
             return;
         }
+        if (symbols.length > 0 && formulas.length > 0 && boundFormulaCount === 0 && symbolRetryCount < 40) {
+            symbolRetryCount++;
+            scheduleRebuild(75);
+        }
+        else {
+            symbolRetryCount = 0;
+        }
         retryCount = 0;
         const language = getLanguage(config);
         const uiSignature = JSON.stringify(config.ui?.[language] || {});
-        const signature = `${language}|${uiSignature}|${currentFilePath}|${tocItems.map(item => `${item.id}:${item.display || ''}:${item.title}`).join('|')}|${chapters.map(item => `${item.bookKey}:${item.volumeKey}:${item.unitKind}:${item.unitKey}:${item.filePath}:${item.title}`).join('|')}|${definitions.map(item => `${item.filePath}:${item.line}:${item.title}`).join('|')}|${readHistory().length}`;
+        const signature = `${language}|${uiSignature}|${currentFilePath}|${tocItems.map(item => `${item.id}:${item.display || ''}:${item.title}`).join('|')}|${chapters.map(item => `${item.bookKey}:${item.volumeKey}:${item.unitKind}:${item.unitKey}:${item.filePath}:${item.title}`).join('|')}|${definitions.map(item => `${item.filePath}:${item.line}:${item.title}`).join('|')}|${symbols.map(item => `${item.pattern}:${item.scope}:${item.source || ''}`).join('|')}|${formulas.map(item => item.latex).join('|')}|${readHistory().length}`;
         if (signature === lastNavSignature && document.getElementById('formal-nav-bar')) {
             normalizeFormalLinks(currentFilePath);
+            bindSymbolFormulas(symbols, formulas, currentFilePath, config);
             return;
         }
         lastNavSignature = signature;
         normalizeFormalLinks(currentFilePath);
-        renderNav(currentFilePath, tocItems, chapters, definitions, config);
+        renderNav(currentFilePath, tocItems, chapters, definitions, symbols, config);
+        bindSymbolFormulas(symbols, formulas, currentFilePath, config);
     }
     function scheduleRebuild(delay = 50) {
         if (formalWindow.__markdownFormalRebuildTimer !== undefined) {
@@ -1322,6 +1610,27 @@
         event.stopImmediatePropagation();
         showDefinitionLookupPopover(selectedText, results, { x: event.clientX, y: event.clientY }, readConfig());
     }
+    function handleSymbolClick(event) {
+        const target = event.target;
+        if (!(target instanceof Element))
+            return;
+        const formula = target.closest('.formal-symbol-match');
+        if (!formula)
+            return;
+        const index = Number(formula.getAttribute('data-formal-symbol-index'));
+        const symbol = readSymbols().find(item => item.index === index);
+        if (!symbol)
+            return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        showSymbolDetail({
+            symbol,
+            latex: formula.getAttribute('data-formal-latex') || symbol.pattern,
+            captures: decodeCaptures(formula.getAttribute('data-formal-symbol-captures')),
+            formulaElement: formula
+        }, formula, readConfig());
+    }
     function handleDefinitionDismiss(event) {
         const target = event.target;
         if (target instanceof Element && target.closest('#formal-definition-popover'))
@@ -1367,6 +1676,7 @@
         }
         formalWindow.__markdownFormalInstalled = true;
         document.body.addEventListener('click', handleFormalClick, true);
+        document.body.addEventListener('click', handleSymbolClick, true);
         document.body.addEventListener('contextmenu', handleDefinitionContextMenu, true);
         document.body.addEventListener('click', handleDefinitionDismiss);
         document.body.addEventListener('mouseup', scheduleDefinitionSelectionAction, true);

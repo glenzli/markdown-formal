@@ -76,11 +76,21 @@ async function readWorkspaceDocuments(files) {
     return documents;
 }
 
+async function readSymbols() {
+    try {
+        return JSON.parse(await fs.readFile(path.join(ROOT, 'formal-symbols.json'), 'utf8'));
+    } catch (err: any) {
+        if (err?.code === 'ENOENT') return undefined;
+        throw err;
+    }
+}
+
 async function scanWorkspace() {
     const config = await readConfig();
     const files = await collectMarkdownFiles();
     const documents = await readWorkspaceDocuments(files);
-    return scanFormalDocuments(documents, config);
+    const symbols = await readSymbols();
+    return scanFormalDocuments(documents, config, symbols);
 }
 
 async function writeArtifacts(state) {
