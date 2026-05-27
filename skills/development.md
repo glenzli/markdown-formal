@@ -27,7 +27,7 @@
 
 - `src/webview/formal-script.ts` 会编译到 `media/formal-script.js`，改预览端交互后必须运行 `npm run build`。
 - 扫描缓存位于 `.markdown-formal/`，包含 `preview-cache.json`、`config.json`、`agent-guide.md`、`reference-map.md` 和 `report.md`。
-- 根目录 `formal-symbols.json` 是符号召回源表，修改后会刷新 `preview-cache.json`。
+- 根目录 `formal-definitions.json` 和 `formal-symbols.json` 分别是非标准定义查询、符号召回源表，修改后会刷新 `preview-cache.json`。
 - CLI 源码位于 `src/cli/formal-tools.ts`；`npm run formal -- ...` 会先编译到 `out/cli/formal-tools.js` 再执行。
 - `config.json` 支持 `"language": "zh"` 或 `"language": "en"`；旧配置缺少字段时会自动合并默认值。
 - 修改示例书结构后，重新打开预览或重新加载窗口可以触发扫描。

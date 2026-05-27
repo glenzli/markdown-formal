@@ -1,0 +1,8 @@
+[
+  {
+    "term": "算子网络",
+    "aliases": ["operator network"],
+    "source": "examples/book1/01-introduction.md:9",
+    "content": "我们把由同一类线性算子组成，并带有可组合边关系的离散结构称为**算子网络**。"
+  }
+]

@@ -60,6 +60,15 @@ async function readSymbols(rootPath: string): Promise<any | undefined> {
     }
 }
 
+async function readDefinitions(rootPath: string): Promise<any | undefined> {
+    try {
+        return JSON.parse(await fs.promises.readFile(path.join(rootPath, 'formal-definitions.json'), 'utf-8'));
+    } catch (err: any) {
+        if (err?.code === 'ENOENT') return undefined;
+        throw err;
+    }
+}
+
 async function scanWorkspaceOnce() {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) return;
@@ -72,7 +81,8 @@ async function scanWorkspaceOnce() {
     );
     const documents = await readWorkspaceDocuments(mdFiles);
     const symbols = await readSymbols(rootPath);
-    const state = scanFormalDocuments(documents, config, symbols);
+    const definitions = await readDefinitions(rootPath);
+    const state = scanFormalDocuments(documents, config, symbols, definitions);
 
     const cacheDir = path.join(rootPath, '.markdown-formal');
     if (!fs.existsSync(cacheDir)) {
@@ -135,6 +145,7 @@ function scheduleScan(delay = 150) {
 function shouldTriggerScanForPath(fileName: string, languageId?: string): boolean {
     if (/[\\\/]\.markdown-formal[\\\/]config\.json$/i.test(fileName)) return true;
     if (/[\\\/]formal-symbols\.json$/i.test(fileName)) return true;
+    if (/[\\\/]formal-definitions\.json$/i.test(fileName)) return true;
     if (/[\\\/]\.markdown-formal[\\\/]/i.test(fileName)) return false;
     return languageId === 'markdown' || /\.md$/i.test(fileName);
 }
@@ -154,6 +165,7 @@ export function activate(context: vscode.ExtensionContext) {
     const fileWatcher = vscode.workspace.createFileSystemWatcher('**/*.md');
     const configWatcher = vscode.workspace.createFileSystemWatcher('**/.markdown-formal/config.json');
     const symbolsWatcher = vscode.workspace.createFileSystemWatcher('**/formal-symbols.json');
+    const definitionsWatcher = vscode.workspace.createFileSystemWatcher('**/formal-definitions.json');
     context.subscriptions.push(
         fileWatcher,
         fileWatcher.onDidCreate((uri: any) => {
@@ -172,7 +184,11 @@ export function activate(context: vscode.ExtensionContext) {
         symbolsWatcher,
         symbolsWatcher.onDidCreate(() => scheduleScan()),
         symbolsWatcher.onDidDelete(() => scheduleScan()),
-        symbolsWatcher.onDidChange(() => scheduleScan())
+        symbolsWatcher.onDidChange(() => scheduleScan()),
+        definitionsWatcher,
+        definitionsWatcher.onDidCreate(() => scheduleScan()),
+        definitionsWatcher.onDidDelete(() => scheduleScan()),
+        definitionsWatcher.onDidChange(() => scheduleScan())
     );
 
     const refreshCmd = vscode.commands.registerCommand('markdown-formal.refreshIndex', async () => {

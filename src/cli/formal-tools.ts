@@ -85,12 +85,22 @@ async function readSymbols() {
     }
 }
 
+async function readDefinitions() {
+    try {
+        return JSON.parse(await fs.readFile(path.join(ROOT, 'formal-definitions.json'), 'utf8'));
+    } catch (err: any) {
+        if (err?.code === 'ENOENT') return undefined;
+        throw err;
+    }
+}
+
 async function scanWorkspace() {
     const config = await readConfig();
     const files = await collectMarkdownFiles();
     const documents = await readWorkspaceDocuments(files);
     const symbols = await readSymbols();
-    return scanFormalDocuments(documents, config, symbols);
+    const definitions = await readDefinitions();
+    return scanFormalDocuments(documents, config, symbols, definitions);
 }
 
 async function writeArtifacts(state) {
@@ -149,7 +159,9 @@ async function lint() {
 const VERIFY_BLOCKING_WARNING_CODES = new Set([
     'non-hash-id',
     'formal-marker-outside-numbered-file',
-    'duplicate-special-page'
+    'duplicate-special-page',
+    'definition-content-missing',
+    'definition-content-stale'
 ]);
 
 async function readTextReferenceMigrationCounts() {

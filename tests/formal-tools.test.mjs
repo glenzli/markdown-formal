@@ -183,12 +183,32 @@ async function testCustomDictionaryTextRefs() {
             }
         }
     }, null, 2));
+    await fs.writeFile(path.join(root, 'formal-definitions.json'), JSON.stringify([
+        {
+            term: '非标准定义',
+            aliases: ['别名定义'],
+            source: 'book1/01-a.md:17',
+            content: '我们把满足谱约束且闭合于极限的对象称为“非标准定义”，后续只通过定义搜索查询它。'
+        }
+    ], null, 2));
     await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
         '# Chapter 1',
         '',
         'Theorem #h-2222222222222222 (Base): Base statement.',
         '',
         'Definition (Spectrum): A definition body.',
+        '',
+        '**定义（加粗术语）：** 中文定义正文。',
+        '',
+        '定义（指标密度）：指标密度由下式给出',
+        '',
+        '$$',
+        '\\alpha(D)=\\widehat{A}(TX)\\operatorname{ch}(\\sigma(D))',
+        '$$',
+        '',
+        '其中 $D$ 是局部椭圆算子。',
+        '',
+        '我们把满足谱约束且闭合于极限的对象称为“非标准定义”，后续只通过定义搜索查询它。',
         '',
         'By Satz 1.1 we conclude.',
         ''
@@ -205,6 +225,17 @@ async function testCustomDictionaryTextRefs() {
     assert.equal(previewCache.definitions[0].filePath, 'book1/01-a.md');
     assert.equal(previewCache.definitions[0].line, 5);
     assert.equal(previewCache.definitions[0].content, 'Definition (Spectrum): A definition body.');
+    assert.equal(previewCache.definitions[1].title, '加粗术语');
+    assert.equal(previewCache.definitions[1].line, 7);
+    assert.equal(previewCache.definitions[1].content, '**定义（加粗术语）：** 中文定义正文。');
+    assert.equal(previewCache.definitions[2].title, '指标密度');
+    assert.equal(previewCache.definitions[2].line, 9);
+    assert.match(previewCache.definitions[2].content, /\\alpha\(D\)=/);
+    assert.match(previewCache.definitions[2].content, /其中 \$D\$ 是局部椭圆算子。/);
+    assert.equal(previewCache.definitions[3].title, '非标准定义');
+    assert.deepEqual(previewCache.definitions[3].aliases, ['别名定义']);
+    assert.equal(previewCache.definitions[3].line, 17);
+    assert.match(previewCache.definitions[3].content, /称为“非标准定义”/);
     await assert.rejects(read(root, '.markdown-formal/definition-index.md'), /ENOENT/);
 }
 
@@ -378,6 +409,26 @@ async function testVerifyRejectsNonHashIds() {
     assert.match(combinedOutput(verify), /non-hash-id/);
 }
 
+async function testVerifyRejectsMissingDefinitionContent() {
+    const root = await makeWorkspace('definition-content');
+    await fs.writeFile(path.join(root, 'formal-definitions.json'), JSON.stringify([
+        {
+            term: 'Indexed Concept',
+            source: 'book1/01-a.md:3'
+        }
+    ], null, 2));
+    await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
+        '# Chapter 1',
+        '',
+        'We call this object an Indexed Concept.',
+        ''
+    ].join('\n'));
+
+    const verify = runCli(root, ['verify']);
+    assert.notEqual(verify.status, 0, combinedOutput(verify));
+    assert.match(combinedOutput(verify), /definition-content-missing/);
+}
+
 async function testPerfDummyThresholds() {
     const root = await makeWorkspace('perf');
     const pass = runCli(root, ['perf-dummy', '2', '5', '--max-ms', '10000', '--max-heap-mb', '512']);
@@ -399,6 +450,7 @@ const tests = [
     ['migrate-text-refs sections and audits', testMigrateTextRefsSectionsAndAudits],
     ['migrate-text-refs updates incoming refs by default', testMigrateTextRefsUpdatesIncomingByDefault],
     ['verify rejects non-hash ids', testVerifyRejectsNonHashIds],
+    ['verify rejects missing definition content', testVerifyRejectsMissingDefinitionContent],
     ['perf-dummy thresholds', testPerfDummyThresholds]
 ];
 

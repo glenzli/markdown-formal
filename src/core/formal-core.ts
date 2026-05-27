@@ -56,10 +56,12 @@ export interface FormalDefinition {
     file: string;
     line: number;
     label: LabelData;
+    aliases?: string[];
 }
 
 export interface RuntimeDefinitionData {
     title: string;
+    aliases?: string[];
     filePath: string;
     line: number;
     content: string;
@@ -77,6 +79,14 @@ export interface FormalSymbolInput {
     meaning: string;
     scope?: string;
     source?: string;
+}
+
+export interface FormalDefinitionInput {
+    term?: string;
+    title?: string;
+    aliases?: string[];
+    source?: string;
+    content?: string;
 }
 
 export interface RuntimeSymbolData {
@@ -305,7 +315,7 @@ export function compileSymbolPattern(pattern: string): { normalizedPattern: stri
     return { normalizedPattern, regex, captures };
 }
 
-function parseSymbolSource(source: string | undefined): { sourceFilePath?: string; sourceLine?: number } {
+function parseSourceLocation(source: string | undefined): { sourceFilePath?: string; sourceLine?: number } {
     if (!source) return {};
     const match = String(source).match(/^(.+?)(?::(\d+))?$/);
     if (!match) return {};
@@ -385,7 +395,7 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
         const compiled = compileSymbolPattern(pattern);
         const display = typeof item.display === 'string' && item.display.trim() ? item.display.trim() : makeSymbolDisplay(pattern);
         const scope = typeof item.scope === 'string' && item.scope.trim() ? item.scope.trim() : 'book';
-        const parsedSource = parseSymbolSource(source);
+        const parsedSource = parseSourceLocation(source);
 
         if (!parsedSource.sourceFilePath || parsedSource.sourceLine === undefined) {
             issues.push({
@@ -470,6 +480,179 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
     return { symbols, issues };
 }
 
+function normalizeDefinitionAliases(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    return unique(value
+        .filter(alias => typeof alias === 'string')
+        .map(alias => alias.trim())
+        .filter(Boolean));
+}
+
+function normalizeDefinitionContentForMatch(value: string): string {
+    return value
+        .normalize('NFKC')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+export function parseFormalDefinitions(input: unknown, documents: Array<FormalDocument | string> = [], configInput: any = DEFAULT_CONFIG): { definitions: FormalDefinition[]; issues: FormalIssue[] } {
+    const issues: FormalIssue[] = [];
+    const rawDefinitions = Array.isArray(input)
+        ? input
+        : input && typeof input === 'object' && Array.isArray((input as any).definitions)
+            ? (input as any).definitions
+            : [];
+
+    if (input !== undefined && input !== null && !Array.isArray(input) && !(typeof input === 'object' && Array.isArray((input as any).definitions))) {
+        issues.push({
+            severity: 'error',
+            code: 'invalid-definitions-file',
+            file: 'formal-definitions.json',
+            message: 'formal-definitions.json must be an array, or an object with a definitions array.'
+        });
+        return { definitions: [], issues };
+    }
+
+    const config = mergeConfig(configInput);
+    const normalizedDocuments = normalizeSymbolDocuments(documents);
+    const documentMap = new Map(normalizedDocuments.map(document => [
+        toPosix(document.filePath).replace(/^\/+/, ''),
+        document.content || ''
+    ]));
+    const seen = new Map<string, number>();
+    const definitions: FormalDefinition[] = [];
+
+    rawDefinitions.forEach((item: any, index: number) => {
+        if (!item || typeof item !== 'object') {
+            issues.push({
+                severity: 'error',
+                code: 'invalid-definition-entry',
+                file: 'formal-definitions.json',
+                line: index + 1,
+                message: 'Definition entry must be an object.'
+            });
+            return;
+        }
+
+        const title = typeof item.term === 'string' && item.term.trim()
+            ? item.term.trim()
+            : typeof item.title === 'string' && item.title.trim()
+                ? item.title.trim()
+                : '';
+        const source = typeof item.source === 'string' && item.source.trim() ? item.source.trim() : '';
+        const aliases = normalizeDefinitionAliases(item.aliases).filter(alias => alias !== title);
+        if (!title || !source) {
+            issues.push({
+                severity: 'error',
+                code: 'invalid-definition-entry',
+                file: 'formal-definitions.json',
+                line: index + 1,
+                message: 'Definition entry requires non-empty term/title and source.'
+            });
+            return;
+        }
+
+        const parsedSource = parseSourceLocation(source);
+        if (!parsedSource.sourceFilePath || parsedSource.sourceLine === undefined) {
+            issues.push({
+                severity: 'error',
+                code: 'definition-source-invalid',
+                file: 'formal-definitions.json',
+                line: index + 1,
+                message: `Definition source ${source} must use path.md:line format.`
+            });
+            return;
+        }
+
+        const documentContent = documentMap.get(parsedSource.sourceFilePath);
+        if (documentContent === undefined) {
+            issues.push({
+                severity: 'error',
+                code: 'definition-source-missing',
+                file: 'formal-definitions.json',
+                line: index + 1,
+                message: `Definition source ${source} does not point to a known Markdown file.`
+            });
+            return;
+        }
+
+        const lines = documentContent.split(/\r\n|\r|\n/);
+        if (parsedSource.sourceLine < 1 || parsedSource.sourceLine > lines.length) {
+            issues.push({
+                severity: 'error',
+                code: 'definition-source-line-missing',
+                file: 'formal-definitions.json',
+                line: index + 1,
+                message: `Definition source ${source} points outside the source file.`
+            });
+            return;
+        }
+
+        const extracted = sourceLineRangeContent(lines, parsedSource.sourceLine);
+        const explicitContent = typeof item.content === 'string' && item.content.trim() ? item.content.trim() : '';
+        if (!explicitContent) {
+            issues.push({
+                severity: 'warn',
+                code: 'definition-content-missing',
+                file: 'formal-definitions.json',
+                line: index + 1,
+                message: `Definition entry ${title} should include AI-maintained content; falling back to source extraction.`
+            });
+        } else if (!normalizeDefinitionContentForMatch(documentContent).includes(normalizeDefinitionContentForMatch(explicitContent))) {
+            issues.push({
+                severity: 'warn',
+                code: 'definition-content-stale',
+                file: 'formal-definitions.json',
+                line: index + 1,
+                message: `Definition entry ${title} content is not found in its source file near ${source}; update content after editing the source.`
+            });
+        }
+        const content = explicitContent || extracted.content;
+        const duplicateKey = `${title}:${parsedSource.sourceFilePath}:${parsedSource.sourceLine}`;
+        const previousIndex = seen.get(duplicateKey);
+        if (previousIndex !== undefined) {
+            issues.push({
+                severity: 'warn',
+                code: 'duplicate-definition-entry',
+                file: 'formal-definitions.json',
+                line: index + 1,
+                message: `Definition entry duplicates entry ${previousIndex + 1}.`
+            });
+        }
+        seen.set(duplicateKey, index);
+
+        const book = inferBookInfo(parsedSource.sourceFilePath, config);
+        const volume = inferVolumeInfo(parsedSource.sourceFilePath, config);
+        const label: LabelData = {
+            type: 'def',
+            title,
+            filePath: parsedSource.sourceFilePath,
+            bookKey: book.key,
+            bookTitle: book.title,
+            bookOrder: book.order,
+            content,
+            startLine: extracted.startLine,
+            endLine: extracted.endLine
+        };
+        if (volume) {
+            label.volumeKey = volume.key;
+            label.volumeTitle = volume.title;
+            label.volumeOrder = volume.order;
+        }
+
+        definitions.push({
+            type: 'def',
+            title,
+            aliases,
+            file: parsedSource.sourceFilePath,
+            line: parsedSource.sourceLine,
+            label
+        });
+    });
+
+    return { definitions, issues };
+}
+
 export function stripIgnoredMarkdown(content: string): string {
     return content
         .replace(/<!--[\s\S]*?-->/g, '')
@@ -521,6 +704,14 @@ function extractMarkerTitle(type: string, rest: string): string {
     return '';
 }
 
+function normalizeLeadingMarkerEmphasis(text: string): string {
+    const trimmed = text.trim();
+    const strong = trimmed.match(/^(\*\*|__)\s*([\s\S]+?)\s*\1(.*)$/);
+    if (!strong) return trimmed;
+
+    return `${strong[2].trim()}${strong[3] || ''}`.trim();
+}
+
 export function parseFormalMarkerLine(line: string): FormalMarker | undefined {
     const heading = line.match(/^(#{2,6})\s+#([A-Za-z0-9_-]+)\s+(.+?)\s*$/);
     if (heading) {
@@ -534,7 +725,7 @@ export function parseFormalMarkerLine(line: string): FormalMarker | undefined {
         };
     }
 
-    const text = line.trim();
+    const text = normalizeLeadingMarkerEmphasis(line);
     const typePattern = '定理|引理|命题|推论|定义|注|例|Theorem|Thm\\.?|Lemma|Lem\\.?|Proposition|Prop\\.?|Corollary|Cor\\.?|Definition|Def\\.?|Remark|Rem\\.?|Example|Ex\\.?';
     const typed = text.match(new RegExp(`^(${typePattern})\\s*(.*)$`, 'i'));
     if (!typed) return undefined;
@@ -700,6 +891,25 @@ function isMarkerBoundaryLine(line: string): boolean {
     return /^#{1,6}\s+/.test(line) || !!parseFormalMarkerLine(line);
 }
 
+function isDisplayMathLine(line: string): boolean {
+    const text = line.trim();
+    return text.startsWith('$$')
+        || text.startsWith('\\[')
+        || text.startsWith('\\]')
+        || /^\\(?:begin|end)\{(?:equation|align|alignat|gather|multline|flalign|split|aligned|cases|matrix|pmatrix|bmatrix|vmatrix|Vmatrix)\*?\}/.test(text);
+}
+
+function updateDisplayMathState(line: string, inDisplayMath: boolean): boolean {
+    const text = line.trim();
+    const dollarCount = (text.match(/\$\$/g) || []).length;
+    if (dollarCount % 2 === 1) return !inDisplayMath;
+    if (text.startsWith('\\[')) return true;
+    if (text.startsWith('\\]')) return false;
+    if (/^\\begin\{(?:equation|align|alignat|gather|multline|flalign|split|aligned|cases|matrix|pmatrix|bmatrix|vmatrix|Vmatrix)\*?\}/.test(text)) return true;
+    if (/^\\end\{(?:equation|align|alignat|gather|multline|flalign|split|aligned|cases|matrix|pmatrix|bmatrix|vmatrix|Vmatrix)\*?\}/.test(text)) return false;
+    return inDisplayMath;
+}
+
 function trimTrailingBlankLines(lines: string[]): string[] {
     const trimmed = [...lines];
     while (trimmed.length > 0 && !trimmed[trimmed.length - 1].trim()) trimmed.pop();
@@ -739,9 +949,50 @@ function collectRecallMarkerContent(lines: string[], startLine: number, marker: 
     return { contentLines: trimTrailingBlankLines(contentLines), endLine };
 }
 
+function nextNonBlankLineIndex(lines: string[], startIndex: number): number {
+    for (let i = startIndex; i < lines.length; i++) {
+        if (lines[i].trim()) return i;
+    }
+    return -1;
+}
+
+function collectDefinitionContent(lines: string[], startLine: number, marker?: FormalMarker): { contentLines: string[]; endLine: number } {
+    const contentLines = [marker ? markerLineContent(lines[startLine], marker) : lines[startLine].trim()];
+    let endLine = startLine;
+    let inDisplayMath = updateDisplayMathState(lines[startLine], false);
+    let previousNonBlankWasDisplayMath = isDisplayMathLine(lines[startLine]);
+
+    for (let i = startLine + 1; i < lines.length; i++) {
+        const line = lines[i];
+        if (isMarkerBoundaryLine(line)) break;
+
+        if (!line.trim()) {
+            const nextNonBlank = nextNonBlankLineIndex(lines, i + 1);
+            if (nextNonBlank < 0 || isMarkerBoundaryLine(lines[nextNonBlank])) break;
+            if (!inDisplayMath && !previousNonBlankWasDisplayMath && !isDisplayMathLine(lines[nextNonBlank])) break;
+            contentLines.push(line);
+            endLine = i;
+            previousNonBlankWasDisplayMath = false;
+            continue;
+        }
+
+        const lineWasDisplayMath = inDisplayMath || isDisplayMathLine(line);
+        contentLines.push(line);
+        endLine = i;
+        inDisplayMath = updateDisplayMathState(line, inDisplayMath);
+        previousNonBlankWasDisplayMath = lineWasDisplayMath;
+    }
+
+    return { contentLines: trimTrailingBlankLines(contentLines), endLine };
+}
+
 function collectMarkerContent(lines: string[], startLine: number, marker: FormalMarker): { contentLines: string[]; endLine: number } {
     if (RECALL_TYPES.has(marker.type)) {
         return collectRecallMarkerContent(lines, startLine, marker);
+    }
+
+    if (marker.type === 'def') {
+        return collectDefinitionContent(lines, startLine, marker);
     }
 
     const contentLines = [markerLineContent(lines[startLine], marker)];
@@ -756,6 +1007,30 @@ function collectMarkerContent(lines: string[], startLine: number, marker: Formal
     }
 
     return { contentLines: trimTrailingBlankLines(contentLines), endLine };
+}
+
+function sourceLineRangeContent(lines: string[], sourceLine: number): { content: string; startLine: number; endLine: number } {
+    const sourceIndex = Math.max(0, Math.min(lines.length - 1, sourceLine - 1));
+    const marker = parseFormalMarkerLine(lines[sourceIndex]);
+    if (marker) {
+        const collected = collectMarkerContent(lines, sourceIndex, marker);
+        return {
+            content: collected.contentLines.join('\n'),
+            startLine: sourceIndex,
+            endLine: collected.endLine
+        };
+    }
+
+    const isBoundary = (line: string) => !line.trim() || /^#{1,6}\s+/.test(line) || !!parseFormalMarkerLine(line);
+    let startLine = sourceIndex;
+    while (startLine > 0 && !isBoundary(lines[startLine - 1])) startLine--;
+
+    const collected = collectDefinitionContent(lines, startLine);
+    return {
+        content: collected.contentLines.join('\n').trim(),
+        startLine,
+        endLine: collected.endLine
+    };
 }
 
 function makeLabelData(marker: FormalMarker, unitFile: UnitFile, startLine: number, contentLines: string[], markerNumber?: number, endLine?: number): LabelData {
@@ -808,7 +1083,7 @@ function makeDefinitionLabelData(marker: FormalMarker, document: FormalDocument,
     return label;
 }
 
-export function scanFormalDocuments(documents: FormalDocument[], configInput: any, symbolsInput?: unknown) {
+export function scanFormalDocuments(documents: FormalDocument[], configInput: any, symbolsInput?: unknown, definitionsInput?: unknown) {
     const config = mergeConfig(configInput);
     const files = [...documents].sort((a, b) => a.filePath.localeCompare(b.filePath));
     const labels: Record<string, LabelData> = {};
@@ -941,6 +1216,22 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
             }
         }
     }
+
+    const customDefinitionResult = parseFormalDefinitions(definitionsInput, files, config);
+    for (const customDefinition of customDefinitionResult.definitions) {
+        const existing = definitions.find(def => (
+            def.type === 'def'
+            && def.file === customDefinition.file
+            && def.line === customDefinition.line
+            && def.title === customDefinition.title
+        ));
+        if (existing) {
+            existing.aliases = unique([...(existing.aliases || []), ...(customDefinition.aliases || [])]);
+            continue;
+        }
+        definitions.push(customDefinition);
+    }
+    issues.push(...customDefinitionResult.issues);
 
     const symbolResult = parseFormalSymbols(symbolsInput, files);
     issues.push(...symbolResult.issues);
@@ -1187,6 +1478,7 @@ export function buildRuntimeDefinitions(definitions: FormalDefinition[]): Runtim
         .filter(def => def.type === 'def')
         .map(def => ({
             title: def.title,
+            aliases: def.aliases && def.aliases.length > 0 ? def.aliases : undefined,
             filePath: def.file,
             line: def.line,
             content: def.label.content || '',
@@ -1222,7 +1514,7 @@ export function renderAgentGuide(state: any): string {
         '',
         '1. Read the target Markdown file.',
         '2. Read `.markdown-formal/reference-map.md` to map display numbers to stable hash IDs.',
-        '3. Put stable IDs directly where numbers used to appear: `## #tmp-1 Section`, `定理 #tmp-2（Title）：...`, or `Theorem #tmp-2 (Title): ...`. Definitions stay plain: `定义（Term）：...` or `Definition (Term): ...`.',
+        '3. Put stable IDs directly where numbers used to appear: `## #tmp-1 Section`, `定理 #tmp-2（Title）：...`, or `Theorem #tmp-2 (Title): ...`. Definitions are not numbered objects and never get hash IDs or refs.',
         '4. Reference numbered objects with `@h-...`; never handwrite display numbers as references.',
         '5. Keep Markdown and LaTeX unescaped.',
         '6. Run `npm run formal -- finish <file-or-dir>` after editing; it finalizes temporary IDs and verifies the workspace.',
@@ -1233,7 +1525,7 @@ export function renderAgentGuide(state: any): string {
         '- Sections: `## #h-... Title` renders as the current section number plus title, and links jump to the section without hover recall.',
         '- Numbered objects: `命题 #h-...（Title）：...`, `引理 #h-...`, `定理 #h-...`, `推论 #h-...` share the theorem counter per chapter or appendix.',
         '- Theorem-like recall captures the statement before `证明` / `Proof`; keep proofs after an explicit proof marker.',
-        '- Definitions: `定义（Term）：...` and `Definition (Term): ...` enter the preview definition search only; they do not have hash IDs and do not participate in automatic reference migration.',
+        '- Definitions: lookup is a concept-index workflow. When editing a file, update `formal-definitions.json` entries whose `source` is in that file and include Markdown `content`; standard `定义（Term）：...` / `Definition (Term): ...` lines are only a simple fallback scan.',
         '- Remarks/examples stay plain by default. Only when later text already cites one, convert that exact item to `注 #tmp-*` / `例 #tmp-*` and run `finish`.',
         '- Symbols: maintain only project-specific `source`, `pattern`, and `meaning` entries in `formal-symbols.json`; do not list generic math notation.',
         '- Appendices use the appendix file prefix, so markers in `appendix-a-*.md` render as `A.1`, `A.2`, etc.',
@@ -1244,6 +1536,7 @@ export function renderAgentGuide(state: any): string {
         '- `.markdown-formal/preview-cache.json`: runtime preview/navigation/definition/symbol lookup cache.',
         '- `.markdown-formal/report.md`: lint/verify details.',
         '- `.markdown-formal/text-ref-migration.md`: generated only after text-reference migration.',
+        '- `formal-definitions.json` / `formal-symbols.json`: optional AI-maintained source tables for nonstandard definitions and project-specific notation.',
         '',
         '## Migration',
         '',

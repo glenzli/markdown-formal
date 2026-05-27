@@ -41,6 +41,7 @@
 
     type DefinitionData = {
         title: string;
+        aliases?: string[];
         filePath: string;
         line: number;
         content?: string;
@@ -105,6 +106,7 @@
 
     type NavPayload = {
         targetId?: string;
+        line?: number;
         scroll?: number;
         anchorId?: string;
         anchorOffset?: number;
@@ -935,23 +937,81 @@
             .toLowerCase();
     }
 
+    function escapeRegExp(value: string): string {
+        return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function definitionCandidates(definition: DefinitionData): string[] {
+        return [definition.title || '', ...(definition.aliases || [])]
+            .map(candidate => normalizeDefinitionQuery(candidate))
+            .filter(Boolean);
+    }
+
+    function hasCjk(value: string): boolean {
+        return /[\u3400-\u9fff]/.test(value);
+    }
+
+    function isShortDefinitionText(value: string): boolean {
+        const compact = value.replace(/\s+/g, '');
+        if (!compact) return true;
+        if (hasCjk(compact)) return compact.length <= 1;
+        return compact.length <= 2;
+    }
+
+    function containsSelectionCandidate(query: string, candidate: string): boolean {
+        if (isShortDefinitionText(candidate) || !query.includes(candidate)) return false;
+        if (/^[a-z0-9][a-z0-9\s-]*$/i.test(candidate)) {
+            return new RegExp(`(^|\\s)${escapeRegExp(candidate)}(?=\\s|$)`, 'i').test(query);
+        }
+        return true;
+    }
+
     function definitionScore(definition: DefinitionData, query: string): number {
         const normalizedQuery = normalizeDefinitionQuery(query);
         if (!normalizedQuery) return Number.MAX_SAFE_INTEGER;
 
-        const title = normalizeDefinitionQuery(definition.title || '');
-        if (!title) return Number.MAX_SAFE_INTEGER;
-        if (title === normalizedQuery) return 0;
-        if (title.startsWith(normalizedQuery)) return 1;
-        if (normalizedQuery.includes(title)) return 2;
-        if (title.includes(normalizedQuery)) return 3;
-        return Number.MAX_SAFE_INTEGER;
+        return definitionCandidates(definition).reduce((best, title) => {
+            if (title === normalizedQuery) return Math.min(best, 0);
+            if (title.startsWith(normalizedQuery)) return Math.min(best, 1);
+            if (normalizedQuery.includes(title)) return Math.min(best, 2);
+            if (title.includes(normalizedQuery)) return Math.min(best, 3);
+            return best;
+        }, Number.MAX_SAFE_INTEGER);
+    }
+
+    function definitionSelectionScore(definition: DefinitionData, query: string): number {
+        const normalizedQuery = normalizeDefinitionQuery(query);
+        if (!normalizedQuery) return Number.MAX_SAFE_INTEGER;
+
+        return definitionCandidates(definition).reduce((best, candidate) => {
+            if (candidate === normalizedQuery) return Math.min(best, 0);
+            if (containsSelectionCandidate(normalizedQuery, candidate)) return Math.min(best, 1);
+            return best;
+        }, Number.MAX_SAFE_INTEGER);
     }
 
     function searchDefinitions(definitions: DefinitionData[], query: string, currentFilePath: string, config: FormalConfig, limit = 12): DefinitionData[] {
         return definitions
             .filter(definition => definitionInLookupScope(definition, currentFilePath, config))
             .map(definition => ({ definition, score: definitionScore(definition, query) }))
+            .filter(item => item.score < Number.MAX_SAFE_INTEGER)
+            .sort((a, b) => {
+                if (a.score !== b.score) return a.score - b.score;
+                const titleDelta = (a.definition.title || '').length - (b.definition.title || '').length;
+                if (titleDelta !== 0) return titleDelta;
+                return `${a.definition.filePath}:${a.definition.line}`.localeCompare(`${b.definition.filePath}:${b.definition.line}`);
+            })
+            .slice(0, limit)
+            .map(item => item.definition);
+    }
+
+    function searchDefinitionsForSelection(definitions: DefinitionData[], query: string, currentFilePath: string, config: FormalConfig, limit = 8): DefinitionData[] {
+        const normalizedQuery = normalizeDefinitionQuery(query);
+        if (!normalizedQuery) return [];
+
+        return definitions
+            .filter(definition => definitionInLookupScope(definition, currentFilePath, config))
+            .map(definition => ({ definition, score: definitionSelectionScore(definition, query) }))
             .filter(item => item.score < Number.MAX_SAFE_INTEGER)
             .sort((a, b) => {
                 if (a.score !== b.score) return a.score - b.score;
@@ -1124,7 +1184,9 @@
                 element.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 flashDefinitionElement(element);
             } else if (definition.targetId) {
-                scrollToTarget(definition.targetId);
+                scrollToTarget(definition.targetId) || scrollToSourceLine(definition.line);
+            } else {
+                scrollToSourceLine(definition.line);
             }
             scheduleRebuild();
             return;
@@ -1134,6 +1196,7 @@
         writeHistory(history);
         navigateToFile(targetFilePath, {
             targetId: definition.targetId,
+            line: definition.line,
             returnTo: history[history.length - 1],
             history
         });
@@ -1568,7 +1631,7 @@
         const pages = readPages();
         const config = readConfig();
         const currentFilePath = getCurrentFilePath(labels, pages);
-        const results = searchDefinitions(definitions, selectedText, currentFilePath, config, 8);
+        const results = searchDefinitionsForSelection(definitions, selectedText, currentFilePath, config, 8);
         if (results.length === 0) {
             removeDefinitionSelectionAction();
             return;
@@ -1692,6 +1755,7 @@
         const startedAt = Date.now();
         const tryApply = () => {
             if (payload.targetId && scrollToTarget(payload.targetId, 'auto')) return;
+            if (typeof payload.line === 'number' && scrollToSourceLine(payload.line)) return;
             if (!payload.targetId && typeof payload.scroll === 'number') {
                 if (restoreHistoryEntry({
                     scroll: payload.scroll,
@@ -2047,7 +2111,7 @@
         const pages = readPages();
         const config = readConfig();
         const currentFilePath = getCurrentFilePath(labels, pages);
-        const results = searchDefinitions(definitions, selectedText, currentFilePath, config, 8);
+        const results = searchDefinitionsForSelection(definitions, selectedText, currentFilePath, config, 8);
         if (results.length === 0) return;
 
         event.preventDefault();

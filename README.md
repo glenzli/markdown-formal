@@ -26,7 +26,7 @@ Supported markers:
 - Sections: `## #h-... Title` render as numbered anchors and links, but do not generate hover recall previews.
 - Numbered together per chapter or appendix: `命题 #h-...`, `引理 #h-...`, `定理 #h-...`, `推论 #h-...`
 - English numbered markers are also supported: `Proposition #h-...`, `Lemma #h-...`, `Theorem #h-...`, `Corollary #h-...`
-- Definition lookup entries: `定义（Term）：...` or `Definition (Term): ...`
+- Definition lookup entries are AI-maintained concept-index entries. Standard `定义（Term）：...` / `Definition (Term): ...` lines are scanned automatically; nonstandard prose definitions are indexed through `formal-definitions.json`.
 - Optional indexed blocks: write plain `注（...）` / `例（...）` by default; only add `#h-...` later when a remark/example is explicitly cited.
 
 Hover recall is generated for propositions, lemmas, theorems, corollaries, and explicitly cited remarks/examples. For theorem-like blocks, the preview captures the statement and stops before `证明` / `Proof`.
@@ -35,7 +35,22 @@ References:
 
 - `@h-...` renders the object type and display number.
 - `@h-....title` renders the object title.
-- Definition names are indexed for lookup; definition bodies are shown after a name match but are not used as broad search text.
+- Definitions do not have hash IDs and do not participate in references. Lookup is driven by definition names in the concept index; definition bodies are shown after a name match but are not used as broad search text.
+
+Use `formal-definitions.json` when a concept should be queryable but the prose should stay in its natural form:
+
+```json
+[
+  {
+    "term": "定义域",
+    "aliases": ["domain"],
+    "source": "examples/book1/01-introduction.md:7",
+    "content": "定义域是算子实际作用的对象范围。"
+  }
+]
+```
+
+`source` points to the defining sentence or paragraph. `content` is the AI-maintained Markdown excerpt shown in lookup results; `verify` blocks missing or stale AI-maintained definition content.
 
 Project-specific symbols can be declared in `formal-symbols.json`:
 
@@ -63,7 +78,7 @@ Read .markdown-formal/agent-guide.md, the target Markdown file, and .markdown-fo
 Reference existing numbered objects only by copying @h-... or @h-....title from reference-map.md.
 Keep a short natural-language cue near important refs, such as "by the spectral-radius lemma `@h-...`"; do not leave important prose as only a bare `@h-...`.
 Use tmp-1/tmp-2/... for new markers; do not generate hash IDs manually.
-Use plain definition markers for terms; lookup is by definition name, not by scanning every definition body.
+Definitions do not get hash IDs or refs. Maintain formal-definitions.json as part of the AI writing workflow: when editing a file, update definition entries whose source is in that file and include verbatim Markdown content for query previews. Standard definition markers are scanned automatically as a simple fallback, and nonstandard phrases such as "called X", "we call it X", "所谓 X", "称为 X", or "记作 X" should be indexed when the concept should be queryable. Do not mechanically rewrite prose just to fit a marker format.
 Maintain formal-symbols.json only for explicit project-specific notation conventions, not ordinary formulas.
 After editing, run npm run formal -- finish <file-or-dir>.
 Keep Markdown and LaTeX unescaped.
@@ -95,7 +110,7 @@ Definition and symbol lookup is scoped to the current book by default. If one bo
 - `preview-cache.json`: runtime preview/navigation/definition/symbol lookup cache
 - `report.md`: lint/verify details
 
-Do not edit generated `.markdown-formal/` files by hand, except `.markdown-formal/config.json`.
+Do not edit generated `.markdown-formal/` files by hand, except `.markdown-formal/config.json`. Definition and symbol source tables live at the project root as `formal-definitions.json` and `formal-symbols.json`.
 
 ## Migrating Existing Text
 

@@ -119,14 +119,6 @@ function inlineSafeRenderedMarkdown(html: string): string {
         .replace(/<\/h[1-6]>/gi, '</span>');
 }
 
-function emphasizeDefinitionLeadHtml(html: string): string {
-    if (/<strong\b[^>]*\sclass=["'][^"']*\bformal-definition-lead\b/i.test(html)) return html;
-    return html.replace(
-        /(^|>)(\s*)(定义[（(][^）)]+[）)]\s*[：:]|Definition\s*[（(][^）)]+[）)]\s*[:：])/i,
-        '$1$2<strong class="formal-definition-lead">$3</strong>'
-    );
-}
-
 function getNumberPrefix(labelData: LabelData): string {
     if (labelData.unitLabel) return labelData.unitLabel;
     if (labelData.chapter !== undefined) return String(labelData.chapter);
@@ -204,11 +196,11 @@ function findDefinitionIndex(definitions: RuntimeDefinitionData[], currentFilePa
 function renderDefinitionTemplates(md: any, definitions: RuntimeDefinitionData[], env: any): string {
     return definitions.map((def, index) => {
         const renderedContent = def.content
-            ? emphasizeDefinitionLeadHtml(md.render(def.content, {
+            ? md.render(def.content, {
                 ...env,
                 tooltipDepth: 1,
                 formalTooltipCache: env.formalTooltipCache || {}
-            }))
+            })
             : '';
         const safeHtml = inlineSafeRenderedMarkdown(renderedContent).replace(/<\/template/gi, '&lt;/template');
         return `<template data-definition-index="${index}">${safeHtml}</template>`;
