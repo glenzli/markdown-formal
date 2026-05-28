@@ -17,6 +17,7 @@ import {
     renderReferenceMap,
     renderReport,
     scanFormalDocuments,
+    shouldExcludeScanPath,
     toPosix,
     typeName,
     unique
@@ -24,7 +25,6 @@ import {
 
 const ROOT = process.cwd();
 const CACHE_DIR = path.join(ROOT, '.markdown-formal');
-const IGNORE_DIRS = new Set(['.git', '.markdown-formal', '.vscode-test', 'node_modules', 'out']);
 
 async function ensureCacheDir() {
     await fs.mkdir(CACHE_DIR, { recursive: true });
@@ -47,16 +47,19 @@ async function readConfig() {
     }
 }
 
-async function collectMarkdownFiles(dir = ROOT, acc = []) {
+async function collectMarkdownFiles(config, dir = ROOT, acc = []) {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        const relative = relativePath(fullPath);
         if (entry.isDirectory()) {
-            if (IGNORE_DIRS.has(entry.name)) continue;
-            await collectMarkdownFiles(path.join(dir, entry.name), acc);
+            if (shouldExcludeScanPath(relative, config)) continue;
+            await collectMarkdownFiles(config, fullPath, acc);
             continue;
         }
         if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.md')) continue;
-        acc.push(path.join(dir, entry.name));
+        if (shouldExcludeScanPath(relative, config)) continue;
+        acc.push(fullPath);
     }
     return acc.sort((a, b) => relativePath(a).localeCompare(relativePath(b)));
 }
@@ -78,7 +81,7 @@ async function readWorkspaceDocuments(files) {
 
 async function readSymbols() {
     try {
-        return JSON.parse(await fs.readFile(path.join(ROOT, 'formal-symbols.json'), 'utf8'));
+        return JSON.parse(await fs.readFile(path.join(CACHE_DIR, 'symbols.json'), 'utf8'));
     } catch (err: any) {
         if (err?.code === 'ENOENT') return undefined;
         throw err;
@@ -87,7 +90,7 @@ async function readSymbols() {
 
 async function readDefinitions() {
     try {
-        return JSON.parse(await fs.readFile(path.join(ROOT, 'formal-definitions.json'), 'utf8'));
+        return JSON.parse(await fs.readFile(path.join(CACHE_DIR, 'definitions.json'), 'utf8'));
     } catch (err: any) {
         if (err?.code === 'ENOENT') return undefined;
         throw err;
@@ -96,7 +99,7 @@ async function readDefinitions() {
 
 async function scanWorkspace() {
     const config = await readConfig();
-    const files = await collectMarkdownFiles();
+    const files = await collectMarkdownFiles(config);
     const documents = await readWorkspaceDocuments(files);
     const symbols = await readSymbols();
     const definitions = await readDefinitions();
@@ -223,7 +226,7 @@ async function finalize(paths, commandName = 'finalize') {
     }
 
     const state = await scanWorkspace();
-    const targetFiles = await resolveInputMarkdownFiles(options.paths);
+    const targetFiles = await resolveInputMarkdownFiles(options.paths, state.config);
     const existingIds = new Set(Object.keys(state.labels).filter(id => !TMP_ID_RE.test(id)));
     const tmpDefs = [];
 
@@ -279,7 +282,7 @@ async function finalize(paths, commandName = 'finalize') {
     }
 
     let changedFiles = 0;
-    const rewriteFiles = options.all ? await collectMarkdownFiles() : targetFiles;
+    const rewriteFiles = options.all ? await collectMarkdownFiles(state.config) : targetFiles;
     for (const filePath of rewriteFiles) {
         const original = await fs.readFile(filePath, 'utf8');
         const updated = rewriteFormalIds(original, mapping, {
@@ -356,13 +359,15 @@ function rewriteFormalIds(content, mapping, { rewriteDefinitions }) {
     return updated.join(eol);
 }
 
-async function resolveInputMarkdownFiles(inputs) {
+async function resolveInputMarkdownFiles(inputs, config) {
     const result = new Set();
     for (const input of inputs) {
         const full = path.resolve(ROOT, input);
+        const relative = relativePath(full);
+        if (shouldExcludeScanPath(relative, config)) continue;
         const stat = await fs.stat(full);
         if (stat.isDirectory()) {
-            const files = await collectMarkdownFiles(full, []);
+            const files = await collectMarkdownFiles(config, full, []);
             files.forEach(file => result.add(file));
         } else if (stat.isFile() && full.toLowerCase().endsWith('.md')) {
             result.add(full);
@@ -383,8 +388,8 @@ async function migrateIds(args) {
     }
 
     const state = await scanWorkspace();
-    const allFiles = await collectMarkdownFiles();
-    const targetFiles = options.all ? allFiles : await resolveInputMarkdownFiles(options.paths);
+    const allFiles = await collectMarkdownFiles(state.config);
+    const targetFiles = options.all ? allFiles : await resolveInputMarkdownFiles(options.paths, state.config);
     const rewriteFiles = migrationRewriteFiles(options, allFiles, targetFiles);
     const targetFileSet = new Set(targetFiles.map(relativePath));
     const idsToMigrate = state.definitions
@@ -926,8 +931,8 @@ async function migrateTextRefs(args) {
     }
     const pattern = makeTextReferencePattern(state.config);
 
-    const allFiles = await collectMarkdownFiles();
-    const targetFiles = options.all ? allFiles : await resolveInputMarkdownFiles(options.paths);
+    const allFiles = await collectMarkdownFiles(state.config);
+    const targetFiles = options.all ? allFiles : await resolveInputMarkdownFiles(options.paths, state.config);
     const targetFileSet = new Set(targetFiles.map(relativePath));
     const targetDefinitions = options.all
         ? state.definitions

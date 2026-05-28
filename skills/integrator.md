@@ -9,11 +9,11 @@
 完整融合必须保留四块能力：
 
 - 编号与引用：正文用稳定 hash ID，新增对象先写 `tmp-*`，引用从 `reference-map.md` 复制。
-- 定义查询：定义不编号不 ref；需要可靠查询的定义由 AI 维护 `formal-definitions.json`，包括 `term`、`source`、`content`，标准定义自动扫描只作为简单 fallback。
-- 符号召回：项目特有 LaTeX 记号由 AI 维护 `formal-symbols.json`。
+- 定义查询：定义不编号不 ref；需要可靠查询的定义由 AI 维护 `.markdown-formal/definitions.json`，包括 `term`、`source`、`content`，标准定义自动扫描只作为简单 fallback。
+- 符号召回：项目特有 LaTeX 记号由 AI 维护 `.markdown-formal/symbols.json`。
 - 工具闭环：`prepare` 生成上下文，`finish` 固化临时 ID，`verify` 检查引用和索引。
 
-如果目标项目只合并了 hash 编号规则，却丢掉定义提取、符号提取、根目录 JSON 源表、`prepare` / `finish` / `verify` 调用方式，就不是完整接入。
+如果目标项目只合并了 hash 编号规则，却丢掉定义提取、符号提取、`.markdown-formal` 源表、`prepare` / `finish` / `verify` 调用方式，就不是完整接入。
 
 ## 融合步骤
 
@@ -22,7 +22,7 @@
 3. 保留目标项目原有文风、证明组织、术语偏好和章节模板；不要为了工具统一改写所有定义句式。
 4. 接入 CLI 后运行 `npm run formal -- prepare`，确认能生成 `.markdown-formal/agent-guide.md`、`.markdown-formal/reference-map.md` 和 `.markdown-formal/report.md`。
 5. 试写或迁移一个小范围，运行 `npm run formal -- finish <file-or-dir>` 和 `npm run formal -- verify`。
-6. 根据试写结果调整目标项目原生写作规则，直到 AI 在正常写作时会按本次修改范围维护 `formal-definitions.json` 和 `formal-symbols.json`，而不是全书重抽或只维护编号。
+6. 根据试写结果调整目标项目原生写作规则，直到 AI 在正常写作时会按本次修改范围维护 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbols.json`，而不是全书重抽或只维护编号。
 
 ## 必须融入的最小提示
 
@@ -36,9 +36,9 @@
 新增小节、命题、引理、定理、推论等 marker 使用 tmp-1/tmp-2/...，不要手动生成 hash。
 小节只用于编号和跳转；命题、引理、定理、推论的 recall 只覆盖 `证明` / `Proof` 前的陈述。
 
-定义不加 hash、不参与 ref。定义查询是 AI 必须维护的概念索引工作流：修改某个文件后，只检查该文件内新增、删除、改写的定义，并同步更新 formal-definitions.json 中 source 指向该文件的条目。需要可靠查询的条目必须记录 term、可选 aliases、source 和 Markdown content；`定义（术语）：...` / `Definition (Term): ...` 自动扫描只作为简单 fallback。非标准句式如“称为 X”“所谓 X”“定义其 X”“记作 X”“called X”如果应当可查询，就写入 formal-definitions.json。不要为了工具机械改写项目文风，也不要每次全书重抽。
+定义不加 hash、不参与 ref。定义查询是 AI 必须维护的概念索引工作流：修改某个文件后，只检查该文件内新增、删除、改写的定义，并同步更新 .markdown-formal/definitions.json 中 source 指向该文件的条目。需要可靠查询的条目必须记录 term、可选 aliases、source 和 Markdown content；`定义（术语）：...` / `Definition (Term): ...` 自动扫描只作为简单 fallback。非标准句式如“称为 X”“所谓 X”“定义其 X”“记作 X”“called X”如果应当可查询，就写入 .markdown-formal/definitions.json。不要为了工具机械改写项目文风，也不要每次全书重抽。
 
-只把项目明确约定的特殊 LaTeX 记号写入 formal-symbols.json，维护 source、pattern、meaning；不要记录通用数学符号或整条推导公式。
+只把项目明确约定的特殊 LaTeX 记号写入 .markdown-formal/symbols.json，维护 source、pattern、meaning；pattern 必须是记号本身或完整记号族，括号/方括号要闭合，不要记录通用数学符号、整条推导公式或缺右边界的公式片段。预览端不把公式内部符号做成可点击 ref；导航栏符号表只展示当前预览文件公式中实际匹配到的符号，搜索框可在当前查询范围内过滤定义和符号。
 注和例默认不加 hash；只有后文已经明确引用某个注/例时，才反向把那个注/例改成 `注 #tmp-*` 或 `例 #tmp-*`。
 
 完成编辑后按本次修改范围检查编号对象、定义索引、符号索引、跨 book 查询配置、tmp ID 和迁移报告；不要只运行编号工具就结束。
@@ -72,15 +72,22 @@ npm run formal -- verify
 - `.markdown-formal/reference-map.md`：显示编号到 hash ID 的表。
 - `.markdown-formal/report.md`：校验和迁移报告。
 - `.markdown-formal/preview-cache.json`：预览运行时缓存，AI 不直接编辑。
-- `.markdown-formal/config.json`：语言、跨 book 查询依赖等配置。
-- `formal-definitions.json`：AI 维护的定义查询源表；需要可靠预览的条目必须含 `content`。
-- `formal-symbols.json`：AI 维护的特殊符号召回源表。
+- `.markdown-formal/config.json`：语言、扫描排除、跨 book 查询依赖等配置。
+- `.markdown-formal/definitions.json`：AI 维护的定义查询源表；需要可靠预览的条目必须含 `content`。
+- `.markdown-formal/symbols.json`：AI 维护的特殊符号召回源表。
 
 定义和符号查询默认只在当前 book 内生效。跨 book 查询必须显式声明：
 
 ```json
 {
   "language": "zh",
+  "scan": {
+    "exclude": [
+      "formal-oet/.lake/**",
+      ".context/**",
+      "draft/**"
+    ]
+  },
   "lookup": {
     "bookDependencies": {
       "book3": ["book2"]
@@ -88,6 +95,8 @@ npm run formal -- verify
   }
 }
 ```
+
+`npm run formal` 应从拥有 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbols.json` 的项目根目录执行。根目录扫描时，必须把构建产物、上下文目录、草稿目录等不属于正式正文体系的 Markdown 写入 `scan.exclude`。
 
 ## Release 接入
 
@@ -109,9 +118,9 @@ npm run formal -- verify
 
 ```text
 .markdown-formal/
-  config.json              # 可选；没有时工具会生成默认配置
-formal-definitions.json    # 可选；需要 AI 维护定义查询预览时创建
-formal-symbols.json        # 可选；存在特殊符号约定时创建
+  config.json       # 可选；没有时工具会生成默认配置
+  definitions.json  # 可选；需要 AI 维护定义查询预览时创建
+  symbols.json      # 可选；存在特殊符号约定时创建
 ```
 
 ## 迁移旧项目
@@ -129,12 +138,11 @@ npm run formal -- migrate-ids --apply path/to/chapter-or-volume
 
 如果 `migrate-ids --target-only` 发现目标范围内旧 ID 被范围外文件引用，工具会拒绝 apply。此时去掉 `--target-only`，或选择更大的闭合范围。
 
-`migrate-text-refs` 的报告还会列出旧 Markdown 链接和缺少 hash 的小节标题候选。AI 应读取 `.markdown-formal/text-ref-migration.md` 后手工处理这些项，同时维护迁移范围内发现的 `formal-definitions.json` 和 `formal-symbols.json` 条目；定义条目要写 `content`，不要只写 `source`。
+`migrate-text-refs` 的报告还会列出旧 Markdown 链接和缺少 hash 的小节标题候选。AI 应读取 `.markdown-formal/text-ref-migration.md` 后手工处理这些项，同时维护迁移范围内发现的 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbols.json` 条目；定义条目要写 `content`，不要只写 `source`。
 
 ## 项目约定
 
 - 写作细则和语法约束放在 [editor.md](editor.md)。
 - 本仓库开发、调试和构建细节放在 [development.md](development.md)。
-- `.markdown-formal/` 主要是生成缓存；人工维护入口只有 `.markdown-formal/config.json`。
-- 定义和符号索引的人工维护入口在根目录 `formal-definitions.json` 和 `formal-symbols.json`。
+- `.markdown-formal/` 中只有 `config.json`、`definitions.json`、`symbols.json` 是人工维护入口；其他文件均为生成缓存或报告。
 - 如果 `npm run formal -- prepare` 不存在或失败，先修复工具入口，不要让 AI 手写替代流程。

@@ -3,5 +3,9 @@ out/
 dist/
 .vscode-test/
 *.vsix
-.markdown-formal/
+.markdown-formal/*
+!.markdown-formal/
+!.markdown-formal/config.json
+!.markdown-formal/definitions.json
+!.markdown-formal/symbols.json
 .DS_Store

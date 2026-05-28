@@ -183,7 +183,7 @@ async function testCustomDictionaryTextRefs() {
             }
         }
     }, null, 2));
-    await fs.writeFile(path.join(root, 'formal-definitions.json'), JSON.stringify([
+    await fs.writeFile(path.join(root, '.markdown-formal/definitions.json'), JSON.stringify([
         {
             term: '非标准定义',
             aliases: ['别名定义'],
@@ -241,7 +241,8 @@ async function testCustomDictionaryTextRefs() {
 
 async function testSymbolCache() {
     const root = await makeWorkspace('symbols');
-    await fs.writeFile(path.join(root, 'formal-symbols.json'), JSON.stringify([
+    await fs.mkdir(path.join(root, '.markdown-formal'), { recursive: true });
+    await fs.writeFile(path.join(root, '.markdown-formal', 'symbols.json'), JSON.stringify([
         {
             pattern: '\\sigma(${operator})',
             meaning: 'Spectrum of the captured operator.',
@@ -272,6 +273,29 @@ async function testSymbolCache() {
     assert.deepEqual(previewCache.symbols[0].captures, ['operator']);
     assert.equal(previewCache.symbols[0].sourceFilePath, 'book1/01-a.md');
     assert.equal(previewCache.symbols[0].sourceLine, 3);
+}
+
+async function testWarnsUnbalancedSymbolPattern() {
+    const root = await makeWorkspace('symbol-pattern-warning');
+    await fs.mkdir(path.join(root, '.markdown-formal'), { recursive: true });
+    await fs.writeFile(path.join(root, '.markdown-formal', 'symbols.json'), JSON.stringify([
+        {
+            pattern: '\\mathcal{N}_{${index}}\\bigl(${mesh},\\,${base}',
+            meaning: 'An intentionally incomplete notation pattern.',
+            scope: 'book',
+            source: 'book1/01-a.md:3'
+        }
+    ], null, 2));
+    await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
+        '# Chapter 1',
+        '',
+        '定义（覆盖数）：The symbol is introduced here.',
+        ''
+    ].join('\n'));
+
+    const verify = runCli(root, ['verify']);
+    assert.equal(verify.status, 0, combinedOutput(verify));
+    assert.match(combinedOutput(verify), /symbol-pattern-unbalanced-delimiter/);
 }
 
 async function testRecallBoundariesAndOptionalBlocks() {
@@ -411,7 +435,8 @@ async function testVerifyRejectsNonHashIds() {
 
 async function testVerifyRejectsMissingDefinitionContent() {
     const root = await makeWorkspace('definition-content');
-    await fs.writeFile(path.join(root, 'formal-definitions.json'), JSON.stringify([
+    await fs.mkdir(path.join(root, '.markdown-formal'), { recursive: true });
+    await fs.writeFile(path.join(root, '.markdown-formal', 'definitions.json'), JSON.stringify([
         {
             term: 'Indexed Concept',
             source: 'book1/01-a.md:3'
@@ -427,6 +452,62 @@ async function testVerifyRejectsMissingDefinitionContent() {
     const verify = runCli(root, ['verify']);
     assert.notEqual(verify.status, 0, combinedOutput(verify));
     assert.match(combinedOutput(verify), /definition-content-missing/);
+}
+
+async function testScanExcludeAndZeroIntroductionPages() {
+    const root = await makeWorkspace('scan-exclude');
+    await fs.mkdir(path.join(root, '.markdown-formal'), { recursive: true });
+    await fs.writeFile(path.join(root, '.markdown-formal', 'config.json'), JSON.stringify({
+        scan: {
+            exclude: [
+                'draft/**',
+                '.context/**',
+                'formal-oet/.lake/**'
+            ]
+        }
+    }, null, 2));
+    await fs.mkdir(path.join(root, 'book1', 'vol-1'), { recursive: true });
+    await fs.mkdir(path.join(root, 'book1', 'vol-2'), { recursive: true });
+    await fs.mkdir(path.join(root, 'draft'), { recursive: true });
+    await fs.mkdir(path.join(root, '.context'), { recursive: true });
+    await fs.mkdir(path.join(root, 'formal-oet', '.lake'), { recursive: true });
+
+    await fs.writeFile(path.join(root, 'book1', 'vol-1', '00-introduction.md'), [
+        '# 第一卷导读',
+        '',
+        'This page should be an intro, not chapter 0.',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', 'vol-1', '01-main.md'), [
+        '# Chapter 1',
+        '',
+        '定理 #h-1111111111111111（Main）：Statement.',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', 'vol-2', '00-introduction.md'), [
+        '# 第二卷导读',
+        '',
+        'This second intro should not duplicate chapter 0.',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', 'vol-2', '02-next.md'), [
+        '# Chapter 2',
+        '',
+        '定理 #h-2222222222222222（Next）：Statement.',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'draft', '01-bad.md'), '定理 #semantic-draft（Bad）：Should be excluded.\n');
+    await fs.writeFile(path.join(root, '.context', '01-bad.md'), '定理 #semantic-context（Bad）：Should be excluded.\n');
+    await fs.writeFile(path.join(root, 'formal-oet', '.lake', '01-bad.md'), '定理 #semantic-lake（Bad）：Should be excluded.\n');
+
+    const verify = runCli(root, ['verify']);
+    assert.equal(verify.status, 0, combinedOutput(verify));
+    const previewCache = JSON.parse(await read(root, '.markdown-formal/preview-cache.json'));
+    assert.equal(previewCache.pages.filter(page => page.kind === 'intro').length, 2);
+    assert.equal(previewCache.pages.filter(page => page.kind === 'chapter' && page.chapter === 0).length, 0);
+    assert.equal(previewCache.pages.some(page => page.filePath.startsWith('draft/')), false);
+    assert.equal(previewCache.pages.some(page => page.filePath.startsWith('.context/')), false);
+    assert.equal(previewCache.pages.some(page => page.filePath.startsWith('formal-oet/.lake/')), false);
 }
 
 async function testPerfDummyThresholds() {
@@ -446,11 +527,13 @@ const tests = [
     ['migrate-text-refs report', testMigrateTextRefsReport],
     ['custom dictionary text refs', testCustomDictionaryTextRefs],
     ['symbol cache', testSymbolCache],
+    ['warns unbalanced symbol pattern', testWarnsUnbalancedSymbolPattern],
     ['recall boundaries and optional blocks', testRecallBoundariesAndOptionalBlocks],
     ['migrate-text-refs sections and audits', testMigrateTextRefsSectionsAndAudits],
     ['migrate-text-refs updates incoming refs by default', testMigrateTextRefsUpdatesIncomingByDefault],
     ['verify rejects non-hash ids', testVerifyRejectsNonHashIds],
     ['verify rejects missing definition content', testVerifyRejectsMissingDefinitionContent],
+    ['scan exclude and zero introduction pages', testScanExcludeAndZeroIntroductionPages],
     ['perf-dummy thresholds', testPerfDummyThresholds]
 ];
 

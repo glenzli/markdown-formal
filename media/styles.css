@@ -266,49 +266,8 @@
     white-space: nowrap !important;
 }
 
-.formal-symbol-match {
-    cursor: help !important;
-    border-radius: 3px !important;
-    outline: 1px solid transparent !important;
-    transition: background-color 0.12s ease, outline-color 0.12s ease !important;
-}
-
-.formal-symbol-match:hover {
-    background: var(--vscode-editor-hoverHighlightBackground, rgba(128, 128, 128, 0.1)) !important;
-    outline-color: var(--vscode-editorWidget-border, rgba(127, 127, 127, 0.28)) !important;
-}
-
-.formal-symbol-popover-title {
-    display: flex !important;
-    align-items: center !important;
-    gap: 8px !important;
-}
-
-.formal-symbol-popover-title .katex,
 .formal-symbol-search-title .katex {
     font-size: 1em !important;
-}
-
-.formal-symbol-content {
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 8px !important;
-}
-
-.formal-symbol-captures {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    gap: 6px !important;
-    margin-top: 8px !important;
-}
-
-.formal-symbol-capture {
-    border-radius: 5px !important;
-    background: var(--vscode-badge-background, rgba(127, 127, 127, 0.14)) !important;
-    color: var(--vscode-badge-foreground, var(--vscode-foreground, inherit)) !important;
-    font-size: 12px !important;
-    padding: 2px 6px !important;
-    font-family: var(--vscode-editor-font-family, monospace) !important;
 }
 
 /* Floating Nav Bar */
@@ -324,8 +283,11 @@
     right: 18px !important;
     display: flex !important;
     align-items: center !important;
+    flex-wrap: wrap !important;
+    justify-content: flex-end !important;
     gap: 2px !important;
     z-index: 999999 !important;
+    max-width: calc(100vw - 24px) !important;
     background: var(--formal-nav-bg) !important;
     border: 1px solid var(--formal-nav-border) !important;
     border-radius: 8px !important;
@@ -367,7 +329,7 @@
 }
 
 .formal-definition-search-input {
-    width: 132px !important;
+    width: clamp(96px, 18vw, 160px) !important;
     min-height: 28px !important;
     border: none !important;
     border-radius: 6px !important;
@@ -392,7 +354,7 @@
     top: calc(100% + 6px) !important;
     right: 0 !important;
     width: min(560px, calc(100vw - 24px)) !important;
-    max-height: min(620px, calc(100vh - 84px)) !important;
+    max-height: min(66vh, calc(100vh - 92px)) !important;
     overflow-y: auto !important;
     background: var(--vscode-dropdown-background, var(--formal-nav-bg)) !important;
     border: 1px solid var(--vscode-dropdown-border, var(--formal-nav-border)) !important;
@@ -407,6 +369,14 @@
 .formal-definition-search-menu.formal-definition-search-open,
 .formal-definition-search-container:focus-within .formal-definition-search-menu.formal-definition-search-open {
     display: flex !important;
+}
+
+.formal-definition-search-section-title {
+    color: var(--formal-nav-muted) !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    padding: 5px 8px 3px !important;
+    user-select: none !important;
 }
 
 .formal-definition-search-result {
@@ -480,10 +450,6 @@
     overflow: hidden !important;
 }
 
-.formal-symbol-search-preview .formal-symbol-captures {
-    display: none !important;
-}
-
 .formal-definition-search-empty {
     color: var(--formal-nav-muted) !important;
     padding: 12px 10px !important;
@@ -504,8 +470,13 @@
     position: relative !important;
 }
 
+.formal-nav-symbol-container {
+    position: relative !important;
+}
+
 .formal-nav-toc-container::after,
-.formal-nav-chapter-container::after {
+.formal-nav-chapter-container::after,
+.formal-nav-symbol-container::after {
     content: "" !important;
     display: none !important;
     position: absolute !important;
@@ -515,20 +486,18 @@
     height: 6px !important;
 }
 
-.formal-nav-toc-container:hover::after,
-.formal-nav-toc-container:focus-within::after,
-.formal-nav-chapter-container:hover::after,
-.formal-nav-chapter-container:focus-within::after {
+.formal-nav-menu-open::after {
     display: block !important;
 }
 
 .formal-nav-toc-menu,
-.formal-nav-chapter-menu {
+.formal-nav-chapter-menu,
+.formal-symbol-menu {
     position: absolute !important;
     top: calc(100% + 6px) !important;
     right: 0 !important;
-    width: 280px !important;
-    max-height: 400px !important;
+    width: min(420px, calc(100vw - 24px)) !important;
+    max-height: min(66vh, calc(100vh - 92px)) !important;
     overflow-y: auto !important;
     background: var(--vscode-dropdown-background, var(--formal-nav-bg)) !important;
     border: 1px solid var(--vscode-dropdown-border, var(--formal-nav-border)) !important;
@@ -540,11 +509,114 @@
     padding: 6px !important;
 }
 
-.formal-nav-toc-container:hover .formal-nav-toc-menu,
-.formal-nav-toc-container:focus-within .formal-nav-toc-menu,
-.formal-nav-chapter-container:hover .formal-nav-chapter-menu,
-.formal-nav-chapter-container:focus-within .formal-nav-chapter-menu {
+.formal-nav-menu-open > .formal-nav-toc-menu,
+.formal-nav-menu-open > .formal-nav-chapter-menu,
+.formal-nav-menu-open > .formal-symbol-menu {
     display: flex !important;
+}
+
+.formal-nav-toc-menu {
+    width: min(560px, calc(100vw - 24px)) !important;
+}
+
+.formal-nav-chapter-menu {
+    width: min(360px, calc(100vw - 24px)) !important;
+}
+
+.formal-symbol-menu .formal-symbol-menu-result {
+    min-height: 0 !important;
+    padding: 8px 10px !important;
+}
+
+.formal-symbol-menu .formal-definition-search-preview {
+    max-height: 3em !important;
+}
+
+.formal-symbol-menu {
+    width: min(520px, calc(100vw - 24px)) !important;
+    gap: 8px !important;
+}
+
+.formal-symbol-chip-grid {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    max-height: 132px !important;
+    overflow-y: auto !important;
+    padding: 2px !important;
+}
+
+.formal-symbol-chip {
+    min-width: 38px !important;
+    min-height: 34px !important;
+    border: 1px solid var(--vscode-button-border, var(--formal-nav-border)) !important;
+    border-radius: 6px !important;
+    background: transparent !important;
+    color: var(--formal-nav-foreground) !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 4px 8px !important;
+    overflow: hidden !important;
+}
+
+.formal-symbol-chip:hover,
+.formal-symbol-chip-active {
+    background: var(--formal-nav-hover) !important;
+    border-color: var(--vscode-focusBorder, var(--formal-nav-border)) !important;
+}
+
+.formal-symbol-chip .katex {
+    font-size: 1em !important;
+}
+
+.formal-symbol-detail {
+    border-radius: 6px !important;
+    background: var(--vscode-editorWidget-background, var(--formal-nav-bg)) !important;
+    padding: 10px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    min-height: 120px !important;
+}
+
+.formal-symbol-detail-header {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 10px !important;
+    align-items: start !important;
+}
+
+.formal-symbol-detail-title {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    font-weight: 600 !important;
+}
+
+.formal-symbol-detail-location {
+    color: var(--formal-nav-muted) !important;
+    font-size: 11px !important;
+    max-width: 180px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+.formal-symbol-detail-content {
+    color: var(--formal-nav-foreground) !important;
+    font-size: 12px !important;
+    line-height: 1.5 !important;
+}
+
+.formal-symbol-detail-content p,
+.formal-symbol-detail-content .formal-tooltip-p {
+    margin: 0 !important;
+}
+
+.formal-symbol-detail-actions {
+    display: flex !important;
+    justify-content: flex-end !important;
 }
 
 .formal-toc-section {

@@ -176,6 +176,19 @@ const SYMBOL_SAMPLE_VALUES: Record<string, string> = {
 
 export const DEFAULT_CONFIG = {
     language: 'zh',
+    scan: {
+        exclude: [
+            '.git/**',
+            '.markdown-formal/**',
+            '.vscode-test/**',
+            'node_modules/**',
+            'out/**',
+            'dist/**'
+        ]
+    },
+    lookup: {
+        bookDependencies: {}
+    },
     dictionary: {
         zh: { theorem: '定理', lemma: '引理', prop: '命题', cor: '推论', def: '定义', remark: '注', example: '例', section: '§' },
         en: { theorem: 'Theorem', lemma: 'Lemma', prop: 'Proposition', cor: 'Corollary', def: 'Definition', remark: 'Remark', example: 'Example', section: '§' }
@@ -234,6 +247,21 @@ export function mergeConfig(config: any): any {
         ...DEFAULT_CONFIG,
         ...existing,
         language: existing.language === 'en' ? 'en' : 'zh',
+        scan: {
+            ...DEFAULT_CONFIG.scan,
+            ...(existing.scan || {}),
+            exclude: unique([
+                ...DEFAULT_CONFIG.scan.exclude,
+                ...(Array.isArray(existing.scan?.exclude) ? existing.scan.exclude.filter((item: unknown) => typeof item === 'string') : [])
+            ])
+        },
+        lookup: {
+            ...DEFAULT_CONFIG.lookup,
+            ...(existing.lookup || {}),
+            bookDependencies: existing.lookup?.bookDependencies && typeof existing.lookup.bookDependencies === 'object'
+                ? existing.lookup.bookDependencies
+                : {}
+        },
         dictionary: {
             zh: { ...DEFAULT_CONFIG.dictionary.zh, ...(existing.dictionary?.zh || {}) },
             en: { ...DEFAULT_CONFIG.dictionary.en, ...(existing.dictionary?.en || {}) }
@@ -243,6 +271,70 @@ export function mergeConfig(config: any): any {
             en: { ...DEFAULT_CONFIG.ui.en, ...(existing.ui?.en || {}) }
         }
     };
+}
+
+function normalizeScanPath(value: string): string {
+    return toPosix(String(value || ''))
+        .replace(/^\/+/, '')
+        .replace(/\/+$/, '');
+}
+
+function globPatternToRegExp(pattern: string): RegExp {
+    let source = '';
+    for (let i = 0; i < pattern.length; i++) {
+        const char = pattern[i];
+        if (char === '*') {
+            if (pattern[i + 1] === '*') {
+                source += '.*';
+                i++;
+            } else {
+                source += '[^/]*';
+            }
+            continue;
+        }
+        if (char === '?') {
+            source += '[^/]';
+            continue;
+        }
+        source += escapeRegExp(char);
+    }
+    return new RegExp(`^${source}$`);
+}
+
+function scanPatternMatches(filePath: string, pattern: string): boolean {
+    const file = normalizeScanPath(filePath);
+    const normalizedPattern = normalizeScanPath(pattern);
+    if (!file || !normalizedPattern) return false;
+
+    if (!/[*?]/.test(normalizedPattern)) {
+        if (!normalizedPattern.includes('/')) {
+            return file.split('/').includes(normalizedPattern);
+        }
+        return file === normalizedPattern || file.startsWith(`${normalizedPattern}/`);
+    }
+
+    if (normalizedPattern.endsWith('/**')) {
+        const base = normalizeScanPath(normalizedPattern.slice(0, -3));
+        if (file === base || file.startsWith(`${base}/`)) return true;
+    }
+
+    const direct = globPatternToRegExp(normalizedPattern);
+    if (direct.test(file)) return true;
+
+    if (!normalizedPattern.startsWith('**/') && !normalizedPattern.includes('/')) {
+        return file.split('/').some(segment => direct.test(segment));
+    }
+
+    return false;
+}
+
+export function scanExcludePatterns(config: any): string[] {
+    const merged = mergeConfig(config);
+    return Array.isArray(merged.scan?.exclude) ? merged.scan.exclude : [];
+}
+
+export function shouldExcludeScanPath(filePath: string, config: any): boolean {
+    return scanExcludePatterns(config).some(pattern => scanPatternMatches(filePath, pattern));
 }
 
 export function getLanguage(config: any): 'zh' | 'en' {
@@ -315,6 +407,21 @@ export function compileSymbolPattern(pattern: string): { normalizedPattern: stri
     return { normalizedPattern, regex, captures };
 }
 
+function hasBalancedSymbolDelimiters(value: string): boolean {
+    const pairs: Record<string, string> = { ')': '(', ']': '[' };
+    const stack: string[] = [];
+    for (const char of value) {
+        if (char === '(' || char === '[') {
+            stack.push(char);
+            continue;
+        }
+        if (char === ')' || char === ']') {
+            if (stack.pop() !== pairs[char]) return false;
+        }
+    }
+    return stack.length === 0;
+}
+
 function parseSourceLocation(source: string | undefined): { sourceFilePath?: string; sourceLine?: number } {
     if (!source) return {};
     const match = String(source).match(/^(.+?)(?::(\d+))?$/);
@@ -352,8 +459,8 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
         issues.push({
             severity: 'error',
             code: 'invalid-symbols-file',
-            file: 'formal-symbols.json',
-            message: 'formal-symbols.json must be an array, or an object with a symbols array.'
+            file: '.markdown-formal/symbols.json',
+            message: '.markdown-formal/symbols.json must be an array, or an object with a symbols array.'
         });
         return { symbols: [], issues };
     }
@@ -371,7 +478,7 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
             issues.push({
                 severity: 'error',
                 code: 'invalid-symbol-entry',
-                file: 'formal-symbols.json',
+                file: '.markdown-formal/symbols.json',
                 line: index + 1,
                 message: 'Symbol entry must be an object.'
             });
@@ -385,7 +492,7 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
             issues.push({
                 severity: 'error',
                 code: 'invalid-symbol-entry',
-                file: 'formal-symbols.json',
+                file: '.markdown-formal/symbols.json',
                 line: index + 1,
                 message: 'Symbol entry requires non-empty source, pattern, and meaning.'
             });
@@ -401,7 +508,7 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
             issues.push({
                 severity: 'error',
                 code: 'symbol-source-invalid',
-                file: 'formal-symbols.json',
+                file: '.markdown-formal/symbols.json',
                 line: index + 1,
                 message: `Symbol source ${source} must use path.md:line format.`
             });
@@ -412,7 +519,7 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
             issues.push({
                 severity: 'error',
                 code: 'symbol-source-missing',
-                file: 'formal-symbols.json',
+                file: '.markdown-formal/symbols.json',
                 line: index + 1,
                 message: `Symbol source ${source} does not point to a known Markdown file.`
             });
@@ -424,7 +531,7 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
             issues.push({
                 severity: 'error',
                 code: 'symbol-source-line-missing',
-                file: 'formal-symbols.json',
+                file: '.markdown-formal/symbols.json',
                 line: index + 1,
                 message: `Symbol source ${source} points outside the source file.`
             });
@@ -435,7 +542,7 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
             issues.push({
                 severity: 'warn',
                 code: 'symbol-display-mismatch',
-                file: 'formal-symbols.json',
+                file: '.markdown-formal/symbols.json',
                 line: index + 1,
                 message: `Symbol display ${display} does not match pattern ${pattern}.`
             });
@@ -445,9 +552,19 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
             issues.push({
                 severity: 'warn',
                 code: 'symbol-pattern-too-broad',
-                file: 'formal-symbols.json',
+                file: '.markdown-formal/symbols.json',
                 line: index + 1,
                 message: `Symbol pattern ${pattern} is only a placeholder and may match unrelated formulas.`
+            });
+        }
+
+        if (!hasBalancedSymbolDelimiters(compiled.normalizedPattern)) {
+            issues.push({
+                severity: 'warn',
+                code: 'symbol-pattern-unbalanced-delimiter',
+                file: '.markdown-formal/symbols.json',
+                line: index + 1,
+                message: `Symbol pattern ${pattern} has unbalanced parentheses or brackets and may match a surrounding formula instead of the notation itself.`
             });
         }
 
@@ -457,7 +574,7 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
             issues.push({
                 severity: 'warn',
                 code: 'duplicate-symbol-pattern',
-                file: 'formal-symbols.json',
+                file: '.markdown-formal/symbols.json',
                 line: index + 1,
                 message: `Symbol pattern duplicates entry ${previousIndex + 1} in the same scope and source file.`
             });
@@ -507,8 +624,8 @@ export function parseFormalDefinitions(input: unknown, documents: Array<FormalDo
         issues.push({
             severity: 'error',
             code: 'invalid-definitions-file',
-            file: 'formal-definitions.json',
-            message: 'formal-definitions.json must be an array, or an object with a definitions array.'
+            file: '.markdown-formal/definitions.json',
+            message: '.markdown-formal/definitions.json must be an array, or an object with a definitions array.'
         });
         return { definitions: [], issues };
     }
@@ -527,7 +644,7 @@ export function parseFormalDefinitions(input: unknown, documents: Array<FormalDo
             issues.push({
                 severity: 'error',
                 code: 'invalid-definition-entry',
-                file: 'formal-definitions.json',
+                file: '.markdown-formal/definitions.json',
                 line: index + 1,
                 message: 'Definition entry must be an object.'
             });
@@ -545,7 +662,7 @@ export function parseFormalDefinitions(input: unknown, documents: Array<FormalDo
             issues.push({
                 severity: 'error',
                 code: 'invalid-definition-entry',
-                file: 'formal-definitions.json',
+                file: '.markdown-formal/definitions.json',
                 line: index + 1,
                 message: 'Definition entry requires non-empty term/title and source.'
             });
@@ -557,7 +674,7 @@ export function parseFormalDefinitions(input: unknown, documents: Array<FormalDo
             issues.push({
                 severity: 'error',
                 code: 'definition-source-invalid',
-                file: 'formal-definitions.json',
+                file: '.markdown-formal/definitions.json',
                 line: index + 1,
                 message: `Definition source ${source} must use path.md:line format.`
             });
@@ -569,7 +686,7 @@ export function parseFormalDefinitions(input: unknown, documents: Array<FormalDo
             issues.push({
                 severity: 'error',
                 code: 'definition-source-missing',
-                file: 'formal-definitions.json',
+                file: '.markdown-formal/definitions.json',
                 line: index + 1,
                 message: `Definition source ${source} does not point to a known Markdown file.`
             });
@@ -581,7 +698,7 @@ export function parseFormalDefinitions(input: unknown, documents: Array<FormalDo
             issues.push({
                 severity: 'error',
                 code: 'definition-source-line-missing',
-                file: 'formal-definitions.json',
+                file: '.markdown-formal/definitions.json',
                 line: index + 1,
                 message: `Definition source ${source} points outside the source file.`
             });
@@ -594,7 +711,7 @@ export function parseFormalDefinitions(input: unknown, documents: Array<FormalDo
             issues.push({
                 severity: 'warn',
                 code: 'definition-content-missing',
-                file: 'formal-definitions.json',
+                file: '.markdown-formal/definitions.json',
                 line: index + 1,
                 message: `Definition entry ${title} should include AI-maintained content; falling back to source extraction.`
             });
@@ -602,7 +719,7 @@ export function parseFormalDefinitions(input: unknown, documents: Array<FormalDo
             issues.push({
                 severity: 'warn',
                 code: 'definition-content-stale',
-                file: 'formal-definitions.json',
+                file: '.markdown-formal/definitions.json',
                 line: index + 1,
                 message: `Definition entry ${title} content is not found in its source file near ${source}; update content after editing the source.`
             });
@@ -614,7 +731,7 @@ export function parseFormalDefinitions(input: unknown, documents: Array<FormalDo
             issues.push({
                 severity: 'warn',
                 code: 'duplicate-definition-entry',
-                file: 'formal-definitions.json',
+                file: '.markdown-formal/definitions.json',
                 line: index + 1,
                 message: `Definition entry duplicates entry ${previousIndex + 1}.`
             });
@@ -813,6 +930,7 @@ function parseNumberingUnit(basename: string): NumberingUnit | undefined {
     const chapterMatch = basename.match(/^(\d+)-.*\.md$/i);
     if (chapterMatch) {
         const chapter = parseInt(chapterMatch[1], 10);
+        if (chapter === 0) return undefined;
         return {
             kind: 'chapter',
             key: `chapter-${chapter}`,
@@ -838,7 +956,9 @@ function parseNumberingUnit(basename: string): NumberingUnit | undefined {
 }
 
 function parseSpecialPageKind(basename: string): string | undefined {
+    if (/^00[-_\s]?(?:intro|introduction)\.md$/i.test(basename)) return 'intro';
     if (/^intro\.md$/i.test(basename)) return 'intro';
+    if (/^introduction\.md$/i.test(basename)) return 'intro';
     if (/^summary\.md$/i.test(basename)) return 'summary';
     return undefined;
 }
@@ -1525,10 +1645,10 @@ export function renderAgentGuide(state: any): string {
         '- Sections: `## #h-... Title` renders as the current section number plus title, and links jump to the section without hover recall.',
         '- Numbered objects: `命题 #h-...（Title）：...`, `引理 #h-...`, `定理 #h-...`, `推论 #h-...` share the theorem counter per chapter or appendix.',
         '- Theorem-like recall captures the statement before `证明` / `Proof`; keep proofs after an explicit proof marker.',
-        '- Definitions: lookup is a concept-index workflow. When editing a file, update `formal-definitions.json` entries whose `source` is in that file and include Markdown `content`; standard `定义（Term）：...` / `Definition (Term): ...` lines are only a simple fallback scan.',
+        '- Definitions: lookup is a concept-index workflow. When editing a file, update `.markdown-formal/definitions.json` entries whose `source` is in that file and include Markdown `content`; standard `定义（Term）：...` / `Definition (Term): ...` lines are only a simple fallback scan.',
         '- Remarks/examples stay plain by default. Only when later text already cites one, convert that exact item to `注 #tmp-*` / `例 #tmp-*` and run `finish`.',
-        '- Symbols: maintain only project-specific `source`, `pattern`, and `meaning` entries in `formal-symbols.json`; do not list generic math notation.',
-        '- Appendices use the appendix file prefix, so markers in `appendix-a-*.md` render as `A.1`, `A.2`, etc.',
+        '- Symbols: maintain only project-specific `source`, `pattern`, and `meaning` entries in `.markdown-formal/symbols.json`; patterns describe the notation itself with balanced delimiters, not whole equations or open-ended formula fragments. The navigation symbol table lists symbols matched in the current preview file; search can query symbols in the current lookup scope. Symbols are not inline formula refs.',
+        '- Appendices use the appendix file prefix, so markers in `appendix-a-*.md` render as `A.1`, `A.2`, etc. `00-introduction.md`, `intro.md`, and `introduction.md` are intro pages, not chapter 0.',
         '',
         '## Generated Files',
         '',
@@ -1536,7 +1656,8 @@ export function renderAgentGuide(state: any): string {
         '- `.markdown-formal/preview-cache.json`: runtime preview/navigation/definition/symbol lookup cache.',
         '- `.markdown-formal/report.md`: lint/verify details.',
         '- `.markdown-formal/text-ref-migration.md`: generated only after text-reference migration.',
-        '- `formal-definitions.json` / `formal-symbols.json`: optional AI-maintained source tables for nonstandard definitions and project-specific notation.',
+        '- `.markdown-formal/definitions.json` / `.markdown-formal/symbols.json`: optional AI-maintained source tables for nonstandard definitions and project-specific notation.',
+        '- `.markdown-formal/config.json`: use `scan.exclude` when project-root scans must ignore build, draft, context, or generated Markdown directories.',
         '',
         '## Migration',
         '',

@@ -74,13 +74,6 @@
         display: boolean;
     };
 
-    type SymbolMatch = {
-        symbol: SymbolData;
-        latex: string;
-        captures: Record<string, string>;
-        formulaElement?: HTMLElement;
-    };
-
     type FormalConfig = {
         language?: string;
         ui?: Record<string, Record<string, string>>;
@@ -223,7 +216,6 @@
     };
     let lastNavSignature = '';
     let retryCount = 0;
-    let symbolRetryCount = 0;
     let appliedNavigationHash = '';
     let suppressedSelectionText = '';
 
@@ -375,7 +367,9 @@
         try {
             const raw = dataDiv.getAttribute('data-formulas');
             const formulas = raw ? JSON.parse(raw) as FormulaData[] : [];
-            return Array.isArray(formulas) ? formulas.filter(formula => formula && formula.latex) : [];
+            return Array.isArray(formulas)
+                ? formulas.filter(formula => formula && typeof formula.latex === 'string' && formula.latex.trim())
+                : [];
         } catch (err) {
             console.error('[markdown-formal] Failed to parse formulas', err);
             return [];
@@ -1047,32 +1041,6 @@
         return true;
     }
 
-    function buildSymbolMatch(symbol: SymbolData, latex: string, match: RegExpMatchArray): SymbolMatch {
-        const captures: Record<string, string> = {};
-        (symbol.captures || []).forEach((name, index) => {
-            captures[name] = match[index + 1] || '';
-        });
-        return { symbol, latex, captures };
-    }
-
-    function matchSymbol(symbol: SymbolData, latex: string): SymbolMatch | undefined {
-        try {
-            const normalizedLatex = normalizeLatexSymbol(latex);
-            const match = normalizedLatex.match(new RegExp(symbol.regex));
-            return match ? buildSymbolMatch(symbol, latex, match) : undefined;
-        } catch (_err) {
-            return undefined;
-        }
-    }
-
-    function findSymbolMatches(symbols: SymbolData[], latex: string, currentFilePath: string, config: FormalConfig, limit = 8): SymbolMatch[] {
-        return symbols
-            .filter(symbol => symbolInScope(symbol, currentFilePath, config))
-            .map(symbol => matchSymbol(symbol, latex))
-            .filter((match): match is SymbolMatch => Boolean(match))
-            .slice(0, limit);
-    }
-
     function symbolSearchScore(symbol: SymbolData, query: string): number {
         const latexQuery = normalizeLatexSymbol(query);
         const pattern = normalizeLatexSymbol(symbol.pattern);
@@ -1093,54 +1061,62 @@
             .map(item => item.symbol);
     }
 
-    function collectFormulaNodes(): HTMLElement[] {
-        const selectors = [
-            'mjx-container',
-            '.katex-display > .katex',
-            '.katex'
-        ];
-        const nodes = Array.from(document.querySelectorAll<HTMLElement>(selectors.join(',')))
-            .filter(node => !node.closest('#formal-nav-bar, #formal-definition-popover, #formal-definition-selection-action, #formal-labels-data, #formal-pages-data, #formal-definitions-data, #formal-symbols-data, #formal-formulas-data, #formal-definition-templates, #formal-symbol-templates'))
-            .filter(node => {
-                if (node.matches('.katex') && node.parentElement?.closest('.katex')) return false;
-                return true;
-            });
-        return nodes;
-    }
+    function makeUnanchoredSymbolRegex(symbol: SymbolData): RegExp | undefined {
+        const source = String(symbol.regex || '')
+            .replace(/^\^/, '')
+            .replace(/\$$/, '');
+        if (!source || source === '(.+?)') return undefined;
 
-    function encodeCaptures(value: Record<string, string>): string {
-        return encodeURIComponent(JSON.stringify(value));
-    }
-
-    function decodeCaptures(value: string | null): Record<string, string> {
-        if (!value) return {};
         try {
-            return JSON.parse(decodeURIComponent(value));
+            return new RegExp(source);
         } catch (_err) {
-            return {};
+            return undefined;
         }
     }
 
-    function bindSymbolFormulas(symbols: SymbolData[], formulas: FormulaData[], currentFilePath: string, config: FormalConfig): number {
-        if (symbols.length === 0 || formulas.length === 0) return 0;
-        const nodes = collectFormulaNodes();
-        const limit = Math.min(nodes.length, formulas.length);
-        for (let i = 0; i < limit; i++) {
-            const node = nodes[i];
-            const formula = formulas[i];
-            node.setAttribute('data-formal-latex', formula.latex);
-            node.classList.remove('formal-symbol-match');
-            node.removeAttribute('data-formal-symbol-index');
-            node.removeAttribute('data-formal-symbol-captures');
+    function symbolMatchesFormula(symbol: SymbolData, formula: FormulaData): boolean {
+        const latex = normalizeLatexSymbol(formula.latex);
+        if (!latex) return false;
 
-            const matches = findSymbolMatches(symbols, formula.latex, currentFilePath, config, 1);
-            if (matches.length === 0) continue;
-            node.classList.add('formal-symbol-match');
-            node.setAttribute('data-formal-symbol-index', String(matches[0].symbol.index));
-            node.setAttribute('data-formal-symbol-captures', encodeCaptures(matches[0].captures));
-            node.setAttribute('title', matches[0].symbol.pattern);
-        }
-        return limit;
+        const regex = makeUnanchoredSymbolRegex(symbol);
+        if (regex && regex.test(latex)) return true;
+
+        const pattern = normalizeLatexSymbol(symbol.pattern);
+        if (pattern && !pattern.includes('${') && latex.includes(pattern)) return true;
+
+        const display = normalizeLatexSymbol(symbol.display);
+        return Boolean(display && latex.includes(display));
+    }
+
+    function listCurrentFormulaSymbols(symbols: SymbolData[], formulas: FormulaData[], currentFilePath: string, config: FormalConfig, limit = 200): SymbolData[] {
+        if (formulas.length === 0) return [];
+
+        const matches: Array<{ symbol: SymbolData; formulaIndex: number }> = [];
+        const seen = new Set<string>();
+
+        symbols
+            .filter(symbol => symbolInScope(symbol, currentFilePath, config))
+            .forEach(symbol => {
+                const formulaIndex = formulas.findIndex(formula => symbolMatchesFormula(symbol, formula));
+                if (formulaIndex < 0) return;
+
+                const key = symbol.index !== undefined
+                    ? String(symbol.index)
+                    : `${symbol.pattern}:${symbol.sourceFilePath || ''}:${symbol.sourceLine || ''}`;
+                if (seen.has(key)) return;
+
+                seen.add(key);
+                matches.push({ symbol, formulaIndex });
+            });
+
+        return matches
+            .sort((a, b) => {
+                if (a.formulaIndex !== b.formulaIndex) return a.formulaIndex - b.formulaIndex;
+                const location = `${a.symbol.sourceFilePath || ''}:${a.symbol.sourceLine || 0}`.localeCompare(`${b.symbol.sourceFilePath || ''}:${b.symbol.sourceLine || 0}`);
+                return location || a.symbol.pattern.localeCompare(b.symbol.pattern);
+            })
+            .slice(0, limit)
+            .map(item => item.symbol);
     }
 
     function getDefinitionElement(definition: DefinitionData): HTMLElement | null {
@@ -1309,12 +1285,7 @@
         container.appendChild(fallback);
     }
 
-    function appendSymbolDisplay(container: HTMLElement, symbol: SymbolData, formulaElement?: HTMLElement) {
-        if (formulaElement) {
-            container.appendChild(formulaElement.cloneNode(true));
-            return;
-        }
-
+    function appendSymbolDisplay(container: HTMLElement, symbol: SymbolData) {
         const template = getSymbolDisplayTemplate(symbol);
         if (template) {
             container.appendChild(document.importNode(template.content, true));
@@ -1326,73 +1297,15 @@
         container.appendChild(fallback);
     }
 
-    function appendSymbolMeaning(container: HTMLElement, match: SymbolMatch) {
-        const template = getSymbolMeaningTemplate(match.symbol);
+    function appendSymbolMeaning(container: HTMLElement, symbol: SymbolData) {
+        const template = getSymbolMeaningTemplate(symbol);
         if (template) {
             container.appendChild(document.importNode(template.content, true));
         } else {
             const fallback = document.createElement('span');
-            fallback.textContent = match.symbol.meaning;
+            fallback.textContent = symbol.meaning;
             container.appendChild(fallback);
         }
-
-        const captureEntries = Object.entries(match.captures).filter(([, value]) => value);
-        if (captureEntries.length > 0) {
-            const captures = document.createElement('div');
-            captures.className = 'formal-symbol-captures';
-            captureEntries.forEach(([name, value]) => {
-                const item = document.createElement('span');
-                item.className = 'formal-symbol-capture';
-                item.textContent = `${name}: ${value}`;
-                captures.appendChild(item);
-            });
-            container.appendChild(captures);
-        }
-    }
-
-    function showSymbolDetail(match: SymbolMatch, origin: Element | { x: number; y: number }, config: FormalConfig) {
-        removeDefinitionSelectionAction();
-        removeDefinitionPopover();
-
-        const popover = document.createElement('div');
-        popover.id = 'formal-definition-popover';
-        popover.className = 'formal-definition-popover formal-symbol-popover';
-
-        const header = document.createElement('div');
-        header.className = 'formal-definition-popover-header';
-
-        const heading = document.createElement('div');
-        heading.className = 'formal-definition-popover-title formal-symbol-popover-title';
-        appendSymbolDisplay(heading, match.symbol, match.formulaElement);
-
-        const close = document.createElement('button');
-        close.type = 'button';
-        close.className = 'formal-definition-close';
-        close.textContent = '×';
-        close.addEventListener('click', removeDefinitionPopover);
-        header.append(heading, close);
-
-        const location = document.createElement('div');
-        location.className = 'formal-definition-location';
-        location.textContent = symbolLocationLabel(match.symbol, config);
-
-        const content = document.createElement('div');
-        content.className = 'formal-definition-content formal-symbol-content';
-        appendSymbolMeaning(content, match);
-
-        const footer = document.createElement('div');
-        footer.className = 'formal-definition-footer';
-        if (match.symbol.sourceFilePath) {
-            const locate = document.createElement('button');
-            locate.type = 'button';
-            locate.className = 'formal-definition-locate';
-            locate.textContent = uiText(config, 'definitionLocate');
-            locate.addEventListener('click', () => openSymbolSource(match.symbol));
-            footer.appendChild(locate);
-        }
-
-        popover.append(header, location, content, footer);
-        positionFloatingElement(popover, origin);
     }
 
     function showDefinitionDetail(definition: DefinitionData, origin: Element | { x: number; y: number }, config: FormalConfig) {
@@ -1489,6 +1402,102 @@
         positionFloatingElement(popover, origin);
     }
 
+    function appendSymbolSearchResult(container: HTMLElement, symbol: SymbolData, config: FormalConfig, closeTarget?: HTMLElement) {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'formal-definition-search-result formal-symbol-search-result formal-symbol-menu-result';
+        item.addEventListener('click', () => {
+            openSymbolSource(symbol);
+            closeTarget?.classList.remove('formal-definition-search-open');
+        });
+
+        const title = document.createElement('span');
+        title.className = 'formal-definition-search-title formal-symbol-search-title';
+        appendSymbolDisplay(title, symbol);
+
+        const meta = document.createElement('span');
+        meta.className = 'formal-definition-search-meta';
+        meta.textContent = symbolLocationLabel(symbol, config);
+
+        const preview = document.createElement('span');
+        preview.className = 'formal-definition-search-preview formal-symbol-search-preview';
+        appendSymbolMeaning(preview, symbol);
+
+        item.append(title, meta, preview);
+        container.appendChild(item);
+    }
+
+    function renderSymbolDetail(container: HTMLElement, symbol: SymbolData, config: FormalConfig) {
+        container.replaceChildren();
+
+        const header = document.createElement('div');
+        header.className = 'formal-symbol-detail-header';
+
+        const title = document.createElement('div');
+        title.className = 'formal-symbol-detail-title';
+        appendSymbolDisplay(title, symbol);
+
+        const location = document.createElement('div');
+        location.className = 'formal-symbol-detail-location';
+        location.textContent = symbolLocationLabel(symbol, config);
+
+        header.append(title, location);
+
+        const content = document.createElement('div');
+        content.className = 'formal-symbol-detail-content';
+        appendSymbolMeaning(content, symbol);
+
+        const actions = document.createElement('div');
+        actions.className = 'formal-symbol-detail-actions';
+        if (symbol.sourceFilePath) {
+            const locate = document.createElement('button');
+            locate.type = 'button';
+            locate.className = 'formal-definition-locate formal-symbol-detail-locate';
+            locate.textContent = uiText(config, 'definitionLocate');
+            locate.addEventListener('click', () => openSymbolSource(symbol));
+            actions.appendChild(locate);
+        }
+
+        container.append(header, content, actions);
+    }
+
+    function renderSymbolMenu(menu: HTMLElement, symbols: SymbolData[], config: FormalConfig) {
+        menu.replaceChildren();
+
+        const heading = document.createElement('div');
+        heading.className = 'formal-definition-search-section-title';
+        heading.textContent = uiText(config, 'symbolContextTitle');
+
+        const chipGrid = document.createElement('div');
+        chipGrid.className = 'formal-symbol-chip-grid';
+
+        const detail = document.createElement('div');
+        detail.className = 'formal-symbol-detail';
+
+        let selected = symbols[0];
+        const selectSymbol = (symbol: SymbolData) => {
+            selected = symbol;
+            chipGrid.querySelectorAll<HTMLButtonElement>('.formal-symbol-chip').forEach(chip => {
+                chip.classList.toggle('formal-symbol-chip-active', Number(chip.dataset.symbolIndex) === symbol.index);
+            });
+            renderSymbolDetail(detail, selected, config);
+        };
+
+        symbols.forEach(symbol => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'formal-symbol-chip';
+            chip.dataset.symbolIndex = String(symbol.index ?? '');
+            chip.setAttribute('aria-label', symbol.pattern);
+            chip.addEventListener('click', () => selectSymbol(symbol));
+            appendSymbolDisplay(chip, symbol);
+            chipGrid.appendChild(chip);
+        });
+
+        menu.append(heading, chipGrid, detail);
+        selectSymbol(selected);
+    }
+
     function renderDefinitionSearchResults(panel: HTMLElement, definitions: DefinitionData[], symbols: SymbolData[], query: string, currentFilePath: string, config: FormalConfig) {
         panel.replaceChildren();
         const normalizedQuery = normalizeDefinitionQuery(query);
@@ -1531,28 +1540,7 @@
         });
 
         symbolResults.forEach(symbol => {
-            const item = document.createElement('button');
-            item.type = 'button';
-            item.className = 'formal-definition-search-result formal-symbol-search-result';
-            item.addEventListener('click', () => {
-                openSymbolSource(symbol);
-                panel.classList.remove('formal-definition-search-open');
-            });
-
-            const title = document.createElement('span');
-            title.className = 'formal-definition-search-title formal-symbol-search-title';
-            appendSymbolDisplay(title, symbol);
-
-            const meta = document.createElement('span');
-            meta.className = 'formal-definition-search-meta';
-            meta.textContent = symbolLocationLabel(symbol, config);
-
-            const preview = document.createElement('span');
-            preview.className = 'formal-definition-search-preview formal-symbol-search-preview';
-            appendSymbolMeaning(preview, { symbol, latex: symbol.pattern, captures: {} });
-
-            item.append(title, meta, preview);
-            panel.appendChild(item);
+            appendSymbolSearchResult(panel, symbol, config, panel);
         });
     }
 
@@ -1823,9 +1811,47 @@
         backBtn.classList.toggle('formal-btn-disabled', !hasHistory);
     }
 
-    function renderNav(currentFilePath: string, tocItems: TocItem[], chapters: ChapterItem[], definitions: DefinitionData[], symbols: SymbolData[], config: FormalConfig) {
+    function closeNavDropdowns(containers: HTMLElement[], except?: HTMLElement) {
+        containers.forEach(container => {
+            if (container !== except) {
+                container.classList.remove('formal-nav-menu-open');
+            }
+        });
+    }
+
+    function registerNavDropdown(container: HTMLElement, containers: HTMLElement[], closeSearchPanel: () => void) {
+        containers.push(container);
+
+        const open = () => {
+            closeSearchPanel();
+            closeNavDropdowns(containers, container);
+            container.classList.add('formal-nav-menu-open');
+        };
+        const close = () => {
+            container.classList.remove('formal-nav-menu-open');
+        };
+
+        container.addEventListener('mouseenter', open);
+        container.addEventListener('focusin', open);
+        container.addEventListener('mouseleave', () => {
+            if (!container.matches(':focus-within')) close();
+        });
+        container.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                close();
+                const active = document.activeElement;
+                if (active instanceof HTMLElement && container.contains(active)) {
+                    active.blur();
+                }
+            }
+        });
+    }
+
+    function renderNav(currentFilePath: string, tocItems: TocItem[], chapters: ChapterItem[], definitions: DefinitionData[], symbols: SymbolData[], formulas: FormulaData[], config: FormalConfig) {
         document.getElementById('formal-nav-bar')?.remove();
         const currentChapter = getCurrentChapter(chapters, currentFilePath);
+        const navDropdowns: HTMLElement[] = [];
+        let closeDefinitionSearch = () => {};
 
         const navBar = document.createElement('div');
         navBar.id = 'formal-nav-bar';
@@ -1922,6 +1948,7 @@
         }
 
         chapterContainer.appendChild(chapterMenu);
+        registerNavDropdown(chapterContainer, navDropdowns, () => closeDefinitionSearch());
         navBar.appendChild(chapterContainer);
 
         const tocContainer = document.createElement('div');
@@ -1963,7 +1990,28 @@
         }
 
         tocContainer.appendChild(tocMenu);
+        registerNavDropdown(tocContainer, navDropdowns, () => closeDefinitionSearch());
         navBar.appendChild(tocContainer);
+
+        const currentSymbols = symbols.length > 0 ? listCurrentFormulaSymbols(symbols, formulas, currentFilePath, config, 200) : [];
+        if (currentSymbols.length > 0) {
+            const symbolContainer = document.createElement('div');
+            symbolContainer.className = 'formal-nav-symbol-container';
+
+            const symbolBtn = document.createElement('button');
+            symbolBtn.type = 'button';
+            symbolBtn.className = 'formal-nav-btn formal-symbol-btn';
+            symbolBtn.textContent = `Σ ${uiText(config, 'symbolContextTitle')}`;
+            symbolContainer.appendChild(symbolBtn);
+
+            const symbolMenu = document.createElement('div');
+            symbolMenu.className = 'formal-symbol-menu';
+            renderSymbolMenu(symbolMenu, currentSymbols, config);
+
+            symbolContainer.appendChild(symbolMenu);
+            registerNavDropdown(symbolContainer, navDropdowns, () => closeDefinitionSearch());
+            navBar.appendChild(symbolContainer);
+        }
 
         if (definitions.length > 0 || symbols.length > 0) {
             const definitionContainer = document.createElement('div');
@@ -1977,23 +2025,43 @@
 
             const definitionPanel = document.createElement('div');
             definitionPanel.className = 'formal-definition-search-menu';
+            closeDefinitionSearch = () => {
+                definitionPanel.classList.remove('formal-definition-search-open');
+            };
 
             definitionInput.addEventListener('input', () => {
                 renderDefinitionSearchResults(definitionPanel, definitions, symbols, definitionInput.value, currentFilePath, config);
             });
             definitionInput.addEventListener('focus', () => {
+                closeNavDropdowns(navDropdowns);
                 renderDefinitionSearchResults(definitionPanel, definitions, symbols, definitionInput.value, currentFilePath, config);
             });
             definitionInput.addEventListener('keydown', event => {
                 if (event.key === 'Escape') {
-                    definitionPanel.classList.remove('formal-definition-search-open');
+                    closeDefinitionSearch();
                     definitionInput.blur();
                 }
+            });
+            definitionContainer.addEventListener('mouseenter', () => closeNavDropdowns(navDropdowns));
+            definitionContainer.addEventListener('focusout', () => {
+                window.setTimeout(() => {
+                    if (!definitionContainer.matches(':focus-within')) {
+                        closeDefinitionSearch();
+                    }
+                }, 80);
             });
 
             definitionContainer.append(definitionInput, definitionPanel);
             navBar.appendChild(definitionContainer);
         }
+        navBar.addEventListener('mouseleave', () => {
+            window.setTimeout(() => {
+                if (!navBar.matches(':hover, :focus-within')) {
+                    closeNavDropdowns(navDropdowns);
+                    closeDefinitionSearch();
+                }
+            }, 80);
+        });
         document.body.appendChild(navBar);
     }
 
@@ -2010,18 +2078,11 @@
         const tocItems = collectTocItems();
         const chapters = collectChapters(labels, pages, currentFilePath, config);
         applyIncomingNavigation();
-        const boundFormulaCount = bindSymbolFormulas(symbols, formulas, currentFilePath, config);
 
         if (tocItems.length === 0 && chapters.length === 0 && definitions.length === 0 && symbols.length === 0 && retryCount < 40) {
             retryCount++;
             scheduleRebuild(75);
             return;
-        }
-        if (symbols.length > 0 && formulas.length > 0 && boundFormulaCount === 0 && symbolRetryCount < 40) {
-            symbolRetryCount++;
-            scheduleRebuild(75);
-        } else {
-            symbolRetryCount = 0;
         }
 
         retryCount = 0;
@@ -2030,14 +2091,12 @@
         const signature = `${language}|${uiSignature}|${currentFilePath}|${tocItems.map(item => `${item.id}:${item.display || ''}:${item.title}`).join('|')}|${chapters.map(item => `${item.bookKey}:${item.volumeKey}:${item.unitKind}:${item.unitKey}:${item.filePath}:${item.title}`).join('|')}|${definitions.map(item => `${item.filePath}:${item.line}:${item.title}`).join('|')}|${symbols.map(item => `${item.pattern}:${item.scope}:${item.source || ''}`).join('|')}|${formulas.map(item => item.latex).join('|')}|${readHistory().length}`;
         if (signature === lastNavSignature && document.getElementById('formal-nav-bar')) {
             normalizeFormalLinks(currentFilePath);
-            bindSymbolFormulas(symbols, formulas, currentFilePath, config);
             return;
         }
 
         lastNavSignature = signature;
         normalizeFormalLinks(currentFilePath);
-        renderNav(currentFilePath, tocItems, chapters, definitions, symbols, config);
-        bindSymbolFormulas(symbols, formulas, currentFilePath, config);
+        renderNav(currentFilePath, tocItems, chapters, definitions, symbols, formulas, config);
     }
 
     function scheduleRebuild(delay = 50) {
@@ -2121,27 +2180,6 @@
         showDefinitionLookupPopover(selectedText, results, { x: event.clientX, y: event.clientY }, config);
     }
 
-    function handleSymbolClick(event: MouseEvent) {
-        const target = event.target;
-        if (!(target instanceof Element)) return;
-        const formula = target.closest<HTMLElement>('.formal-symbol-match');
-        if (!formula) return;
-
-        const index = Number(formula.getAttribute('data-formal-symbol-index'));
-        const symbol = readSymbols().find(item => item.index === index);
-        if (!symbol) return;
-
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-        showSymbolDetail({
-            symbol,
-            latex: formula.getAttribute('data-formal-latex') || symbol.pattern,
-            captures: decodeCaptures(formula.getAttribute('data-formal-symbol-captures')),
-            formulaElement: formula
-        }, formula, readConfig());
-    }
-
     function handleDefinitionDismiss(event: MouseEvent) {
         const target = event.target;
         if (target instanceof Element && target.closest('#formal-definition-popover')) return;
@@ -2190,7 +2228,6 @@
 
         formalWindow.__markdownFormalInstalled = true;
         document.body.addEventListener('click', handleFormalClick, true);
-        document.body.addEventListener('click', handleSymbolClick, true);
         document.body.addEventListener('contextmenu', handleDefinitionContextMenu, true);
         document.body.addEventListener('click', handleDefinitionDismiss);
         document.body.addEventListener('mouseup', scheduleDefinitionSelectionAction, true);

@@ -6,6 +6,8 @@ import {
     buildPreviewCache,
     mergeConfig,
     scanFormalDocuments,
+    scanExcludePatterns,
+    shouldExcludeScanPath,
     toPosix
 } from './core/formal-core';
 
@@ -51,9 +53,15 @@ async function readWorkspaceDocuments(mdFiles: any[]) {
     return documents;
 }
 
+function vscodeExcludePattern(config: any): string {
+    const patterns = scanExcludePatterns(config);
+    if (patterns.length === 0) return '';
+    return `{${patterns.join(',')}}`;
+}
+
 async function readSymbols(rootPath: string): Promise<any | undefined> {
     try {
-        return JSON.parse(await fs.promises.readFile(path.join(rootPath, 'formal-symbols.json'), 'utf-8'));
+        return JSON.parse(await fs.promises.readFile(path.join(rootPath, '.markdown-formal', 'symbols.json'), 'utf-8'));
     } catch (err: any) {
         if (err?.code === 'ENOENT') return undefined;
         throw err;
@@ -62,7 +70,7 @@ async function readSymbols(rootPath: string): Promise<any | undefined> {
 
 async function readDefinitions(rootPath: string): Promise<any | undefined> {
     try {
-        return JSON.parse(await fs.promises.readFile(path.join(rootPath, 'formal-definitions.json'), 'utf-8'));
+        return JSON.parse(await fs.promises.readFile(path.join(rootPath, '.markdown-formal', 'definitions.json'), 'utf-8'));
     } catch (err: any) {
         if (err?.code === 'ENOENT') return undefined;
         throw err;
@@ -75,10 +83,13 @@ async function scanWorkspaceOnce() {
 
     const rootPath = folders[0].uri.fsPath;
     const config = await ensureConfig(rootPath);
-    const mdFiles = await vscode.workspace.findFiles(
+    const mdFilesRaw = await vscode.workspace.findFiles(
         '**/*.md',
-        '**/{node_modules,.markdown-formal,out}/**'
+        vscodeExcludePattern(config)
     );
+    const mdFiles = mdFilesRaw.filter((fileUri: any) => (
+        !shouldExcludeScanPath(toPosix(vscode.workspace.asRelativePath(fileUri, false)), config)
+    ));
     const documents = await readWorkspaceDocuments(mdFiles);
     const symbols = await readSymbols(rootPath);
     const definitions = await readDefinitions(rootPath);
@@ -144,8 +155,8 @@ function scheduleScan(delay = 150) {
 
 function shouldTriggerScanForPath(fileName: string, languageId?: string): boolean {
     if (/[\\\/]\.markdown-formal[\\\/]config\.json$/i.test(fileName)) return true;
-    if (/[\\\/]formal-symbols\.json$/i.test(fileName)) return true;
-    if (/[\\\/]formal-definitions\.json$/i.test(fileName)) return true;
+    if (/[\\\/]\.markdown-formal[\\\/]symbols\.json$/i.test(fileName)) return true;
+    if (/[\\\/]\.markdown-formal[\\\/]definitions\.json$/i.test(fileName)) return true;
     if (/[\\\/]\.markdown-formal[\\\/]/i.test(fileName)) return false;
     return languageId === 'markdown' || /\.md$/i.test(fileName);
 }
@@ -164,8 +175,8 @@ export function activate(context: vscode.ExtensionContext) {
 
     const fileWatcher = vscode.workspace.createFileSystemWatcher('**/*.md');
     const configWatcher = vscode.workspace.createFileSystemWatcher('**/.markdown-formal/config.json');
-    const symbolsWatcher = vscode.workspace.createFileSystemWatcher('**/formal-symbols.json');
-    const definitionsWatcher = vscode.workspace.createFileSystemWatcher('**/formal-definitions.json');
+    const symbolsWatcher = vscode.workspace.createFileSystemWatcher('**/.markdown-formal/symbols.json');
+    const definitionsWatcher = vscode.workspace.createFileSystemWatcher('**/.markdown-formal/definitions.json');
     context.subscriptions.push(
         fileWatcher,
         fileWatcher.onDidCreate((uri: any) => {
