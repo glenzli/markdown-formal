@@ -33,8 +33,9 @@
 优先读取 .markdown-formal/agent-guide.md，再读取目标原文和 .markdown-formal/reference-map.md。
 
 引用已有编号对象时，只能从 reference-map.md 复制 @h-... 或 @h-....title。重要引用附近保留自然语言语义，例如“由谱半径引理 `@h-...` 可得”；不要写成只有裸 `@h-...`。
-新增小节、命题、引理、定理、推论等 marker 使用 tmp-1/tmp-2/...，不要手动生成 hash。
+新增小节、命题、引理、定理、推论、公式、图、表等 marker 使用 tmp-1/tmp-2/...，不要手动生成 hash。
 小节只用于编号和跳转；命题、引理、定理、推论的 recall 只覆盖 `证明` / `Proof` 前的陈述。
+公式、图、表各自独立编号：`公式 #tmp-*：` 放在 display math 前，图 caption 写 `图 #tmp-*（Title）：...`，表 caption 写 `表 #tmp-*（Title）：`。不要把 hash 写进 LaTeX 公式内部。
 
 定义不加 hash、不参与 ref。定义查询是 AI 必须维护的概念索引工作流：修改某个文件后，只检查该文件内新增、删除、改写的定义，并同步更新 .markdown-formal/definitions.json 中 source 指向该文件的条目。需要可靠查询的条目必须记录 term、可选 aliases、source 和 Markdown content；`定义（术语）：...` / `Definition (Term): ...` 自动扫描只作为简单 fallback。非标准句式如“称为 X”“所谓 X”“定义其 X”“记作 X”“called X”如果应当可查询，就写入 .markdown-formal/definitions.json。不要为了工具机械改写项目文风，也不要每次全书重抽。
 
@@ -63,6 +64,7 @@
 ```bash
 npm run formal -- prepare
 npm run formal -- finish path/to/chapter-or-dir
+npm run formal -- audit path/to/chapter-or-dir
 npm run formal -- verify
 ```
 
@@ -71,6 +73,7 @@ npm run formal -- verify
 - `.markdown-formal/agent-guide.md`：工具生成的当次 AI 操作卡。
 - `.markdown-formal/reference-map.md`：显示编号到 hash ID 的表。
 - `.markdown-formal/report.md`：校验和迁移报告。
+- `.markdown-formal/audit.md`：`audit` 生成的 AI 清理建议，不是门禁。
 - `.markdown-formal/preview-cache.json`：预览运行时缓存，AI 不直接编辑。
 - `.markdown-formal/config.json`：语言、扫描排除、跨 book 查询依赖等配置。
 - `.markdown-formal/definitions.json`：AI 维护的定义查询源表；需要可靠预览的条目必须含 `content`。
@@ -101,6 +104,8 @@ npm run formal -- verify
   }
 }
 ```
+
+跨 book 的正文 `@h-...` 引用也受同一依赖配置约束；没有声明依赖时，`verify` 会把跨 book 引用作为错误处理。
 
 `npm run formal` 应从拥有 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbols.json` 的项目根目录执行。根目录扫描时，必须把构建产物、上下文目录、草稿目录等不属于正式正文体系的 Markdown 写入 `scan.exclude`。概念附录、索引页或超密集引用页如果不需要 recall hover，可写入 `preview.ignoreHover`；支持完整相对路径、裸文件名和 glob。这只关闭正文里的 `@hash` 悬浮 recall，保留编号、导航、跳转、定义搜索以及当前页符号表的 LaTeX 预览。排查空白预览时，可临时设置 `debug.previewLog: true` 并读取 `.markdown-formal/preview-debug.log`。
 
@@ -142,7 +147,7 @@ npm run formal -- migrate-ids --apply path/to/chapter-or-volume
 
 逐章或逐卷迁移时，默认会同步处理 incoming refs：目标范围内按完整 reference map 迁移，目标范围外只处理指向目标范围编号 marker 的旧文字引用。只有明确要把改写限制在目标文件内时才使用 `--target-only`。
 
-`migrate-text-refs` 只自动改写带类型或章节语义的旧编号引用，例如 `定理 2.1`、`命题2.2`、`Theorem 2.1`、`§2.1`、`第 2.1 节`。裸 `2.1` 不自动改写，因为它可能是小数、公式编号、章节号或参数，必须由 AI 结合上下文手工判断。工具使用边界匹配，避免把 `2.1` 误替换进 `2.12`、`2.1.3` 或 `22.1`。
+`migrate-text-refs` 只自动改写带类型或章节语义的旧编号引用，例如 `定理 2.1`、`命题2.2`、`Theorem 2.1`、`公式 (2.1)`、`Figure 2.1`、`表 2.1`、`§2.1`、`第 2.1 节`。裸 `2.1` 或裸 `(2.1)` 不自动改写，因为它可能是小数、公式编号、章节号或参数，必须由 AI 结合上下文手工判断。工具使用边界匹配，避免把 `2.1` 误替换进 `2.12`、`2.1.3` 或 `22.1`。
 
 如果 `migrate-ids --target-only` 发现目标范围内旧 ID 被范围外文件引用，工具会拒绝 apply。此时去掉 `--target-only`，或选择更大的闭合范围。
 

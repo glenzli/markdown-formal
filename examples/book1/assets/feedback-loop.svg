@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="180" viewBox="0 0 480 180" role="img" aria-labelledby="title desc">
+  <title id="title">Feedback loop schematic</title>
+  <desc id="desc">A compact operator feedback loop with three nodes and directed weighted edges.</desc>
+  <rect width="480" height="180" fill="#f8f8f8"/>
+  <g fill="#ffffff" stroke="#4b5563" stroke-width="2">
+    <circle cx="110" cy="90" r="32"/>
+    <circle cx="240" cy="55" r="32"/>
+    <circle cx="370" cy="90" r="32"/>
+  </g>
+  <g fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)">
+    <path d="M141 82 C165 55, 190 48, 208 51"/>
+    <path d="M272 62 C301 69, 326 77, 340 83"/>
+    <path d="M342 105 C275 148, 190 147, 138 105"/>
+  </g>
+  <g font-family="Arial, sans-serif" fill="#111827" text-anchor="middle">
+    <text x="110" y="96" font-size="18">V1</text>
+    <text x="240" y="61" font-size="18">V2</text>
+    <text x="370" y="96" font-size="18">V3</text>
+    <text x="176" y="38" font-size="14">w12</text>
+    <text x="306" y="54" font-size="14">w23</text>
+    <text x="242" y="154" font-size="14">w31</text>
+  </g>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+</svg>

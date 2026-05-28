@@ -511,7 +511,10 @@ function numberedReferenceAliases(def, config) {
         cor: '推论',
         remark: '注',
         example: '例',
-        section: '节'
+        section: '节',
+        equation: '公式',
+        figure: '图',
+        table: '表'
     };
     const enTypes = {
         theorem: 'Theorem',
@@ -520,7 +523,10 @@ function numberedReferenceAliases(def, config) {
         cor: 'Corollary',
         remark: 'Remark',
         example: 'Example',
-        section: 'Section'
+        section: 'Section',
+        equation: 'Equation',
+        figure: 'Figure',
+        table: 'Table'
     };
     const shortEnTypes = {
         theorem: 'Thm.',
@@ -529,7 +535,10 @@ function numberedReferenceAliases(def, config) {
         cor: 'Cor.',
         remark: 'Rem.',
         example: 'Ex.',
-        section: 'Sec.'
+        section: 'Sec.',
+        equation: 'Eq.',
+        figure: 'Fig.',
+        table: 'Tab.'
     };
     const shortEnNoDotTypes = {
         theorem: 'Thm',
@@ -538,27 +547,42 @@ function numberedReferenceAliases(def, config) {
         cor: 'Cor',
         remark: 'Rem',
         example: 'Ex',
-        section: 'Sec'
+        section: 'Sec',
+        equation: 'Eq',
+        figure: 'Fig',
+        table: 'Tab'
     };
 
     const zh = zhTypes[def.type];
     if (zh) {
         aliases.push(`${zh}${number}`, `${zh} ${number}`);
+        if (def.type === 'equation') {
+            aliases.push(`${zh}(${number})`, `${zh} (${number})`, `${zh}（${number}）`);
+        }
     }
 
     const en = enTypes[def.type];
     if (en) {
         aliases.push(`${en} ${number}`);
+        if (def.type === 'equation') {
+            aliases.push(`${en} (${number})`);
+        }
     }
 
     const shortEn = shortEnTypes[def.type];
     if (shortEn) {
         aliases.push(`${shortEn} ${number}`);
+        if (def.type === 'equation') {
+            aliases.push(`${shortEn} (${number})`);
+        }
     }
 
     const shortEnNoDot = shortEnNoDotTypes[def.type];
     if (shortEnNoDot) {
         aliases.push(`${shortEnNoDot} ${number}`);
+        if (def.type === 'equation') {
+            aliases.push(`${shortEnNoDot} (${number})`);
+        }
     }
 
     if (def.type === 'section') {
@@ -582,6 +606,9 @@ function numberedReferenceAliases(def, config) {
     const configuredName = typeName(config, def.type);
     if (configuredName && configuredName !== zh && configuredName !== en) {
         aliases.push(`${configuredName}${number}`, `${configuredName} ${number}`);
+        if (def.type === 'equation') {
+            aliases.push(`${configuredName}(${number})`, `${configuredName} (${number})`, `${configuredName}（${number}）`);
+        }
     }
 
     return unique(aliases);
@@ -602,8 +629,10 @@ function buildTextReferenceIndex(definitions, config) {
 function normalizeTextReferenceAlias(value) {
     const alias = value.trim().replace(/．/g, '.').replace(/\s+/g, ' ');
     const number = `(${TEXT_REF_NUMBER.replace(/．/g, '.')})`;
-    const cjk = alias.match(new RegExp(`^(定理|引理|命题|推论|注|例)\\s*${number}$`));
+    const cjk = alias.match(new RegExp(`^(定理|引理|命题|推论|注|例|公式|方程|图|表)\\s*[（(]?${number}[）)]?$`));
     if (cjk) return `${cjk[1]}${normalizeReferenceNumber(cjk[2])}`;
+    const enTyped = alias.match(new RegExp(`^(Theorem|Lemma|Proposition|Corollary|Remark|Example|Equation|Formula|Figure|Table|Thm\\.?|Lem\\.?|Prop\\.?|Cor\\.?|Rem\\.?|Ex\\.?|Eq\\.?|Fig\\.?|Tab\\.?)\\s*[（(]?${number}[）)]?$`, 'i'));
+    if (enTyped) return `${enTyped[1].replace(/\s+/g, ' ')} ${normalizeReferenceNumber(enTyped[2])}`;
     const cjkSectionPrefix = alias.match(new RegExp(`^第\\s*${number}\\s*节$`));
     if (cjkSectionPrefix) return `§${normalizeReferenceNumber(cjkSectionPrefix[1])}`;
     const cjkSectionName = alias.match(new RegExp(`^(?:节|小节|章节)\\s*${number}$`));
@@ -616,7 +645,7 @@ function normalizeTextReferenceAlias(value) {
 }
 
 function makeTextReferencePattern(config) {
-    const configuredTypes = ['prop', 'lemma', 'theorem', 'cor', 'section']
+    const configuredTypes = ['prop', 'lemma', 'theorem', 'cor', 'section', 'equation', 'figure', 'table']
         .map(type => typeName(config, type))
         .filter(name => name && name !== '§');
     const typeWords = unique([
@@ -624,6 +653,10 @@ function makeTextReferencePattern(config) {
         '引理',
         '命题',
         '推论',
+        '公式',
+        '方程',
+        '图',
+        '表',
         '节',
         'Theorem',
         'Lemma',
@@ -631,6 +664,10 @@ function makeTextReferencePattern(config) {
         'Corollary',
         'Remark',
         'Example',
+        'Equation',
+        'Formula',
+        'Figure',
+        'Table',
         'Section',
         'Thm\\.',
         'Thm',
@@ -644,12 +681,19 @@ function makeTextReferencePattern(config) {
         'Rem',
         'Ex\\.',
         'Ex',
+        'Eq\\.',
+        'Eq',
+        'Fig\\.',
+        'Fig',
+        'Tab\\.',
+        'Tab',
         'Sec\\.',
         'Sec',
         ...configuredTypes.map(escapeRegExp)
     ]).join('|');
+    const typedNumber = `[（(]?(?:${TEXT_REF_NUMBER})[）)]?`;
     const alternatives = [
-        `(?:(?:${typeWords})\\s*(?:${TEXT_REF_NUMBER}))`,
+        `(?:(?:${typeWords})\\s*${typedNumber})`,
         `(?:§\\s*(?:${TEXT_REF_NUMBER}))`,
         `(?:(?:${TEXT_REF_NUMBER})\\s*节)`,
         `(?:第\\s*(?:${TEXT_REF_NUMBER})\\s*节)`,
@@ -913,6 +957,311 @@ function renderTextReferenceMigrationReport(result) {
     return `${lines.join('\n')}\n`;
 }
 
+function splitAuditTextSegments(line) {
+    const segments = [];
+    const re = /(`[^`]*`|\[[^\]\n]+\]\([^\)\n]*\)|\$[^$\n]+\$|\\\([\s\S]*?\\\))/g;
+    let lastIndex = 0;
+    let match;
+    while ((match = re.exec(line))) {
+        if (match.index > lastIndex) {
+            segments.push({ text: line.slice(lastIndex, match.index), offset: lastIndex });
+        }
+        lastIndex = re.lastIndex;
+    }
+    if (lastIndex < line.length) {
+        segments.push({ text: line.slice(lastIndex), offset: lastIndex });
+    }
+    return segments;
+}
+
+function hasBareReferenceCue(before, after) {
+    const left = before.slice(-24);
+    const right = after.slice(0, 24);
+    return /(由|见|参见|参考|根据|结合|利用|推出|得到|可得|来自|遵循|see|by|from|using|as|in)\s*$/i.test(left)
+        || /^\s*(可得|推出|得到|给出|implies|gives|shows|follows)/i.test(right);
+}
+
+function isTypedNumberContext(before, after) {
+    return /(定理|引理|命题|推论|注|例|公式|方程|图|表|Theorem|Lemma|Proposition|Corollary|Remark|Example|Equation|Formula|Figure|Table|Thm\.?|Lem\.?|Prop\.?|Cor\.?|Rem\.?|Ex\.?|Eq\.?|Fig\.?|Tab\.?|§|第)\s*$/i.test(before)
+        || /^\s*节/.test(after);
+}
+
+function collectBareNumberCandidates(content, file) {
+    const candidates = [];
+    const lines = content.split(/\r?\n/);
+    const numberRe = /(^|[^@#A-Za-z0-9_])(\(?[A-Z]?(?:\d+|[A-Z])(?:[.．]\d+)+\)?)(?![A-Za-z0-9_-]|[.．]\d)/g;
+    let inFence = false;
+
+    lines.forEach((line, index) => {
+        if (/^\s*(```|~~~)/.test(line)) {
+            inFence = !inFence;
+            return;
+        }
+        if (inFence) return;
+
+        for (const segment of splitAuditTextSegments(line)) {
+            numberRe.lastIndex = 0;
+            let match;
+            while ((match = numberRe.exec(segment.text))) {
+                const localStart = match.index + match[1].length;
+                const start = segment.offset + localStart;
+                const end = start + match[2].length;
+                const before = line.slice(0, start);
+                const after = line.slice(end);
+                if (isTypedNumberContext(before, after)) continue;
+                if (!hasBareReferenceCue(before, after)) continue;
+                candidates.push({
+                    code: 'bare-number-candidate',
+                    file,
+                    line: index + 1,
+                    text: match[2],
+                    context: line.trim()
+                });
+            }
+        }
+    });
+
+    return candidates;
+}
+
+function normalizeAuditProofLine(line) {
+    return line
+        .trim()
+        .replace(/^>\s*/, '')
+        .replace(/^\s*[-+*]\s+/, '')
+        .replace(/^\*\*(.+?)\*\*/, '$1')
+        .replace(/^__(.+?)__/, '$1')
+        .replace(/^\*(.+?)\*/, '$1')
+        .replace(/^_(.+?)_/, '$1')
+        .trim();
+}
+
+function isAuditProofBoundary(line) {
+    const text = normalizeAuditProofLine(line);
+    return /^(?:证明(?:概要|草图|思路|如下|在此略去)?|Proof(?:\s+sketch)?|Sketch of proof)\s*(?:[：:。.．.]|$|\s)/i.test(text);
+}
+
+function isAuditBlockBoundary(line) {
+    return /^#{1,6}\s+/.test(line) || !!parseFormalMarkerLine(line);
+}
+
+function collectMissingProofBoundaries(content, file) {
+    const findings = [];
+    const theoremTypes = new Set(['prop', 'lemma', 'theorem', 'cor']);
+    const lines = content.split(/\r?\n/);
+    let inFence = false;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (/^\s*(```|~~~)/.test(line)) {
+            inFence = !inFence;
+            continue;
+        }
+        if (inFence) continue;
+
+        const marker = parseFormalMarkerLine(line);
+        if (!marker || !theoremTypes.has(marker.type)) continue;
+
+        let hasProof = false;
+        for (let j = i + 1; j < lines.length; j++) {
+            if (isAuditProofBoundary(lines[j])) {
+                hasProof = true;
+                break;
+            }
+            if (isAuditBlockBoundary(lines[j])) break;
+        }
+
+        if (!hasProof) {
+            findings.push({
+                code: 'missing-proof-boundary',
+                file,
+                line: i + 1,
+                text: marker.markerText,
+                title: marker.title || ''
+            });
+        }
+    }
+
+    return findings;
+}
+
+function collectUnusedOptionalBlocks(state, targetFileSet) {
+    const referencedIds = new Set(state.references.map(ref => ref.id));
+    return state.definitions
+        .filter(def => def.id && (def.type === 'remark' || def.type === 'example'))
+        .filter(def => targetFileSet.has(def.file))
+        .filter(def => !referencedIds.has(def.id))
+        .map(def => ({
+            code: 'unused-optional-block-hash',
+            file: def.file,
+            line: def.line,
+            id: def.id,
+            display: displayLabel(def, state.config),
+            title: def.title || ''
+        }));
+}
+
+function escapeAuditText(value) {
+    return String(value).replace(/\|/g, '\\|').replace(/\n/g, ' ');
+}
+
+function renderAuditReport(result) {
+    const lines = [
+        '# markdown-formal Audit',
+        '',
+        'Generated by `npm run formal -- audit`. This report is advisory and does not affect `verify`.',
+        '',
+        `Scope: ${result.scope}`,
+        `Files scanned: ${result.files}`,
+        `Typed old references: ${result.replacements.length + result.unresolved.length + result.ambiguous.length}`,
+        `Markdown links needing manual rewrite: ${result.linkedReferences.length}`,
+        `Section headings needing numbered markers: ${result.sectionHeadings.length}`,
+        `Bare number candidates: ${result.bareNumberCandidates.length}`,
+        `Unused optional block hashes: ${result.unusedOptionalBlocks.length}`,
+        `Theorem-like blocks without proof boundary: ${result.missingProofBoundaries.length}`,
+        ''
+    ];
+
+    if (result.replacements.length > 0) {
+        lines.push('## Typed Old References', '');
+        lines.push('These can usually be migrated to `@h-...`.', '');
+        result.replacements.forEach(item => {
+            lines.push(`- ${item.file}:${item.line}: ${item.from} -> @${item.id} (${item.title || 'untitled'})`);
+        });
+        lines.push('');
+    }
+
+    if (result.unresolved.length > 0) {
+        lines.push('## Unresolved Typed References', '');
+        result.unresolved.forEach(item => {
+            lines.push(`- ${item.file}:${item.line}: ${item.text}`);
+        });
+        lines.push('');
+    }
+
+    if (result.ambiguous.length > 0) {
+        lines.push('## Ambiguous Typed References', '');
+        result.ambiguous.forEach(item => {
+            lines.push(`- ${item.file}:${item.line}: ${item.text}`);
+            item.candidates.forEach(candidate => {
+                lines.push(`  - ${candidate.id} ${candidate.title || 'untitled'} (${candidate.file}:${candidate.line})`);
+            });
+        });
+        lines.push('');
+    }
+
+    if (result.linkedReferences.length > 0) {
+        lines.push('## Markdown Links Needing Manual Rewrite', '');
+        result.linkedReferences.forEach(item => {
+            const suffix = item.status === 'resolved' ? `; suggested @${item.id} (${item.title || item.display || 'untitled'})` : `; ${item.status}`;
+            lines.push(`- ${item.file}:${item.line}: ${item.link} contains ${item.text}${suffix}`);
+        });
+        lines.push('');
+    }
+
+    if (result.sectionHeadings.length > 0) {
+        lines.push('## Section Headings Needing Numbered Markers', '');
+        result.sectionHeadings.forEach(item => {
+            lines.push(`- ${item.file}:${item.line}: ${item.text}`);
+        });
+        lines.push('');
+    }
+
+    if (result.bareNumberCandidates.length > 0) {
+        lines.push('## Bare Number Candidates', '');
+        lines.push('These are only heuristics. Read the sentence before converting anything.', '');
+        result.bareNumberCandidates.forEach(item => {
+            lines.push(`- ${item.file}:${item.line}: ${item.text} in "${escapeAuditText(item.context)}"`);
+        });
+        lines.push('');
+    }
+
+    if (result.unusedOptionalBlocks.length > 0) {
+        lines.push('## Unused Optional Block Hashes', '');
+        lines.push('Remarks and examples usually stay plain unless later text cites them.', '');
+        result.unusedOptionalBlocks.forEach(item => {
+            lines.push(`- ${item.file}:${item.line}: ${item.display} \`${item.id}\`${item.title ? ` (${escapeAuditText(item.title)})` : ''}`);
+        });
+        lines.push('');
+    }
+
+    if (result.missingProofBoundaries.length > 0) {
+        lines.push('## Theorem-Like Blocks Without Proof Boundary', '');
+        lines.push('This is advisory. Add `证明` / `Proof` when the block has a proof and recall should stop before it.', '');
+        result.missingProofBoundaries.forEach(item => {
+            lines.push(`- ${item.file}:${item.line}: ${item.text}${item.title ? ` (${escapeAuditText(item.title)})` : ''}`);
+        });
+        lines.push('');
+    }
+
+    if (lines[lines.length - 1] !== '') lines.push('');
+    if ([
+        result.replacements,
+        result.unresolved,
+        result.ambiguous,
+        result.linkedReferences,
+        result.sectionHeadings,
+        result.bareNumberCandidates,
+        result.unusedOptionalBlocks,
+        result.missingProofBoundaries
+    ].every(items => items.length === 0)) {
+        lines.push('No audit findings.', '');
+    }
+
+    return `${lines.join('\n')}\n`;
+}
+
+async function audit(args) {
+    const state = await scanWorkspace();
+    await writeArtifacts(state);
+
+    const allFiles = await collectMarkdownFiles(state.config);
+    const targetFiles = args.length > 0 ? await resolveInputMarkdownFiles(args, state.config) : allFiles;
+    const targetFileSet = new Set(targetFiles.map(relativePath));
+    const byAlias = buildTextReferenceIndex(state.definitions, state.config);
+    const pattern = makeTextReferencePattern(state.config);
+    const result = {
+        scope: args.length > 0 ? args.join(', ') : 'workspace',
+        files: targetFiles.length,
+        replacements: [],
+        unresolved: [],
+        ambiguous: [],
+        linkedReferences: [],
+        sectionHeadings: [],
+        bareNumberCandidates: [],
+        unusedOptionalBlocks: collectUnusedOptionalBlocks(state, targetFileSet),
+        missingProofBoundaries: []
+    };
+
+    for (const fullPath of targetFiles) {
+        const file = relativePath(fullPath);
+        const original = await fs.readFile(fullPath, 'utf8');
+        const rewritten = rewriteTextReferences(original, file, pattern, byAlias);
+        result.replacements.push(...rewritten.replacements);
+        result.unresolved.push(...rewritten.unresolved);
+        result.ambiguous.push(...rewritten.ambiguous);
+        result.linkedReferences.push(...rewritten.linkedReferences);
+        result.sectionHeadings.push(...rewritten.sectionHeadings);
+        result.bareNumberCandidates.push(...collectBareNumberCandidates(original, file));
+        result.missingProofBoundaries.push(...collectMissingProofBoundaries(original, file));
+    }
+
+    await ensureCacheDir();
+    await fs.writeFile(path.join(CACHE_DIR, 'audit.md'), renderAuditReport(result), 'utf8');
+
+    const findingCount = result.replacements.length
+        + result.unresolved.length
+        + result.ambiguous.length
+        + result.linkedReferences.length
+        + result.sectionHeadings.length
+        + result.bareNumberCandidates.length
+        + result.unusedOptionalBlocks.length
+        + result.missingProofBoundaries.length;
+    const status = findingCount > 0 ? 'WARN' : 'OK';
+    console.log(`${status} audit: ${findingCount} findings across ${targetFiles.length} files`);
+    console.log('Report: .markdown-formal/audit.md');
+}
+
 async function migrateTextRefs(args) {
     const options = parseMigrationArgs(args);
     if (!options.all && options.paths.length === 0) {
@@ -1078,6 +1427,7 @@ function printHelp({ all = false } = {}) {
   npm run formal -- finish <file-or-dir> [...] [--all]
   npm run formal -- migrate-text-refs <file-or-dir> [...] [--apply] [--target-only] [--all]
   npm run formal -- migrate-ids <file-or-dir> [...] [--apply] [--target-only] [--all]
+  npm run formal -- audit [file-or-dir] [...]
   npm run formal -- verify [--strict-chapters]
 
 Migrations are dry-run by default. Pass --apply to edit files.
@@ -1099,11 +1449,13 @@ Advanced commands:
   npm run formal -- finish <file-or-dir> [...] [--all]
   npm run formal -- migrate-text-refs <file-or-dir> [...] [--apply] [--target-only] [--all]
   npm run formal -- migrate-ids <file-or-dir> [...] [--apply] [--target-only] [--all]
+  npm run formal -- audit [file-or-dir] [...]
   npm run formal -- verify [--strict-chapters]
 
 Advanced:
   npm run formal -- finalize <file-or-dir> [...] [--all]
   npm run formal -- lint
+  npm run formal -- audit [file-or-dir] [...]
   npm run formal -- perf-dummy [chapters] [blocks-per-chapter] [--max-ms N] [--max-heap-mb N]
   npm run formal -- report
 
@@ -1136,6 +1488,8 @@ async function main() {
         await migrateTextRefs(args);
     } else if (command === 'migrate-ids') {
         await migrateIds(args);
+    } else if (command === 'audit') {
+        await audit(args);
     } else if (command === 'report') {
         await printReport();
     } else if (command === 'perf-dummy') {

@@ -9,7 +9,10 @@
       "def": "定义",
       "remark": "注",
       "example": "例",
-      "section": "§"
+      "section": "§",
+      "equation": "公式",
+      "figure": "图",
+      "table": "表"
     },
     "en": {
       "theorem": "Theorem",
@@ -19,7 +22,10 @@
       "def": "Definition",
       "remark": "Remark",
       "example": "Example",
-      "section": "§"
+      "section": "§",
+      "equation": "Equation",
+      "figure": "Figure",
+      "table": "Table"
     }
   },
   "ui": {

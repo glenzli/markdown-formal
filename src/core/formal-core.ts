@@ -151,7 +151,7 @@ export interface FormalMarker {
     level?: number;
 }
 
-export const FORMAL_TYPES = ['prop', 'lemma', 'theorem', 'cor', 'def', 'remark', 'example', 'section'];
+export const FORMAL_TYPES = ['prop', 'lemma', 'theorem', 'cor', 'def', 'remark', 'example', 'section', 'equation', 'figure', 'table'];
 export const THEOREM_COUNTER_TYPES = new Set(['prop', 'lemma', 'theorem', 'cor']);
 export const RECALL_TYPES = new Set(['prop', 'lemma', 'theorem', 'cor', 'remark', 'example']);
 export const SECTION_TYPES = new Set(['section']);
@@ -173,12 +173,13 @@ const SYMBOL_SAMPLE_VALUES: Record<string, string> = {
     left: 'x',
     right: 'y'
 };
+const STRUCTURED_NUMBERED_TYPES = new Set(['equation', 'figure', 'table']);
 
 export const DEFAULT_CONFIG = {
     language: 'zh',
     dictionary: {
-        zh: { theorem: '定理', lemma: '引理', prop: '命题', cor: '推论', def: '定义', remark: '注', example: '例', section: '§' },
-        en: { theorem: 'Theorem', lemma: 'Lemma', prop: 'Proposition', cor: 'Corollary', def: 'Definition', remark: 'Remark', example: 'Example', section: '§' }
+        zh: { theorem: '定理', lemma: '引理', prop: '命题', cor: '推论', def: '定义', remark: '注', example: '例', section: '§', equation: '公式', figure: '图', table: '表' },
+        en: { theorem: 'Theorem', lemma: 'Lemma', prop: 'Proposition', cor: 'Corollary', def: 'Definition', remark: 'Remark', example: 'Example', section: '§', equation: 'Equation', figure: 'Figure', table: 'Table' }
     },
     ui: {
         zh: {
@@ -816,6 +817,12 @@ const MARKER_TYPE_ALIASES: Record<string, string> = {
     '定义': 'def',
     '注': 'remark',
     '例': 'example',
+    '公式': 'equation',
+    '方程': 'equation',
+    '图': 'figure',
+    '图示': 'figure',
+    '表': 'table',
+    '表格': 'table',
     proposition: 'prop',
     prop: 'prop',
     lemma: 'lemma',
@@ -829,7 +836,14 @@ const MARKER_TYPE_ALIASES: Record<string, string> = {
     remark: 'remark',
     rem: 'remark',
     example: 'example',
-    ex: 'example'
+    ex: 'example',
+    equation: 'equation',
+    eq: 'equation',
+    formula: 'equation',
+    figure: 'figure',
+    fig: 'figure',
+    table: 'table',
+    tab: 'table'
 };
 
 function normalizeMarkerType(value: string): string | undefined {
@@ -895,7 +909,7 @@ export function parseFormalMarkerLine(line: string): FormalMarker | undefined {
     }
 
     const text = normalizeLeadingMarkerEmphasis(line);
-    const typePattern = '定理|引理|命题|推论|定义|注|例|Theorem|Thm\\.?|Lemma|Lem\\.?|Proposition|Prop\\.?|Corollary|Cor\\.?|Definition|Def\\.?|Remark|Rem\\.?|Example|Ex\\.?';
+    const typePattern = '定理|引理|命题|推论|定义|注|例|公式|方程|图示|图|表格|表|Theorem|Thm\\.?|Lemma|Lem\\.?|Proposition|Prop\\.?|Corollary|Cor\\.?|Definition|Def\\.?|Remark|Rem\\.?|Example|Ex\\.?|Equation|Eq\\.?|Formula|Figure|Fig\\.?|Table|Tab\\.?';
     const typed = text.match(new RegExp(`^(${typePattern})\\s*(.*)$`, 'i'));
     if (!typed) return undefined;
 
@@ -1098,6 +1112,13 @@ function isDisplayMathLine(line: string): boolean {
         || /^\\(?:begin|end)\{(?:equation|align|alignat|gather|multline|flalign|split|aligned|cases|matrix|pmatrix|bmatrix|vmatrix|Vmatrix)\*?\}/.test(text);
 }
 
+function isDisplayMathStartLine(line: string): boolean {
+    const text = line.trim();
+    return text.startsWith('$$')
+        || text.startsWith('\\[')
+        || /^\\begin\{(?:equation|align|alignat|gather|multline|flalign|split|aligned|cases|matrix|pmatrix|bmatrix|vmatrix|Vmatrix)\*?\}/.test(text);
+}
+
 function updateDisplayMathState(line: string, inDisplayMath: boolean): boolean {
     const text = line.trim();
     const dollarCount = (text.match(/\$\$/g) || []).length;
@@ -1282,6 +1303,94 @@ function makeDefinitionLabelData(marker: FormalMarker, document: FormalDocument,
     return label;
 }
 
+function previousNonBlankLineIndex(lines: string[], startIndex: number): number {
+    for (let i = startIndex; i >= 0; i--) {
+        if (lines[i].trim()) return i;
+    }
+    return -1;
+}
+
+function isMarkdownImageLine(line: string): boolean {
+    return /!\[[^\]\n]*\]\([^)]+\)/.test(line.trim());
+}
+
+function isMarkdownTableRow(line: string): boolean {
+    const text = line.trim();
+    return text.includes('|') && text.split('|').filter(part => part.trim()).length >= 2;
+}
+
+function isMarkdownTableDelimiter(line: string): boolean {
+    const text = line.trim();
+    if (!text.includes('|')) return false;
+    const cells = text.replace(/^\|/, '').replace(/\|$/, '').split('|').map(cell => cell.trim());
+    return cells.length >= 2 && cells.every(cell => /^:?-{3,}:?$/.test(cell));
+}
+
+function isMarkdownTableStart(lines: string[], lineIndex: number): boolean {
+    return lineIndex >= 0
+        && lineIndex + 1 < lines.length
+        && isMarkdownTableRow(lines[lineIndex])
+        && isMarkdownTableDelimiter(lines[lineIndex + 1]);
+}
+
+function lintStructuredNumberedMarker(marker: FormalMarker, lines: string[], lineIndex: number, filePath: string): FormalIssue[] {
+    if (!STRUCTURED_NUMBERED_TYPES.has(marker.type)) return [];
+
+    const issues: FormalIssue[] = [];
+    const next = nextNonBlankLineIndex(lines, lineIndex + 1);
+    const previous = previousNonBlankLineIndex(lines, lineIndex - 1);
+
+    if (marker.type === 'equation') {
+        if (next < 0 || !isDisplayMathStartLine(lines[next])) {
+            issues.push({
+                severity: 'error',
+                code: 'equation-target-missing',
+                file: filePath,
+                line: lineIndex + 1,
+                message: 'Equation marker must be followed by a display math block.'
+            });
+        }
+        return issues;
+    }
+
+    if (!marker.title) {
+        issues.push({
+            severity: 'warn',
+            code: `${marker.type}-caption-missing`,
+            file: filePath,
+            line: lineIndex + 1,
+            message: `${marker.type === 'figure' ? 'Figure' : 'Table'} marker should include a caption title.`
+        });
+    }
+
+    if (marker.type === 'figure') {
+        const hasNearbyImage = (previous >= 0 && isMarkdownImageLine(lines[previous]))
+            || (next >= 0 && isMarkdownImageLine(lines[next]));
+        if (!hasNearbyImage) {
+            issues.push({
+                severity: 'error',
+                code: 'figure-target-missing',
+                file: filePath,
+                line: lineIndex + 1,
+                message: 'Figure marker should be adjacent to a Markdown image.'
+            });
+        }
+        return issues;
+    }
+
+    if (marker.type === 'table' && (next < 0 || !isMarkdownTableStart(lines, next))) {
+        issues.push({
+            severity: 'error',
+            code: 'table-target-missing',
+            file: filePath,
+            line: lineIndex + 1,
+            message: 'Table marker must be followed by a Markdown table.'
+        });
+    }
+
+    return issues;
+}
+
 export function scanFormalDocuments(documents: FormalDocument[], configInput: any, symbolsInput?: unknown, definitionsInput?: unknown) {
     const config = mergeConfig(configInput);
     const files = [...documents].sort((a, b) => a.filePath.localeCompare(b.filePath));
@@ -1375,6 +1484,9 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
         let sectionCounter = 1;
         let remarkCounter = 1;
         let exampleCounter = 1;
+        let equationCounter = 1;
+        let figureCounter = 1;
+        let tableCounter = 1;
 
         for (const unitFile of groupFiles) {
             const lines = unitFile.content.split(/\r?\n/);
@@ -1390,6 +1502,7 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
                 const marker = parseFormalMarkerLine(line);
                 if (!marker) continue;
                 if (marker.type === 'def') continue;
+                issues.push(...lintStructuredNumberedMarker(marker, lines, lineIndex, unitFile.filePath));
 
                 let markerNumber: number | undefined;
                 if (THEOREM_COUNTER_TYPES.has(marker.type)) {
@@ -1400,6 +1513,12 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
                     markerNumber = remarkCounter++;
                 } else if (marker.type === 'example') {
                     markerNumber = exampleCounter++;
+                } else if (marker.type === 'equation') {
+                    markerNumber = equationCounter++;
+                } else if (marker.type === 'figure') {
+                    markerNumber = figureCounter++;
+                } else if (marker.type === 'table') {
+                    markerNumber = tableCounter++;
                 }
                 const content = collectMarkerContent(lines, lineIndex, marker);
                 const label = makeLabelData(marker, unitFile, lineIndex, content.contentLines, markerNumber, content.endLine);
@@ -1435,7 +1554,7 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
     const symbolResult = parseFormalSymbols(symbolsInput, files);
     issues.push(...symbolResult.issues);
     issues.push(...lintDefinitions(definitions));
-    issues.push(...lintReferences(references, labels, definitions));
+    issues.push(...lintReferences(references, labels, definitions, config));
     issues.push(...lintPages(pages));
 
     definitions.sort(compareDefinitionRecords);
@@ -1529,7 +1648,37 @@ function lintDefinitions(definitions: FormalDefinition[]): FormalIssue[] {
     return issues;
 }
 
-function lintReferences(references: FormalReference[], labels: Record<string, LabelData>, definitions: FormalDefinition[]): FormalIssue[] {
+function normalizeBookDependencyKey(value: string): string {
+    return String(value || '').trim().toLowerCase();
+}
+
+function directBookDependencies(config: any, sourceBookKey: string): string[] {
+    const dependencies = config?.lookup?.bookDependencies;
+    if (!dependencies || typeof dependencies !== 'object') return [];
+
+    const source = normalizeBookDependencyKey(sourceBookKey);
+    for (const [key, value] of Object.entries(dependencies)) {
+        if (normalizeBookDependencyKey(key) !== source) continue;
+        return Array.isArray(value)
+            ? value.filter(item => typeof item === 'string').map(normalizeBookDependencyKey).filter(Boolean)
+            : [];
+    }
+    return [];
+}
+
+function canReferenceBook(sourceBookKey: string, targetBookKey: string, config: any, seen = new Set<string>()): boolean {
+    const source = normalizeBookDependencyKey(sourceBookKey);
+    const target = normalizeBookDependencyKey(targetBookKey);
+    if (!source || !target || source === target) return true;
+    if (seen.has(source)) return false;
+    seen.add(source);
+
+    const dependencies = directBookDependencies(config, source);
+    if (dependencies.includes(target)) return true;
+    return dependencies.some(dependency => canReferenceBook(dependency, target, config, seen));
+}
+
+function lintReferences(references: FormalReference[], labels: Record<string, LabelData>, definitions: FormalDefinition[], config: any): FormalIssue[] {
     const issues: FormalIssue[] = [];
     const definedIds = new Set(Object.keys(labels));
     const tmpDefs = new Set(definitions.filter(def => def.id && TMP_ID_RE.test(def.id)).map(def => def.id as string));
@@ -1551,6 +1700,20 @@ function lintReferences(references: FormalReference[], labels: Record<string, La
                 file: ref.file,
                 line: ref.line,
                 message: `Reference @${ref.id} has no matching marker.`
+            });
+            continue;
+        }
+
+        const target = labels[ref.id];
+        const sourceBook = inferBookInfo(ref.file, config);
+        const targetBookKey = target.bookKey || inferBookInfo(target.filePath || '', config).key;
+        if (!canReferenceBook(sourceBook.key, targetBookKey, config)) {
+            issues.push({
+                severity: 'error',
+                code: 'cross-book-ref-disallowed',
+                file: ref.file,
+                line: ref.line,
+                message: `Reference @${ref.id} crosses from ${sourceBook.title} to ${target.bookTitle || targetBookKey}; add lookup.bookDependencies if this dependency is intentional.`
             });
         }
     }
@@ -1632,6 +1795,11 @@ export function formatLabelNumber(label: LabelData): string {
     return prefix && label.number !== undefined ? `${prefix}.${label.number}` : '';
 }
 
+export function formatDisplayNumber(label: LabelData): string {
+    const number = formatLabelNumber(label);
+    return label.type === 'equation' && number ? `(${number})` : number;
+}
+
 export function displayLabel(def: FormalDefinition, config: any): string {
     const name = typeName(config, def.type);
     if (def.type === 'section') {
@@ -1639,7 +1807,7 @@ export function displayLabel(def: FormalDefinition, config: any): string {
         return number ? `${name} ${number}` : name;
     }
 
-    const number = formatLabelNumber(def.label);
+    const number = formatDisplayNumber(def.label);
     return number ? `${name} ${number}` : name;
 }
 
@@ -1713,16 +1881,18 @@ export function renderAgentGuide(state: any): string {
         '',
         '1. Read the target Markdown file.',
         '2. Read `.markdown-formal/reference-map.md` to map display numbers to stable hash IDs.',
-        '3. Put stable IDs directly where numbers used to appear: `## #tmp-1 Section`, `定理 #tmp-2（Title）：...`, or `Theorem #tmp-2 (Title): ...`. Definitions are not numbered objects and never get hash IDs or refs.',
+        '3. Put stable IDs directly where numbers used to appear: `## #tmp-1 Section`, `定理 #tmp-2（Title）：...`, `公式 #tmp-3：`, `图 #tmp-4（Caption）：...`, or `表 #tmp-5（Caption）：`. Definitions are not numbered objects and never get hash IDs or refs.',
         '4. Reference numbered objects with `@h-...`; never handwrite display numbers as references.',
         '5. Keep Markdown and LaTeX unescaped.',
         '6. Run `npm run formal -- finish <file-or-dir>` after editing; it finalizes temporary IDs and verifies the workspace.',
-        '7. If you use `finalize` directly, also run `npm run formal -- verify` before treating generated or migrated content as complete.',
+        '7. Run `npm run formal -- audit <file-or-dir>` when you want an advisory cleanup list for old prose refs, bare number candidates, optional blocks, and proof-boundary hints.',
+        '8. If you use `finalize` directly, also run `npm run formal -- verify` before treating generated or migrated content as complete.',
         '',
         '## Lightweight Syntax',
         '',
         '- Sections: `## #h-... Title` renders as the current section number plus title, and links jump to the section without hover recall.',
         '- Numbered objects: `命题 #h-...（Title）：...`, `引理 #h-...`, `定理 #h-...`, `推论 #h-...` share the theorem counter per chapter or appendix.',
+        '- Equations, figures, and tables: `公式 #h-...：` binds the next display formula as a numbered equation, `图 #h-...（Title）：...` captions a nearby image, and `表 #h-...（Title）：` captions the following table. They have separate counters per chapter or appendix; equations render as `(1.1)`, appendices as `(A.1)`.',
         '- Theorem-like recall captures the statement before `证明` / `Proof`; keep proofs after an explicit proof marker.',
         '- Definitions: lookup is a concept-index workflow. When editing a file, update `.markdown-formal/definitions.json` entries whose `source` is in that file and include Markdown `content`; standard `定义（Term）：...` / `Definition (Term): ...` lines are only a simple fallback scan.',
         '- Remarks/examples stay plain by default. Only when later text already cites one, convert that exact item to `注 #tmp-*` / `例 #tmp-*` and run `finish`.',
@@ -1734,6 +1904,7 @@ export function renderAgentGuide(state: any): string {
         '- `.markdown-formal/reference-map.md`: compact display-number to hash-ID table.',
         '- `.markdown-formal/preview-cache.json`: runtime preview/navigation/definition/symbol table cache.',
         '- `.markdown-formal/report.md`: lint/verify details.',
+        '- `.markdown-formal/audit.md`: advisory AI cleanup list generated by `audit`.',
         '- `.markdown-formal/text-ref-migration.md`: generated only after text-reference migration.',
         '- `.markdown-formal/definitions.json` / `.markdown-formal/symbols.json`: optional AI-maintained source tables for nonstandard definitions and project-specific notation.',
         '- `.markdown-formal/config.json`: use `scan.exclude` when project-root scans must ignore build, draft, context, or generated Markdown directories; use `preview.ignoreHover` for concept appendices or recall-heavy files that should keep numbering/navigation but skip inline `@hash` hover previews. `ignoreHover` accepts full relative paths, bare filenames, and globs. Temporarily set `debug.previewLog` to write `.markdown-formal/preview-debug.log` when diagnosing blank previews.',
@@ -1741,7 +1912,7 @@ export function renderAgentGuide(state: any): string {
         '## Migration',
         '',
         '- Use `npm run formal -- migrate-text-refs <file-or-dir>` before applying old numbered prose migration; migration commands are dry-run by default.',
-        '- `migrate-text-refs` rewrites typed old references such as `定理 2.1`, `命题2.2`, `Theorem 2.1`, `§2.1`, or `第 2.1 节`. It intentionally does not rewrite bare `2.1`; decide those by reading context. Matching is bounded so `2.1` is not replaced inside `2.12`, `2.1.3`, or `22.1`.',
+        '- `migrate-text-refs` rewrites typed old references such as `定理 2.1`, `命题2.2`, `Theorem 2.1`, `公式 (2.1)`, `Figure 2.1`, `表 2.1`, `§2.1`, or `第 2.1 节`. It intentionally does not rewrite bare `2.1` or bare `(2.1)`; decide those by reading context. Matching is bounded so `2.1` is not replaced inside `2.12`, `2.1.3`, or `22.1`.',
         '- Scoped migrations update target files plus incoming references by default. Use `--target-only` only when intentionally restricting rewrites to the target files.',
         ''
     ];

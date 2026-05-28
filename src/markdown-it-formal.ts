@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
     DEFAULT_CONFIG,
+    formatDisplayNumber,
     getLanguage,
     mergeConfig,
     parseFormalMarkerLine,
@@ -218,14 +219,18 @@ function markerTypeName(config: any, type: string): string {
     return dict[type] || type;
 }
 
+function usesSpacedDisplayNumber(typeName: string, type: string): boolean {
+    return /^[A-Za-z]/.test(typeName) || ['equation', 'figure', 'table'].includes(type);
+}
+
 function renderedMarkerPrefix(marker: any, labelData: LabelData, config: any): string {
     if (marker.type === 'section') {
         return formatLabelNumber(labelData);
     }
 
     const typeName = markerTypeName(config, labelData.type || marker.type);
-    const number = formatLabelNumber(labelData);
-    const space = /^[A-Za-z]/.test(typeName) ? ' ' : '';
+    const number = formatDisplayNumber(labelData);
+    const space = usesSpacedDisplayNumber(typeName, labelData.type || marker.type) ? ' ' : '';
     return number ? `${typeName}${space}${number}` : typeName;
 }
 
@@ -933,13 +938,13 @@ export = function formalPlugin(md: any, options: any) {
         
         const dict = getDictionary(cachedConfig);
         const typeName = dict[labelData.type] || labelData.type;
-        const space = /^[A-Za-z]/.test(typeName) ? ' ' : '';
+        const space = usesSpacedDisplayNumber(typeName, labelData.type) ? ' ' : '';
         
         let text = '';
         if (isTitle) {
             text = labelData.title || id;
         } else {
-            const labelNumber = formatLabelNumber(labelData);
+            const labelNumber = formatDisplayNumber(labelData);
             if (labelNumber) {
                 text = `${typeName}${space}${labelNumber}`;
             } else if (labelData.title) {
@@ -973,7 +978,7 @@ export = function formalPlugin(md: any, options: any) {
                     headerTextTooltip = formatLabelNumber(labelData);
                     if (labelData.title) headerTextTooltip += (headerTextTooltip ? ' ' : '') + labelData.title;
                 } else {
-                    const labelNumber = formatLabelNumber(labelData);
+                    const labelNumber = formatDisplayNumber(labelData);
                     if (labelNumber) headerTextTooltip += `${space}${labelNumber}`;
                     if (labelData.title) headerTextTooltip += ` (${labelData.title})`;
                 }
