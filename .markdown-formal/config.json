@@ -68,5 +68,11 @@
   },
   "lookup": {
     "bookDependencies": {}
+  },
+  "preview": {
+    "ignoreHover": []
+  },
+  "debug": {
+    "previewLog": false
   }
 }

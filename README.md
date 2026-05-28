@@ -4,7 +4,7 @@
 
 The project is designed for AI-assisted writing:
 
-- Preview renders lightweight numbered markers, references, LaTeX, chapter navigation, volumes, intro/summary pages, appendices, definition lookup, and a declared-symbol table/search.
+- Preview renders lightweight numbered markers, references, LaTeX, chapter navigation, volumes, intro/summary pages, appendices, definition lookup, and a current-page declared-symbol table.
 - Source Markdown stores stable hash IDs for numbered objects, such as `#h-8f2a91c4d7e03b6a`.
 - AI agents write new numbered markers with temporary IDs such as `tmp-1`, then the CLI finalizes them.
 - Generated or migrated content is checked with a strict `verify` gate.
@@ -65,7 +65,7 @@ Project-specific symbols can be declared in `.markdown-formal/symbols.json`:
 ]
 ```
 
-Only record explicit local notation conventions. Symbols are exposed through the navigation search/table rather than inline formula bindings: the symbol table lists declarations that match LaTeX formulas in the current preview file, while the search box can still query symbols in the current lookup scope. Do not list generic math notation or whole derivation formulas. `pattern` should describe the notation atom/family itself, with balanced delimiters; do not leave a placeholder open at the end of a formula fragment. `source`, `pattern`, and `meaning` are required; `display` is optional and normally generated from the pattern.
+Only record explicit local notation conventions. Symbols are exposed through the current-page navigation symbol table rather than inline formula bindings or the definition search box. The symbol table lists declarations that match LaTeX formulas in the current preview file. Do not list generic math notation or whole derivation formulas. `pattern` should describe the notation atom/family itself, with balanced delimiters; do not leave a placeholder open at the end of a formula fragment. `source`, `pattern`, and `meaning` are required; `display` is optional and normally generated from the pattern.
 
 ## AI Workflow
 
@@ -91,7 +91,7 @@ npm run formal -- prepare
 npm run formal -- finish path/to/chapter.md
 ```
 
-Definition and symbol lookup is scoped to the current book by default. If one book intentionally depends on another, declare it in `.markdown-formal/config.json`:
+Definition search and the current-page symbol panel are scoped to the current book by default. If one book intentionally depends on another, declare it in `.markdown-formal/config.json`:
 
 ```json
 {
@@ -106,17 +106,29 @@ Definition and symbol lookup is scoped to the current book by default. If one bo
     "bookDependencies": {
       "book3": ["book2"]
     }
+  },
+  "preview": {
+    "ignoreHover": [
+      "appendix-b-concepts.md",
+      "concept-*.md",
+      "the-operator-evolution-theory/**/appendix-*.md"
+    ]
+  },
+  "debug": {
+    "previewLog": false
   }
 }
 ```
 
-Run `npm run formal` from the project root that owns `.markdown-formal/definitions.json` and `.markdown-formal/symbols.json`. Use `scan.exclude` to keep generated, context, draft, or build directories out of the formal book scan. `00-introduction.md`, `intro.md`, and `introduction.md` are treated as intro pages, not chapter 0.
+Run `npm run formal` from the project root that owns `.markdown-formal/definitions.json` and `.markdown-formal/symbols.json`. Use `scan.exclude` to keep generated, context, draft, or build directories out of the formal book scan. Use `preview.ignoreHover` for concept appendices or other recall-heavy files where inline `@hash` hover previews should be skipped; numbering, navigation, jumps, definition search, and the current-page symbol panel still work. Patterns may be full relative paths, bare filenames such as `appendix-b-concepts.md`, or globs such as `concept-*.md` and `book/**/appendix-*.md`. `00-introduction.md`, `intro.md`, and `introduction.md` are treated as intro pages, not chapter 0.
+
+Set `debug.previewLog` to `true` temporarily when diagnosing blank previews or extension-host stalls. Diagnostic events are written to `.markdown-formal/preview-debug.log`; turn it off after collecting the log.
 
 `prepare` writes generated helper files under `.markdown-formal/`:
 
 - `agent-guide.md`: compact AI workflow card
 - `reference-map.md`: display number to hash ID map
-- `preview-cache.json`: runtime preview/navigation/definition/symbol lookup cache
+- `preview-cache.json`: runtime preview/navigation/definition/symbol table cache
 - `report.md`: lint/verify details
 
 Do not edit generated `.markdown-formal/` files by hand. The project-maintained entries under that directory are `.markdown-formal/config.json`, `.markdown-formal/definitions.json`, and `.markdown-formal/symbols.json`; the rest are generated caches and reports.
@@ -146,7 +158,7 @@ npm run formal -- migrate-text-refs --target-only path/to/chapter-or-volume
 npm run formal -- migrate-text-refs --apply --target-only path/to/chapter-or-volume
 ```
 
-`migrate-text-refs` automatically rewrites unambiguous numbered references, including common section forms such as `第 2.1 节`, `§2.1`, and `Sec. 2.1`. It does not rewrite old Markdown links in place because formal refs render as links already; those links are listed in `.markdown-formal/text-ref-migration.md` with suggested IDs.
+`migrate-text-refs` automatically rewrites unambiguous typed numbered references, including common section forms such as `定理 2.1`, `Theorem 2.1`, `第 2.1 节`, `§2.1`, and `Sec. 2.1`. It intentionally does not rewrite bare `2.1`, because that may be a decimal, equation number, chapter number, or parameter; decide those cases by reading context. Matching is bounded so `2.1` is not rewritten inside `2.12`, `2.1.3`, or `22.1`. It does not rewrite old Markdown links in place because formal refs render as links already; those links are listed in `.markdown-formal/text-ref-migration.md` with suggested IDs.
 
 The same report lists plain `##`/`###` section headings that may need numbered markers. For referenced sections, write the heading as `## #tmp-* Title`, run `finish`, then rerun the migration.
 

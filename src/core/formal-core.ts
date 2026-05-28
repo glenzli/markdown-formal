@@ -176,19 +176,6 @@ const SYMBOL_SAMPLE_VALUES: Record<string, string> = {
 
 export const DEFAULT_CONFIG = {
     language: 'zh',
-    scan: {
-        exclude: [
-            '.git/**',
-            '.markdown-formal/**',
-            '.vscode-test/**',
-            'node_modules/**',
-            'out/**',
-            'dist/**'
-        ]
-    },
-    lookup: {
-        bookDependencies: {}
-    },
     dictionary: {
         zh: { theorem: '定理', lemma: '引理', prop: '命题', cor: '推论', def: '定义', remark: '注', example: '例', section: '§' },
         en: { theorem: 'Theorem', lemma: 'Lemma', prop: 'Proposition', cor: 'Corollary', def: 'Definition', remark: 'Remark', example: 'Example', section: '§' }
@@ -226,6 +213,25 @@ export const DEFAULT_CONFIG = {
             book: 'Book {number}',
             workspace: 'Workspace'
         }
+    },
+    scan: {
+        exclude: [
+            '.git/**',
+            '.markdown-formal/**',
+            '.vscode-test/**',
+            'node_modules/**',
+            'out/**',
+            'dist/**'
+        ]
+    },
+    lookup: {
+        bookDependencies: {}
+    },
+    preview: {
+        ignoreHover: []
+    },
+    debug: {
+        previewLog: false
     }
 };
 
@@ -244,9 +250,16 @@ export function unique(values: string[]): string[] {
 export function mergeConfig(config: any): any {
     const existing = config && typeof config === 'object' ? config : {};
     return {
-        ...DEFAULT_CONFIG,
         ...existing,
         language: existing.language === 'en' ? 'en' : 'zh',
+        dictionary: {
+            zh: { ...DEFAULT_CONFIG.dictionary.zh, ...(existing.dictionary?.zh || {}) },
+            en: { ...DEFAULT_CONFIG.dictionary.en, ...(existing.dictionary?.en || {}) }
+        },
+        ui: {
+            zh: { ...DEFAULT_CONFIG.ui.zh, ...(existing.ui?.zh || {}) },
+            en: { ...DEFAULT_CONFIG.ui.en, ...(existing.ui?.en || {}) }
+        },
         scan: {
             ...DEFAULT_CONFIG.scan,
             ...(existing.scan || {}),
@@ -262,13 +275,17 @@ export function mergeConfig(config: any): any {
                 ? existing.lookup.bookDependencies
                 : {}
         },
-        dictionary: {
-            zh: { ...DEFAULT_CONFIG.dictionary.zh, ...(existing.dictionary?.zh || {}) },
-            en: { ...DEFAULT_CONFIG.dictionary.en, ...(existing.dictionary?.en || {}) }
+        preview: {
+            ...DEFAULT_CONFIG.preview,
+            ignoreHover: unique([
+                ...DEFAULT_CONFIG.preview.ignoreHover,
+                ...(Array.isArray(existing.preview?.ignoreHover) ? existing.preview.ignoreHover.filter((item: unknown) => typeof item === 'string') : [])
+            ])
         },
-        ui: {
-            zh: { ...DEFAULT_CONFIG.ui.zh, ...(existing.ui?.zh || {}) },
-            en: { ...DEFAULT_CONFIG.ui.en, ...(existing.ui?.en || {}) }
+        debug: {
+            ...DEFAULT_CONFIG.debug,
+            ...(existing.debug || {}),
+            previewLog: existing.debug?.previewLog === true
         }
     };
 }
@@ -328,6 +345,10 @@ function scanPatternMatches(filePath: string, pattern: string): boolean {
     return false;
 }
 
+export function pathPatternMatches(filePath: string, pattern: string): boolean {
+    return scanPatternMatches(filePath, pattern);
+}
+
 export function scanExcludePatterns(config: any): string[] {
     const merged = mergeConfig(config);
     return Array.isArray(merged.scan?.exclude) ? merged.scan.exclude : [];
@@ -335,6 +356,15 @@ export function scanExcludePatterns(config: any): string[] {
 
 export function shouldExcludeScanPath(filePath: string, config: any): boolean {
     return scanExcludePatterns(config).some(pattern => scanPatternMatches(filePath, pattern));
+}
+
+export function previewIgnoreHoverPatterns(config: any): string[] {
+    const merged = mergeConfig(config);
+    return Array.isArray(merged.preview?.ignoreHover) ? merged.preview.ignoreHover : [];
+}
+
+export function shouldIgnorePreviewHover(filePath: string, config: any): boolean {
+    return previewIgnoreHoverPatterns(config).some(pattern => scanPatternMatches(filePath, pattern));
 }
 
 export function getLanguage(config: any): 'zh' | 'en' {
@@ -806,12 +836,37 @@ function normalizeMarkerType(value: string): string | undefined {
     return MARKER_TYPE_ALIASES[value.toLowerCase()] || MARKER_TYPE_ALIASES[value];
 }
 
+function cleanMarkerTitle(title: string): string {
+    const trimmed = title.trim();
+    const strong = trimmed.match(/^(\*\*|__)\s*([\s\S]+?)\s*\1$/);
+    return strong ? strong[2].trim() : trimmed;
+}
+
+function unwrapLeadingStrong(text: string): string | undefined {
+    const strong = text.match(/^(\*\*|__)\s*([\s\S]+?)\s*\1(.*)$/);
+    if (!strong) return undefined;
+    return `${strong[2].trim()}${strong[3] || ''}`.trim();
+}
+
+function parseParenMarkerTitle(text: string, requireSeparator: boolean): string {
+    const paren = text.match(/^[（(]([^）)]+)[）)]\s*([：:]?)/);
+    if (!paren) return '';
+    if (requireSeparator && !paren[2]) return '';
+    return cleanMarkerTitle(paren[1]);
+}
+
 function extractMarkerTitle(type: string, rest: string): string {
     const trimmed = rest.trim();
     if (!trimmed) return '';
 
-    const paren = trimmed.match(/^[（(]([^）)]+)[）)]/);
-    if (paren) return paren[1].trim();
+    const strongPrefix = unwrapLeadingStrong(trimmed);
+    if (strongPrefix) {
+        const strongTitle = parseParenMarkerTitle(strongPrefix, true);
+        if (strongTitle) return strongTitle;
+    }
+
+    const parenTitle = parseParenMarkerTitle(trimmed, false);
+    if (parenTitle) return parenTitle;
 
     if (type === 'def') {
         const term = trimmed.match(/^([^：:\n，,。.;；]+)[：:]/);
@@ -823,10 +878,7 @@ function extractMarkerTitle(type: string, rest: string): string {
 
 function normalizeLeadingMarkerEmphasis(text: string): string {
     const trimmed = text.trim();
-    const strong = trimmed.match(/^(\*\*|__)\s*([\s\S]+?)\s*\1(.*)$/);
-    if (!strong) return trimmed;
-
-    return `${strong[2].trim()}${strong[3] || ''}`.trim();
+    return unwrapLeadingStrong(trimmed) || trimmed;
 }
 
 export function parseFormalMarkerLine(line: string): FormalMarker | undefined {
@@ -964,8 +1016,35 @@ function parseSpecialPageKind(basename: string): string | undefined {
 }
 
 function getMarkdownTitle(content: string, fallback: string): string {
-    const match = content.match(/^#\s+(.+?)\s*$/m);
-    return match ? match[1].trim() : fallback;
+    const headings: Array<{ level: number; title: string; formalMarker: boolean }> = [];
+    let inFence = false;
+
+    for (const line of String(content || '').split(/\r?\n/)) {
+        if (/^\s*(```|~~~)/.test(line)) {
+            inFence = !inFence;
+            continue;
+        }
+        if (inFence) continue;
+
+        const match = line.match(/^[ \t]{0,3}(#{1,6})[ \t]+(.+?)\s*$/);
+        if (!match) continue;
+
+        const title = match[2].replace(/[ \t]+#+[ \t]*$/, '').trim();
+        if (!title) continue;
+
+        headings.push({
+            level: match[1].length,
+            title,
+            formalMarker: /^#[A-Za-z0-9_-]+\b/.test(title)
+        });
+    }
+
+    if (headings.length === 0) return fallback;
+
+    const topLevel = Math.min(...headings.map(heading => heading.level));
+    const topHeadings = headings.filter(heading => heading.level === topLevel);
+    if (topHeadings.length !== 1 || topHeadings[0].formalMarker) return fallback;
+    return topHeadings[0].title;
 }
 
 function fallbackPageTitle(filePath: string): string {
@@ -1647,21 +1726,22 @@ export function renderAgentGuide(state: any): string {
         '- Theorem-like recall captures the statement before `证明` / `Proof`; keep proofs after an explicit proof marker.',
         '- Definitions: lookup is a concept-index workflow. When editing a file, update `.markdown-formal/definitions.json` entries whose `source` is in that file and include Markdown `content`; standard `定义（Term）：...` / `Definition (Term): ...` lines are only a simple fallback scan.',
         '- Remarks/examples stay plain by default. Only when later text already cites one, convert that exact item to `注 #tmp-*` / `例 #tmp-*` and run `finish`.',
-        '- Symbols: maintain only project-specific `source`, `pattern`, and `meaning` entries in `.markdown-formal/symbols.json`; patterns describe the notation itself with balanced delimiters, not whole equations or open-ended formula fragments. The navigation symbol table lists symbols matched in the current preview file; search can query symbols in the current lookup scope. Symbols are not inline formula refs.',
+        '- Symbols: maintain only project-specific `source`, `pattern`, and `meaning` entries in `.markdown-formal/symbols.json`; patterns describe the notation itself with balanced delimiters, not whole equations or open-ended formula fragments. The navigation symbol table lists symbols matched in the current preview file. Symbols are not inline formula refs and are not searched through the definition search box.',
         '- Appendices use the appendix file prefix, so markers in `appendix-a-*.md` render as `A.1`, `A.2`, etc. `00-introduction.md`, `intro.md`, and `introduction.md` are intro pages, not chapter 0.',
         '',
         '## Generated Files',
         '',
         '- `.markdown-formal/reference-map.md`: compact display-number to hash-ID table.',
-        '- `.markdown-formal/preview-cache.json`: runtime preview/navigation/definition/symbol lookup cache.',
+        '- `.markdown-formal/preview-cache.json`: runtime preview/navigation/definition/symbol table cache.',
         '- `.markdown-formal/report.md`: lint/verify details.',
         '- `.markdown-formal/text-ref-migration.md`: generated only after text-reference migration.',
         '- `.markdown-formal/definitions.json` / `.markdown-formal/symbols.json`: optional AI-maintained source tables for nonstandard definitions and project-specific notation.',
-        '- `.markdown-formal/config.json`: use `scan.exclude` when project-root scans must ignore build, draft, context, or generated Markdown directories.',
+        '- `.markdown-formal/config.json`: use `scan.exclude` when project-root scans must ignore build, draft, context, or generated Markdown directories; use `preview.ignoreHover` for concept appendices or recall-heavy files that should keep numbering/navigation but skip inline `@hash` hover previews. `ignoreHover` accepts full relative paths, bare filenames, and globs. Temporarily set `debug.previewLog` to write `.markdown-formal/preview-debug.log` when diagnosing blank previews.',
         '',
         '## Migration',
         '',
         '- Use `npm run formal -- migrate-text-refs <file-or-dir>` before applying old numbered prose migration; migration commands are dry-run by default.',
+        '- `migrate-text-refs` rewrites typed old references such as `定理 2.1`, `命题2.2`, `Theorem 2.1`, `§2.1`, or `第 2.1 节`. It intentionally does not rewrite bare `2.1`; decide those by reading context. Matching is bounded so `2.1` is not replaced inside `2.12`, `2.1.3`, or `22.1`.',
         '- Scoped migrations update target files plus incoming references by default. Use `--target-only` only when intentionally restricting rewrites to the target files.',
         ''
     ];

@@ -1,6 +1,7 @@
 declare module 'fs' {
     export const existsSync: any;
     export const readFileSync: any;
+    export const appendFileSync: any;
     export const promises: any;
     export const mkdirSync: any;
 }

@@ -4,6 +4,11 @@
     vertical-align: baseline !important;
 }
 
+html,
+body {
+    min-height: 100vh !important;
+}
+
 .formal-ref { 
     cursor: pointer !important; 
     color: inherit !important; 
@@ -353,8 +358,8 @@
     position: absolute !important;
     top: calc(100% + 6px) !important;
     right: 0 !important;
-    width: min(560px, calc(100vw - 24px)) !important;
-    max-height: min(66vh, calc(100vh - 92px)) !important;
+    width: min(680px, calc(100vw - 24px)) !important;
+    max-height: min(76vh, calc(100vh - 84px)) !important;
     overflow-y: auto !important;
     background: var(--vscode-dropdown-background, var(--formal-nav-bg)) !important;
     border: 1px solid var(--vscode-dropdown-border, var(--formal-nav-border)) !important;
@@ -372,6 +377,7 @@
 }
 
 .formal-definition-search-section-title {
+    flex: 0 0 auto !important;
     color: var(--formal-nav-muted) !important;
     font-size: 11px !important;
     font-weight: 600 !important;
@@ -380,6 +386,7 @@
 }
 
 .formal-definition-search-result {
+    flex: 0 0 auto !important;
     border: none !important;
     border-radius: 6px !important;
     background: transparent !important;
@@ -388,8 +395,8 @@
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) auto !important;
     gap: 7px 14px !important;
-    min-height: 92px !important;
-    padding: 12px 13px !important;
+    min-height: 112px !important;
+    padding: 14px 15px !important;
     text-align: left !important;
 }
 
@@ -420,10 +427,12 @@
     grid-column: 1 / -1 !important;
     color: var(--formal-nav-muted) !important;
     overflow: hidden !important;
-    max-height: 7.4em !important;
+    max-height: clamp(7.6em, 18vh, 12.5em) !important;
     font-size: 12px !important;
     font-weight: 400 !important;
     line-height: 1.48 !important;
+    -webkit-mask-image: linear-gradient(180deg, #000 76%, transparent) !important;
+    mask-image: linear-gradient(180deg, #000 76%, transparent) !important;
 }
 
 .formal-definition-search-preview strong {
@@ -451,6 +460,7 @@
 }
 
 .formal-definition-search-empty {
+    flex: 0 0 auto !important;
     color: var(--formal-nav-muted) !important;
     padding: 12px 10px !important;
     text-align: center !important;
@@ -538,6 +548,7 @@
 }
 
 .formal-symbol-chip-grid {
+    flex: 0 0 auto !important;
     display: flex !important;
     flex-wrap: wrap !important;
     gap: 6px !important;
@@ -547,6 +558,7 @@
 }
 
 .formal-symbol-chip {
+    flex: 0 0 auto !important;
     min-width: 38px !important;
     min-height: 34px !important;
     border: 1px solid var(--vscode-button-border, var(--formal-nav-border)) !important;
@@ -572,6 +584,7 @@
 }
 
 .formal-symbol-detail {
+    flex: 0 0 auto !important;
     border-radius: 6px !important;
     background: var(--vscode-editorWidget-background, var(--formal-nav-bg)) !important;
     padding: 10px !important;
@@ -620,6 +633,7 @@
 }
 
 .formal-toc-section {
+    flex: 0 0 auto !important;
     font-weight: 600 !important;
     padding: 7px 10px !important;
     margin-top: 2px !important;
@@ -639,6 +653,7 @@
 }
 
 .formal-toc-block {
+    flex: 0 0 auto !important;
     padding: 6px 10px 6px 24px !important;
     color: var(--formal-nav-muted) !important;
     text-decoration: none !important;
@@ -679,6 +694,7 @@
 }
 
 .formal-toc-empty {
+    flex: 0 0 auto !important;
     padding: 12px 10px !important;
     color: var(--formal-nav-muted) !important;
     text-align: center !important;
@@ -686,6 +702,7 @@
 }
 
 .formal-chapter-volume {
+    flex: 0 0 auto !important;
     display: flex !important;
     flex-direction: column !important;
     gap: 1px !important;
@@ -696,6 +713,7 @@
 }
 
 .formal-chapter-volume-title {
+    flex: 0 0 auto !important;
     padding: 5px 9px 3px !important;
     color: var(--formal-nav-muted) !important;
     font-size: 11px !important;
@@ -706,12 +724,14 @@
 }
 
 .formal-chapter-volume-items {
+    flex: 0 0 auto !important;
     display: flex !important;
     flex-direction: column !important;
     gap: 1px !important;
 }
 
 .formal-chapter-item {
+    flex: 0 0 auto !important;
     display: grid !important;
     grid-template-columns: 30px minmax(0, 1fr) !important;
     gap: 9px !important;

@@ -10,7 +10,7 @@
 
 - 编号与引用：正文用稳定 hash ID，新增对象先写 `tmp-*`，引用从 `reference-map.md` 复制。
 - 定义查询：定义不编号不 ref；需要可靠查询的定义由 AI 维护 `.markdown-formal/definitions.json`，包括 `term`、`source`、`content`，标准定义自动扫描只作为简单 fallback。
-- 符号召回：项目特有 LaTeX 记号由 AI 维护 `.markdown-formal/symbols.json`。
+- 符号表：项目特有 LaTeX 记号由 AI 维护 `.markdown-formal/symbols.json`。
 - 工具闭环：`prepare` 生成上下文，`finish` 固化临时 ID，`verify` 检查引用和索引。
 
 如果目标项目只合并了 hash 编号规则，却丢掉定义提取、符号提取、`.markdown-formal` 源表、`prepare` / `finish` / `verify` 调用方式，就不是完整接入。
@@ -38,7 +38,7 @@
 
 定义不加 hash、不参与 ref。定义查询是 AI 必须维护的概念索引工作流：修改某个文件后，只检查该文件内新增、删除、改写的定义，并同步更新 .markdown-formal/definitions.json 中 source 指向该文件的条目。需要可靠查询的条目必须记录 term、可选 aliases、source 和 Markdown content；`定义（术语）：...` / `Definition (Term): ...` 自动扫描只作为简单 fallback。非标准句式如“称为 X”“所谓 X”“定义其 X”“记作 X”“called X”如果应当可查询，就写入 .markdown-formal/definitions.json。不要为了工具机械改写项目文风，也不要每次全书重抽。
 
-只把项目明确约定的特殊 LaTeX 记号写入 .markdown-formal/symbols.json，维护 source、pattern、meaning；pattern 必须是记号本身或完整记号族，括号/方括号要闭合，不要记录通用数学符号、整条推导公式或缺右边界的公式片段。预览端不把公式内部符号做成可点击 ref；导航栏符号表只展示当前预览文件公式中实际匹配到的符号，搜索框可在当前查询范围内过滤定义和符号。
+只把项目明确约定的特殊 LaTeX 记号写入 .markdown-formal/symbols.json，维护 source、pattern、meaning；pattern 必须是记号本身或完整记号族，括号/方括号要闭合，不要记录通用数学符号、整条推导公式或缺右边界的公式片段。预览端不把公式内部符号做成可点击 ref；导航栏符号表只展示当前预览文件公式中实际匹配到的符号，搜索框只过滤定义。
 注和例默认不加 hash；只有后文已经明确引用某个注/例时，才反向把那个注/例改成 `注 #tmp-*` 或 `例 #tmp-*`。
 
 完成编辑后按本次修改范围检查编号对象、定义索引、符号索引、跨 book 查询配置、tmp ID 和迁移报告；不要只运行编号工具就结束。
@@ -74,9 +74,9 @@ npm run formal -- verify
 - `.markdown-formal/preview-cache.json`：预览运行时缓存，AI 不直接编辑。
 - `.markdown-formal/config.json`：语言、扫描排除、跨 book 查询依赖等配置。
 - `.markdown-formal/definitions.json`：AI 维护的定义查询源表；需要可靠预览的条目必须含 `content`。
-- `.markdown-formal/symbols.json`：AI 维护的特殊符号召回源表。
+- `.markdown-formal/symbols.json`：AI 维护的特殊符号表源表。
 
-定义和符号查询默认只在当前 book 内生效。跨 book 查询必须显式声明：
+定义搜索和当前页符号表默认只在当前 book 内生效。跨 book 查询必须显式声明：
 
 ```json
 {
@@ -92,11 +92,17 @@ npm run formal -- verify
     "bookDependencies": {
       "book3": ["book2"]
     }
+  },
+  "preview": {
+    "ignoreHover": [
+      "appendix-b-concepts.md",
+      "book1/**/concept-*.md"
+    ]
   }
 }
 ```
 
-`npm run formal` 应从拥有 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbols.json` 的项目根目录执行。根目录扫描时，必须把构建产物、上下文目录、草稿目录等不属于正式正文体系的 Markdown 写入 `scan.exclude`。
+`npm run formal` 应从拥有 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbols.json` 的项目根目录执行。根目录扫描时，必须把构建产物、上下文目录、草稿目录等不属于正式正文体系的 Markdown 写入 `scan.exclude`。概念附录、索引页或超密集引用页如果不需要 recall hover，可写入 `preview.ignoreHover`；支持完整相对路径、裸文件名和 glob。这只关闭正文里的 `@hash` 悬浮 recall，保留编号、导航、跳转、定义搜索以及当前页符号表的 LaTeX 预览。排查空白预览时，可临时设置 `debug.previewLog: true` 并读取 `.markdown-formal/preview-debug.log`。
 
 ## Release 接入
 
@@ -135,6 +141,8 @@ npm run formal -- migrate-ids --apply path/to/chapter-or-volume
 ```
 
 逐章或逐卷迁移时，默认会同步处理 incoming refs：目标范围内按完整 reference map 迁移，目标范围外只处理指向目标范围编号 marker 的旧文字引用。只有明确要把改写限制在目标文件内时才使用 `--target-only`。
+
+`migrate-text-refs` 只自动改写带类型或章节语义的旧编号引用，例如 `定理 2.1`、`命题2.2`、`Theorem 2.1`、`§2.1`、`第 2.1 节`。裸 `2.1` 不自动改写，因为它可能是小数、公式编号、章节号或参数，必须由 AI 结合上下文手工判断。工具使用边界匹配，避免把 `2.1` 误替换进 `2.12`、`2.1.3` 或 `22.1`。
 
 如果 `migrate-ids --target-only` 发现目标范围内旧 ID 被范围外文件引用，工具会拒绝 apply。此时去掉 `--target-only`，或选择更大的闭合范围。
 

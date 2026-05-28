@@ -163,6 +163,19 @@
     const WINDOW_NAV_PREFIX = 'markdown-formal-nav:';
     const ROOT_BOOK_KEY = '__workspace__';
     const ROOT_VOLUME_KEY = '__root__';
+    const OBSERVER_IGNORED_SELECTOR = [
+        '#formal-nav-bar',
+        '#formal-definition-popover',
+        '#formal-definition-selection-action',
+        '#formal-labels-data',
+        '#formal-pages-data',
+        '#formal-definitions-data',
+        '#formal-symbols-data',
+        '#formal-formulas-data',
+        '#formal-definition-templates',
+        '#formal-symbol-templates',
+        '#formal-config-data'
+    ].join(',');
     const DEFAULT_CONFIG: FormalConfig = {
         language: 'zh',
         ui: {
@@ -182,8 +195,8 @@
                 book: '第 {number} 本',
                 workspace: '工作区',
                 definitionSearch: '查定义',
-                definitionSearchPlaceholder: '搜索定义/符号',
-                definitionSearchEmpty: '无匹配定义或符号',
+                definitionSearchPlaceholder: '搜索定义',
+                definitionSearchEmpty: '无匹配定义',
                 definitionContextTitle: '定义',
                 definitionLocate: '定位',
                 symbolContextTitle: '符号',
@@ -205,8 +218,8 @@
                 book: 'Book {number}',
                 workspace: 'Workspace',
                 definitionSearch: 'Definitions',
-                definitionSearchPlaceholder: 'Search definitions/symbols',
-                definitionSearchEmpty: 'No matching definitions or symbols',
+                definitionSearchPlaceholder: 'Search definitions',
+                definitionSearchEmpty: 'No matching definitions',
                 definitionContextTitle: 'Definition',
                 definitionLocate: 'Locate',
                 symbolContextTitle: 'Symbol',
@@ -1041,26 +1054,6 @@
         return true;
     }
 
-    function symbolSearchScore(symbol: SymbolData, query: string): number {
-        const latexQuery = normalizeLatexSymbol(query);
-        const pattern = normalizeLatexSymbol(symbol.pattern);
-        const display = normalizeLatexSymbol(symbol.display);
-        if (!latexQuery) return Number.MAX_SAFE_INTEGER;
-        if (latexQuery && (pattern === latexQuery || display === latexQuery)) return 0;
-        if (latexQuery && (pattern.includes(latexQuery) || display.includes(latexQuery))) return 1;
-        return Number.MAX_SAFE_INTEGER;
-    }
-
-    function searchSymbols(symbols: SymbolData[], query: string, currentFilePath: string, config: FormalConfig, limit = 10): SymbolData[] {
-        return symbols
-            .filter(symbol => symbolInScope(symbol, currentFilePath, config))
-            .map(symbol => ({ symbol, score: symbolSearchScore(symbol, query) }))
-            .filter(item => item.score < Number.MAX_SAFE_INTEGER)
-            .sort((a, b) => a.score - b.score || a.symbol.pattern.localeCompare(b.symbol.pattern))
-            .slice(0, limit)
-            .map(item => item.symbol);
-    }
-
     function makeUnanchoredSymbolRegex(symbol: SymbolData): RegExp | undefined {
         const source = String(symbol.regex || '')
             .replace(/^\^/, '')
@@ -1138,9 +1131,47 @@
         window.setTimeout(() => element.classList.remove('formal-definition-highlight'), 1600);
     }
 
+    function lineNumberForElement(element: HTMLElement, attr: 'data-line' | 'data-line-end'): number | undefined {
+        const value = element.getAttribute(attr);
+        if (value === null) return undefined;
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : undefined;
+    }
+
+    function findSourceLineElement(line: number): HTMLElement | null {
+        const targetLine = line - 1;
+        const exact = document.querySelector<HTMLElement>(`[data-line="${targetLine}"]`);
+        if (exact) return exact;
+
+        let containing: { element: HTMLElement; span: number; start: number } | undefined;
+        let previous: { element: HTMLElement; start: number } | undefined;
+
+        document.querySelectorAll<HTMLElement>('[data-line]').forEach(element => {
+            if (element.closest('#formal-nav-bar, #formal-definition-popover')) return;
+
+            const start = lineNumberForElement(element, 'data-line');
+            if (start === undefined) return;
+            const end = lineNumberForElement(element, 'data-line-end') ?? start;
+
+            if (start <= targetLine && targetLine <= end) {
+                const span = end - start;
+                if (!containing || span < containing.span || (span === containing.span && start > containing.start)) {
+                    containing = { element, span, start };
+                }
+                return;
+            }
+
+            if (start <= targetLine && (!previous || start > previous.start)) {
+                previous = { element, start };
+            }
+        });
+
+        return containing?.element || previous?.element || null;
+    }
+
     function scrollToSourceLine(line: number | undefined): boolean {
         if (line === undefined) return false;
-        const element = document.querySelector<HTMLElement>(`[data-line="${line - 1}"]`);
+        const element = findSourceLineElement(line);
         if (!element) return false;
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         flashDefinitionElement(element);
@@ -1202,6 +1233,7 @@
         const history = currentHistoryWithReturn(currentFilePath);
         writeHistory(history);
         navigateToFile(targetFilePath, {
+            line: symbol.sourceLine,
             returnTo: history[history.length - 1],
             history
         });
@@ -1402,31 +1434,6 @@
         positionFloatingElement(popover, origin);
     }
 
-    function appendSymbolSearchResult(container: HTMLElement, symbol: SymbolData, config: FormalConfig, closeTarget?: HTMLElement) {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'formal-definition-search-result formal-symbol-search-result formal-symbol-menu-result';
-        item.addEventListener('click', () => {
-            openSymbolSource(symbol);
-            closeTarget?.classList.remove('formal-definition-search-open');
-        });
-
-        const title = document.createElement('span');
-        title.className = 'formal-definition-search-title formal-symbol-search-title';
-        appendSymbolDisplay(title, symbol);
-
-        const meta = document.createElement('span');
-        meta.className = 'formal-definition-search-meta';
-        meta.textContent = symbolLocationLabel(symbol, config);
-
-        const preview = document.createElement('span');
-        preview.className = 'formal-definition-search-preview formal-symbol-search-preview';
-        appendSymbolMeaning(preview, symbol);
-
-        item.append(title, meta, preview);
-        container.appendChild(item);
-    }
-
     function renderSymbolDetail(container: HTMLElement, symbol: SymbolData, config: FormalConfig) {
         container.replaceChildren();
 
@@ -1498,15 +1505,14 @@
         selectSymbol(selected);
     }
 
-    function renderDefinitionSearchResults(panel: HTMLElement, definitions: DefinitionData[], symbols: SymbolData[], query: string, currentFilePath: string, config: FormalConfig) {
+    function renderDefinitionSearchResults(panel: HTMLElement, definitions: DefinitionData[], query: string, currentFilePath: string, config: FormalConfig) {
         panel.replaceChildren();
         const normalizedQuery = normalizeDefinitionQuery(query);
         panel.classList.toggle('formal-definition-search-open', Boolean(normalizedQuery));
         if (!normalizedQuery) return;
 
         const results = searchDefinitions(definitions, query, currentFilePath, config, 10);
-        const symbolResults = searchSymbols(symbols, query, currentFilePath, config, 10);
-        if (results.length === 0 && symbolResults.length === 0) {
+        if (results.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'formal-definition-search-empty';
             empty.textContent = uiText(config, 'definitionSearchEmpty');
@@ -1537,10 +1543,6 @@
 
             item.append(title, meta, preview);
             panel.appendChild(item);
-        });
-
-        symbolResults.forEach(symbol => {
-            appendSymbolSearchResult(panel, symbol, config, panel);
         });
     }
 
@@ -1775,8 +1777,8 @@
             }
 
             const strong = el.querySelector('strong');
-            const title = strong?.textContent?.replace(/[：:]$/, '').trim()
-                || dataTitle
+            const title = dataTitle
+                || strong?.textContent?.replace(/[：:]$/, '').trim()
                 || el.innerText.split(/\n/)[0]?.trim()
                 || el.id;
             items.push({ id: el.id, display, title, type: 'block' });
@@ -2013,7 +2015,7 @@
             navBar.appendChild(symbolContainer);
         }
 
-        if (definitions.length > 0 || symbols.length > 0) {
+        if (definitions.length > 0) {
             const definitionContainer = document.createElement('div');
             definitionContainer.className = 'formal-definition-search-container';
 
@@ -2030,11 +2032,11 @@
             };
 
             definitionInput.addEventListener('input', () => {
-                renderDefinitionSearchResults(definitionPanel, definitions, symbols, definitionInput.value, currentFilePath, config);
+                renderDefinitionSearchResults(definitionPanel, definitions, definitionInput.value, currentFilePath, config);
             });
             definitionInput.addEventListener('focus', () => {
                 closeNavDropdowns(navDropdowns);
-                renderDefinitionSearchResults(definitionPanel, definitions, symbols, definitionInput.value, currentFilePath, config);
+                renderDefinitionSearchResults(definitionPanel, definitions, definitionInput.value, currentFilePath, config);
             });
             definitionInput.addEventListener('keydown', event => {
                 if (event.key === 'Escape') {
@@ -2105,6 +2107,22 @@
         }
 
         formalWindow.__markdownFormalRebuildTimer = window.setTimeout(rebuildNav, delay);
+    }
+
+    function isIgnoredObserverNode(node: Node): boolean {
+        if (node instanceof Element) {
+            return Boolean(node.closest(OBSERVER_IGNORED_SELECTOR));
+        }
+
+        const parent = node.parentElement;
+        return Boolean(parent?.closest(OBSERVER_IGNORED_SELECTOR));
+    }
+
+    function isIgnoredObserverMutation(mutation: MutationRecord): boolean {
+        if (isIgnoredObserverNode(mutation.target)) return true;
+
+        const nodes = [...Array.from(mutation.addedNodes), ...Array.from(mutation.removedNodes)];
+        return nodes.length > 0 && nodes.every(isIgnoredObserverNode);
     }
 
     function handleFormalClick(event: MouseEvent) {
@@ -2237,12 +2255,7 @@
         installTooltipAdjustment();
 
         const observer = new MutationObserver(mutations => {
-            const onlyNavChanged = mutations.every(mutation => {
-                const nodes = [...Array.from(mutation.addedNodes), ...Array.from(mutation.removedNodes)];
-                return nodes.length > 0 && nodes.every(node => node instanceof HTMLElement && node.id === 'formal-nav-bar');
-            });
-
-            if (!onlyNavChanged) scheduleRebuild();
+            if (!mutations.every(isIgnoredObserverMutation)) scheduleRebuild();
         });
         observer.observe(document.body, { childList: true, subtree: true });
 

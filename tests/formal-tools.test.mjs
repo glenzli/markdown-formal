@@ -4,9 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cliPath = path.join(repoRoot, 'out', 'cli', 'formal-tools.js');
+const require = createRequire(import.meta.url);
 
 async function makeWorkspace(name) {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), `markdown-formal-${name}-`));
@@ -318,6 +320,10 @@ async function testRecallBoundariesAndOptionalBlocks() {
         '',
         'Example #h-5555555555555555 (Model): A referenced example.',
         '',
+        '命题 #h-6666666666666666（有效分量包含律）：**(i)** 对于复合算子 $\\phi_2 \\circ \\phi_1 \\in \\Omega$，有效分量满足包含关系。',
+        '',
+        '命题 #h-7777777777777777 **（加粗标题）：** 允许标题括号本身加粗。',
+        '',
         'Later text cites @h-3333333333333333 and @h-5555555555555555.',
         ''
     ].join('\n'));
@@ -335,6 +341,8 @@ async function testRecallBoundariesAndOptionalBlocks() {
     assert.match(previewCache.entries['h-3333333333333333'].content, /second line/);
     assert.equal(previewCache.entries['h-2222222222222222'].number, 1);
     assert.equal(previewCache.entries['h-4444444444444444'].number, 2);
+    assert.equal(previewCache.entries['h-6666666666666666'].title, '有效分量包含律');
+    assert.equal(previewCache.entries['h-7777777777777777'].title, '加粗标题');
     assert.equal(previewCache.entries['h-3333333333333333'].number, 1);
     assert.equal(previewCache.entries['h-5555555555555555'].number, 1);
 
@@ -510,6 +518,45 @@ async function testScanExcludeAndZeroIntroductionPages() {
     assert.equal(previewCache.pages.some(page => page.filePath.startsWith('formal-oet/.lake/')), false);
 }
 
+async function testPageTitleUsesUniqueHighestHeading() {
+    const root = await makeWorkspace('page-title');
+    await fs.writeFile(path.join(root, 'book1', '01-lowered.md'), [
+        '## Lowered Chapter Title',
+        '',
+        '### Local Section',
+        '',
+        '定理 #h-1111111111111111（Main）：Statement.',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', '02-formal-only.md'), [
+        '## #h-2222222222222222 Stable Section',
+        '',
+        'Content.',
+        '',
+        '## #h-3333333333333333 Another Stable Section',
+        '',
+        'Content.',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', '03-ambiguous.md'), [
+        '# First Candidate',
+        '',
+        '# Second Candidate',
+        '',
+        '定理 #h-4444444444444444（Ambiguous）：Statement.',
+        ''
+    ].join('\n'));
+
+    const prepare = runCli(root, ['prepare']);
+    assert.equal(prepare.status, 0, combinedOutput(prepare));
+    const previewCache = JSON.parse(await read(root, '.markdown-formal/preview-cache.json'));
+    const titleFor = filePath => previewCache.pages.find(page => page.filePath === filePath)?.title;
+
+    assert.equal(titleFor('book1/01-lowered.md'), 'Lowered Chapter Title');
+    assert.equal(titleFor('book1/02-formal-only.md'), 'formal only');
+    assert.equal(titleFor('book1/03-ambiguous.md'), 'ambiguous');
+}
+
 async function testPerfDummyThresholds() {
     const root = await makeWorkspace('perf');
     const pass = runCli(root, ['perf-dummy', '2', '5', '--max-ms', '10000', '--max-heap-mb', '512']);
@@ -518,6 +565,25 @@ async function testPerfDummyThresholds() {
     const fail = runCli(root, ['perf-dummy', '2', '5', '--max-heap-mb', '0']);
     assert.notEqual(fail.status, 0, combinedOutput(fail));
     assert.match(combinedOutput(fail), /PERF failed: heap/);
+}
+
+async function testPreviewIgnoreHoverPatterns() {
+    const { shouldIgnorePreviewHover } = require('../out/core/formal-core.js');
+    const config = {
+        preview: {
+            ignoreHover: [
+                'appendix-b-concepts.md',
+                'book2/**/concept-index.md',
+                'appendix-*.md'
+            ]
+        }
+    };
+
+    assert.equal(shouldIgnorePreviewHover('book1/appendix-b-concepts.md', config), true);
+    assert.equal(shouldIgnorePreviewHover('book2/vol-1/concept-index.md', config), true);
+    assert.equal(shouldIgnorePreviewHover('book3/appendix-c.md', config), true);
+    assert.equal(shouldIgnorePreviewHover('book4/01-main.md', config), false);
+    assert.equal(shouldIgnorePreviewHover('book1/01-main.md', config), false);
 }
 
 const tests = [
@@ -534,7 +600,9 @@ const tests = [
     ['verify rejects non-hash ids', testVerifyRejectsNonHashIds],
     ['verify rejects missing definition content', testVerifyRejectsMissingDefinitionContent],
     ['scan exclude and zero introduction pages', testScanExcludeAndZeroIntroductionPages],
-    ['perf-dummy thresholds', testPerfDummyThresholds]
+    ['page title uses unique highest heading', testPageTitleUsesUniqueHighestHeading],
+    ['perf-dummy thresholds', testPerfDummyThresholds],
+    ['preview ignore hover patterns', testPreviewIgnoreHoverPatterns]
 ];
 
 for (const [name, test] of tests) {

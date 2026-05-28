@@ -10,12 +10,17 @@ import {
     shouldExcludeScanPath,
     toPosix
 } from './core/formal-core';
+import { appendPreviewDebugLog } from './core/debug-log';
 
 const formalPlugin = require('./markdown-it-formal');
 
 let scanInProgress = false;
 let scanAgain = false;
 let scanTimer: any = undefined;
+
+function elapsedMs(startedAt: number): number {
+    return Date.now() - startedAt;
+}
 
 async function ensureConfig(rootPath: string): Promise<any> {
     const cacheDir = path.join(rootPath, '.markdown-formal');
@@ -81,8 +86,11 @@ async function scanWorkspaceOnce() {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) return;
 
+    const startedAt = Date.now();
     const rootPath = folders[0].uri.fsPath;
     const config = await ensureConfig(rootPath);
+    appendPreviewDebugLog(rootPath, config, 'extension:scan:start', { rootPath });
+    const findStartedAt = Date.now();
     const mdFilesRaw = await vscode.workspace.findFiles(
         '**/*.md',
         vscodeExcludePattern(config)
@@ -90,21 +98,51 @@ async function scanWorkspaceOnce() {
     const mdFiles = mdFilesRaw.filter((fileUri: any) => (
         !shouldExcludeScanPath(toPosix(vscode.workspace.asRelativePath(fileUri, false)), config)
     ));
+    appendPreviewDebugLog(rootPath, config, 'extension:scan:files', {
+        rawFiles: mdFilesRaw.length,
+        files: mdFiles.length,
+        elapsedMs: elapsedMs(findStartedAt)
+    });
+    const readStartedAt = Date.now();
     const documents = await readWorkspaceDocuments(mdFiles);
+    appendPreviewDebugLog(rootPath, config, 'extension:scan:read', {
+        files: documents.length,
+        chars: documents.reduce((sum, document) => sum + String(document.content || '').length, 0),
+        elapsedMs: elapsedMs(readStartedAt)
+    });
+    const externalStartedAt = Date.now();
     const symbols = await readSymbols(rootPath);
     const definitions = await readDefinitions(rootPath);
+    appendPreviewDebugLog(rootPath, config, 'extension:scan:external-indexes', {
+        symbols: Array.isArray(symbols) ? symbols.length : 0,
+        definitions: Array.isArray(definitions) ? definitions.length : 0,
+        elapsedMs: elapsedMs(externalStartedAt)
+    });
+    const formalStartedAt = Date.now();
     const state = scanFormalDocuments(documents, config, symbols, definitions);
+    appendPreviewDebugLog(rootPath, config, 'extension:scan:formal', {
+        labels: Object.keys(state.labels).length,
+        pages: state.pages.length,
+        definitions: state.definitions.length,
+        symbols: state.symbols.length,
+        issues: state.issues.length,
+        elapsedMs: elapsedMs(formalStartedAt)
+    });
 
     const cacheDir = path.join(rootPath, '.markdown-formal');
     if (!fs.existsSync(cacheDir)) {
         fs.mkdirSync(cacheDir, { recursive: true });
     }
 
+    const writeStartedAt = Date.now();
     await fs.promises.writeFile(path.join(cacheDir, 'preview-cache.json'), `${JSON.stringify(buildPreviewCache(state), null, 2)}\n`, 'utf-8');
     await removeStaleArtifact(cacheDir, 'definition-index.md');
     await removeStaleArtifact(cacheDir, 'labels.json');
     await removeStaleArtifact(cacheDir, 'pages.json');
     await removeStaleArtifact(cacheDir, 'preview-index.json');
+    appendPreviewDebugLog(rootPath, config, 'extension:scan:write', {
+        elapsedMs: elapsedMs(writeStartedAt)
+    });
 
     const errors = state.issues.filter(issue => issue.severity === 'error');
     const warnings = state.issues.filter(issue => issue.severity !== 'error');
@@ -113,6 +151,11 @@ async function scanWorkspaceOnce() {
     } else {
         console.log('[markdown-formal] Scanned workspace and updated preview-cache.json');
     }
+    appendPreviewDebugLog(rootPath, config, 'extension:scan:end', {
+        errors: errors.length,
+        warnings: warnings.length,
+        elapsedMs: elapsedMs(startedAt)
+    });
 }
 
 async function removeStaleArtifact(cacheDir: string, fileName: string) {
@@ -126,6 +169,12 @@ async function removeStaleArtifact(cacheDir: string, fileName: string) {
 async function scanWorkspace() {
     if (scanInProgress) {
         scanAgain = true;
+        const folders = vscode.workspace.workspaceFolders;
+        const rootPath = folders && folders.length > 0 ? folders[0].uri.fsPath : '';
+        if (rootPath) {
+            const config = await ensureConfig(rootPath);
+            appendPreviewDebugLog(rootPath, config, 'extension:scan:queued');
+        }
         return;
     }
 
@@ -137,6 +186,14 @@ async function scanWorkspace() {
         } while (scanAgain);
     } catch (err) {
         console.error('[markdown-formal] Failed to scan workspace', err);
+        const folders = vscode.workspace.workspaceFolders;
+        const rootPath = folders && folders.length > 0 ? folders[0].uri.fsPath : '';
+        if (rootPath) {
+            const config = await ensureConfig(rootPath);
+            appendPreviewDebugLog(rootPath, config, 'extension:scan:error', {
+                error: err instanceof Error ? err.message : String(err)
+            });
+        }
     } finally {
         scanInProgress = false;
     }

@@ -4,7 +4,7 @@
 
 - 稳定编号：正文只保存 hash ID，预览渲染当前编号。
 - 定义查询：定义不编号不 ref；可查询概念由正文 marker 和 `.markdown-formal/definitions.json` 共同维护。
-- 符号召回：项目特有 LaTeX 记号写入 `.markdown-formal/symbols.json`。
+- 符号表：项目特有 LaTeX 记号写入 `.markdown-formal/symbols.json`。
 - 程序校验：写完用 CLI 统一生成 ID、刷新缓存并验证引用。
 
 ## 标准流程
@@ -37,7 +37,7 @@ npm run formal -- finish path/to/chapter-or-dir
 - `.markdown-formal/preview-cache.json`：预览运行时缓存，不直接编辑。
 - `.markdown-formal/config.json`：语言、扫描排除、跨 book 查询依赖等配置，可人工维护。
 - `.markdown-formal/definitions.json`：非标准行文定义的查询索引源表。
-- `.markdown-formal/symbols.json`：项目特殊符号的召回索引源表。
+- `.markdown-formal/symbols.json`：项目特殊符号表源表。
 
 不要把 `.markdown-formal/` 下的生成缓存当成写作源；人工维护入口只有 `config.json`、`definitions.json` 和 `symbols.json`。
 
@@ -109,7 +109,7 @@ Definition (Evolution system): Given a network topology driven by linear operato
 - 标准 `定义（X）` marker 会被工具自动扫描，适合简单定义；需要稳定多段预览、非标准句式、别名或跨语言查询时，写入 `.markdown-formal/definitions.json` 并提供 `content`。
 - 不要为了刷新定义索引而每次全书扫描式重写 `.markdown-formal/definitions.json`。
 
-## 符号召回
+## 符号表
 
 把项目特有的符号约定写入 `.markdown-formal/symbols.json`：
 
@@ -132,7 +132,7 @@ Definition (Evolution system): Given a network topology driven by linear operato
 - `scope` 可用 `file`、`chapter`、`book` 或 `workspace`，默认按 book 生效。
 - `display` 通常不用写，工具会从 `pattern` 生成搜索展示公式。
 - `pattern` 必须是记号本身或完整记号族，括号/方括号要闭合；不要把整条等式、推导片段或缺右边界的公式片段写成 pattern。
-- 预览端不把正文公式绑定成可点击 ref；导航栏符号表只展示当前预览文件公式中实际匹配到的符号，搜索框输入时可在当前查询范围内过滤定义和符号。
+- 预览端不把正文公式绑定成可点击 ref；导航栏符号表只展示当前预览文件公式中实际匹配到的符号，搜索框只过滤定义。
 - 只记录项目明确约定过的特殊记号；普通变量、通用函数、一次性推导公式、整条等式不进入符号表。
 
 AI 只需要维护源位置、pattern、meaning。参数化展示、LaTeX 渲染和运行时缓存由工具生成；不要在 meaning 里重复列出捕获参数。
@@ -171,7 +171,7 @@ book2/
 - `00-introduction.md`、`intro.md`、`introduction.md` 和 `summary.md` 可导航，但不参与正式编号。
 - `NN-title.md` 是正文章。
 - `appendix-a-title.md` 是附录；编号显示为 `A.1`、`A.2`。不同卷里的附录 A 可以各自从 `A.1` 开始。
-- 定义和符号查询默认只查当前 book。跨 book 查询必须在 `.markdown-formal/config.json` 显式声明：
+- 定义搜索和当前页符号表默认只查当前 book。跨 book 查询必须在 `.markdown-formal/config.json` 显式声明：
 
 ```json
 {
@@ -186,11 +186,17 @@ book2/
     "bookDependencies": {
       "book3": ["book2"]
     }
+  },
+  "preview": {
+    "ignoreHover": [
+      "appendix-b-concepts.md",
+      "book1/**/concept-*.md"
+    ]
   }
 }
 ```
 
-AI 应从拥有 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbols.json` 的项目根目录运行 `npm run formal`。如果根目录下有构建产物、上下文材料、草稿或其他不属于正式正文体系的 Markdown，先在 `.markdown-formal/config.json` 的 `scan.exclude` 中排除，再运行 `prepare` / `verify`。
+AI 应从拥有 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbols.json` 的项目根目录运行 `npm run formal`。如果根目录下有构建产物、上下文材料、草稿或其他不属于正式正文体系的 Markdown，先在 `.markdown-formal/config.json` 的 `scan.exclude` 中排除，再运行 `prepare` / `verify`。如果某些概念附录、索引页或超密集引用页不适合 recall hover，在 `.markdown-formal/config.json` 的 `preview.ignoreHover` 中加入这些文件；可以写完整相对路径、裸文件名或 glob。这样只关闭正文里的 `@hash` 悬浮 recall，编号、导航、跳转、定义搜索以及当前页符号表的 LaTeX 预览仍保留。排查空白预览时，可临时设置 `debug.previewLog: true`，查看 `.markdown-formal/preview-debug.log`，定位后再关闭。
 
 ## 旧项目迁移
 
@@ -204,6 +210,8 @@ AI 应从拥有 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbol
 6. 读取 `.markdown-formal/text-ref-migration.md`，手工处理旧 Markdown 链接和缺少 hash 的小节候选。
 7. 维护本次发现的 `.markdown-formal/definitions.json` / `.markdown-formal/symbols.json` 条目。
 8. 运行 `npm run formal -- verify`。
+
+`migrate-text-refs` 只自动改写带类型或章节语义的旧编号引用，例如 `定理 2.1`、`命题2.2`、`Theorem 2.1`、`§2.1`、`第 2.1 节`。不要期待它处理裸 `2.1`：裸数字可能是小数、公式编号、章节号或参数，AI 应结合上下文手工判断。工具使用边界匹配，避免把 `2.1` 误替换进 `2.12`、`2.1.3` 或 `22.1`。
 
 逐步迁移时，默认会同步处理其他章节指向本章或本卷的 incoming refs。只有明确要把改写限制在目标文件内时才加 `--target-only`。
 
