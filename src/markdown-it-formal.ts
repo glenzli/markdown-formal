@@ -2,9 +2,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
     DEFAULT_CONFIG,
+    formatPageReference,
     formatDisplayNumber,
     getLanguage,
     mergeConfig,
+    normalizeFormalPagePath,
     parseFormalMarkerLine,
     shouldIgnorePreviewHover,
     type RuntimeDefinitionData,
@@ -107,6 +109,11 @@ function normalizeFileHref(rootPath: string, filePath: string, id: string): stri
     return `/${encodeURI(filePath)}#formal-${encodeURIComponent(id)}`;
 }
 
+function normalizePageHref(filePath: string): string {
+    if (!filePath) return '#';
+    return `/${encodeURI(filePath)}`;
+}
+
 function normalizePreviewFilePath(filePath: string): string {
     return String(filePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
 }
@@ -116,11 +123,11 @@ function definitionTargetId(index: number): string {
 }
 
 function referencedFormalIds(src: string): string[] {
-    return uniqueValues(Array.from(src.matchAll(/@([a-zA-Z0-9_-]+)(?:\.title)?/g), match => match[1]));
+    return uniqueValues(Array.from(src.matchAll(/@([a-zA-Z0-9_-]+)(?:\.title)?\b(?!:)/g), match => match[1]));
 }
 
 function countFormalRefs(src: string): number {
-    return Array.from(src.matchAll(/@([a-zA-Z0-9_-]+)(?:\.title)?/g)).length;
+    return Array.from(src.matchAll(/@([a-zA-Z0-9_-]+)(?:\.title)?\b(?!:)/g)).length;
 }
 
 function tooltipRenderStats(src: string, labels: Record<string, LabelData>): TooltipRenderStats {
@@ -846,14 +853,32 @@ export = function formalPlugin(md: any, options: any) {
         }
     });
 
-    // Inline rule for @p-123 and @p-123.title
+    // Inline rules for @h-... object refs and @chapter:/@page: page refs.
     md.inline.ruler.before('link', 'formal_inline', (state: any, silent: boolean) => {
         if (state.env) state.env.formalInlineRuleCalls = (state.env.formalInlineRuleCalls || 0) + 1;
         const start = state.pos;
         if (state.src.charCodeAt(start) !== 0x40 /* @ */) return false;
-        
+
+        const pageMatch = state.src.slice(start).match(/^@(chapter|page):([^\s<>"'`，。；;！？]+?\.md)(?:\.(title|full))?(?=$|[\s,，。；;:：.!！?？)\]}])/);
+        if (pageMatch) {
+            if (silent) return false;
+
+            const currentFilePath = normalizePreviewFilePath(state.env?.formalCurrentFilePath || getCurrentFilePath(rootPath, state.env, state.src || '', cachedPages || []));
+            const token = state.push('formal_page_ref', '', 0);
+            token.meta = {
+                kind: pageMatch[1],
+                rawTarget: pageMatch[2],
+                target: normalizeFormalPagePath(pageMatch[2], currentFilePath),
+                mode: pageMatch[3]
+            };
+            if (state.env) state.env.formalInlineMatches = (state.env.formalInlineMatches || 0) + 1;
+            state.pos += pageMatch[0].length;
+            return true;
+        }
+
         const match = state.src.slice(start).match(/^@([a-zA-Z0-9_-]+)(\.title)?/);
         if (!match) return false;
+        if (state.src[start + match[0].length] === ':') return false;
         
         // Silent mode is used while markdown-it scans link labels like [@h-...].
         // Returning true without consuming text can stall that scanner.
@@ -887,7 +912,7 @@ export = function formalPlugin(md: any, options: any) {
                 if (!children) continue;
 
                 for (let i = 0; i < children.length; i++) {
-                    if (children[i].type === 'formal_inline') {
+                    if (children[i].type === 'formal_inline' || children[i].type === 'formal_page_ref') {
                         formalInlineCount++;
                         // Check previous token: if it ends with CJK + space(s), trim the space
                         if (i > 0 && children[i-1].type === 'text') {
@@ -992,5 +1017,25 @@ export = function formalPlugin(md: any, options: any) {
         
         const titleAttr = typeName + (labelData.title ? getColon(cachedConfig) + labelData.title : '');
         return `<span class="formal-ref-wrap"><a class="formal-ref" href="${escapeHtml(uri)}" data-href="${escapeHtml(uri)}"${targetLineAttr} title="${escapeHtml(titleAttr)}" style="color: inherit; text-decoration: none;">${escapeHtml(text)}</a>${tooltipHtml}</span>`;
+    };
+
+    md.renderer.rules.formal_page_ref = (tokens: any, idx: number) => {
+        const token = tokens[idx];
+        const { kind, rawTarget, target, mode } = token.meta;
+        const page = (cachedPages || []).find(item => normalizePreviewFilePath(item.filePath) === normalizePreviewFilePath(target));
+
+        if (!page) {
+            return `<span style="color:red; font-weight:bold">@${escapeHtml(kind)}:${escapeHtml(rawTarget)}</span>`;
+        }
+
+        if (kind === 'chapter' && page.kind !== 'chapter') {
+            return `<span style="color:red; font-weight:bold">@chapter:${escapeHtml(rawTarget)}</span>`;
+        }
+
+        const displayMode = mode === 'title' || mode === 'full' ? mode : 'default';
+        const text = formatPageReference(page, cachedConfig, displayMode);
+        const titleAttr = formatPageReference(page, cachedConfig, 'full');
+        const uri = normalizePageHref(page.filePath || '');
+        return `<a class="formal-page-ref" href="${escapeHtml(uri)}" data-href="${escapeHtml(uri)}" title="${escapeHtml(titleAttr)}" style="color: inherit; text-decoration: none;">${escapeHtml(text)}</a>`;
     };
 };

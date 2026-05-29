@@ -57,7 +57,12 @@ References:
 
 - `@h-...` renders the object type and display number.
 - `@h-....title` renders the object title.
+- `@chapter:path/to/chapter.md` renders the current chapter number, using a path relative to the formal root that owns `.markdown-formal/`.
+- `@chapter:path/to/chapter.md.title` renders only the chapter title, and `.full` renders number plus title.
+- `@page:path/to/page.md` is the same mechanism for intro, summary, and appendix pages; use `@chapter:` only for real chapter files.
 - Definitions do not have hash IDs and do not participate in references. Lookup is driven by definition names in the concept index; definition bodies are shown after a name match but are not used as broad search text.
+
+During drafting, `./chapter.md` and `../vol-2/chapter.md` are accepted as input sugar for page refs. `finish` normalizes them to formal-root-relative paths so the source stays stable regardless of CLI `workdir` or the current Markdown file.
 
 Use `.markdown-formal/definitions.json` when a concept should be queryable but the prose should stay in its natural form:
 
@@ -98,6 +103,7 @@ Follow skills/editor.md.
 Before writing or migrating, run npm run formal -- prepare.
 Read .markdown-formal/agent-guide.md, the target Markdown file, and .markdown-formal/reference-map.md.
 Reference existing numbered objects only by copying @h-... or @h-....title from reference-map.md.
+Reference existing chapters only by copying @chapter:path/to/file.md from reference-map.md. Use @chapter:path.md.title for the title and @chapter:path.md.full for number plus title; use @page:path.md for intro/summary/appendix pages.
 Keep a short natural-language cue near important refs, such as "by the spectral-radius lemma `@h-...`"; do not leave important prose as only a bare `@h-...`.
 Use tmp-1/tmp-2/... for new markers; do not generate hash IDs manually.
 Use the same tmp-ID rule for equations, figures, and tables: `公式 #tmp-*：`, `图 #tmp-*（Caption）：...`, `表 #tmp-*（Caption）：`.
@@ -184,9 +190,9 @@ npm run formal -- migrate-text-refs --target-only path/to/chapter-or-volume
 npm run formal -- migrate-text-refs --apply --target-only path/to/chapter-or-volume
 ```
 
-`migrate-text-refs` automatically rewrites unambiguous typed numbered references, including common forms such as `定理 2.1`, `Theorem 2.1`, `公式 (2.1)`, `Figure 2.1`, `表 2.1`, `第 2.1 节`, `§2.1`, and `Sec. 2.1`. It intentionally does not rewrite bare `2.1` or bare `(2.1)`, because that may be a decimal, equation number, chapter number, or parameter; decide those cases by reading context. Matching is bounded so `2.1` is not rewritten inside `2.12`, `2.1.3`, or `22.1`. It does not rewrite old Markdown links in place because formal refs render as links already; those links are listed in `.markdown-formal/text-ref-migration.md` with suggested IDs.
+`migrate-text-refs` automatically rewrites unambiguous typed numbered references, including common forms such as `定理 2.1`, `Theorem 2.1`, `公式 (2.1)`, `Figure 2.1`, `表 2.1`, `第 2.1 节`, `§2.1`, and `Sec. 2.1`. It intentionally does not rewrite bare `2.1`, bare `(2.1)`, or handwritten chapter refs such as `第 2 章` / `Chapter 2`, because those need prose context; convert chapter refs manually to `@chapter:path/to/chapter.md`. Matching is bounded so `2.1` is not rewritten inside `2.12`, `2.1.3`, or `22.1`. It does not rewrite old Markdown links in place because formal refs render as links already; those links are listed in `.markdown-formal/text-ref-migration.md` with suggested IDs.
 
-The same report lists plain `##`/`###` section headings that may need numbered markers. For referenced sections, write the heading as `## #tmp-* Title`, run `finish`, then rerun the migration.
+The same report lists plain `##`/`###` section headings that may need numbered markers. `audit` additionally lists handwritten chapter references with suggested `@chapter:` paths when the target chapter is unambiguous. For referenced sections, write the heading as `## #tmp-* Title`, run `finish`, then rerun the migration.
 
 For old semantic IDs:
 
@@ -248,9 +254,9 @@ npm run formal -- perf-dummy 50 200 --max-ms 2000 --max-heap-mb 256
 npm test
 ```
 
-`verify` is the strict generated/migrated-content gate. It fails on missing refs, duplicate IDs, remaining temporary IDs, non-hash IDs, disallowed cross-book refs, malformed equation/figure/table markers, and unresolved text-reference migration reports.
+`verify` is the strict generated/migrated-content gate. It fails on missing refs, missing page refs, duplicate IDs, remaining temporary IDs, non-hash IDs, disallowed cross-book refs, malformed equation/figure/table markers, and unresolved text-reference migration reports.
 
-`audit` is advisory and exits successfully. It writes `.markdown-formal/audit.md` with old typed references, old Markdown links, plain section headings that may need stable markers, suspicious bare number references, unused remark/example hashes, and theorem-like blocks that do not have a visible `证明` / `Proof` boundary.
+`audit` is advisory and exits successfully. It writes `.markdown-formal/audit.md` with old typed references, handwritten chapter references, old Markdown links, plain section headings that may need stable markers, suspicious bare number references, unused remark/example hashes, and theorem-like blocks that do not have a visible `证明` / `Proof` boundary.
 
 ## Local Release
 

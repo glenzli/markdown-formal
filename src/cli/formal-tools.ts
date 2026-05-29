@@ -12,6 +12,7 @@ import {
     displayNumber,
     escapeRegExp,
     mergeConfig,
+    normalizeFormalPagePath,
     parseFormalMarkerLine,
     renderAgentGuide,
     renderReferenceMap,
@@ -109,7 +110,7 @@ async function scanWorkspace() {
 async function writeArtifacts(state) {
     await ensureCacheDir();
     await fs.writeFile(path.join(CACHE_DIR, 'preview-cache.json'), `${JSON.stringify(buildPreviewCache(state), null, 2)}\n`, 'utf8');
-    await fs.writeFile(path.join(CACHE_DIR, 'reference-map.md'), renderReferenceMap(state.definitions, state.config), 'utf8');
+    await fs.writeFile(path.join(CACHE_DIR, 'reference-map.md'), renderReferenceMap(state.definitions, state.config, state.pages), 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'agent-guide.md'), renderAgentGuide(state), 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'report.md'), renderReport(state), 'utf8');
     await removeStaleArtifact('definition-index.md');
@@ -255,7 +256,8 @@ async function finalize(paths, commandName = 'finalize') {
         return;
     }
     if (tmpIds.length === 0) {
-        console.log('OK finalize: no temporary ids found');
+        const normalizedPageRefFiles = await normalizePageReferencesInFiles(targetFiles);
+        console.log(`OK finalize: no temporary ids found${normalizedPageRefFiles > 0 ? `, normalized page refs in ${normalizedPageRefFiles} files` : ''}`);
         await prepare({ exitOnError: true });
         return;
     }
@@ -285,9 +287,12 @@ async function finalize(paths, commandName = 'finalize') {
     const rewriteFiles = options.all ? await collectMarkdownFiles(state.config) : targetFiles;
     for (const filePath of rewriteFiles) {
         const original = await fs.readFile(filePath, 'utf8');
-        const updated = rewriteFormalIds(original, mapping, {
+        let updated = rewriteFormalIds(original, mapping, {
             rewriteDefinitions: targetFileSet.has(relativePath(filePath))
         });
+        if (options.all || targetFileSet.has(relativePath(filePath))) {
+            updated = rewritePageReferences(updated, relativePath(filePath));
+        }
         if (updated !== original) {
             await fs.writeFile(filePath, updated, 'utf8');
             changedFiles++;
@@ -302,6 +307,19 @@ async function finalize(paths, commandName = 'finalize') {
         console.log(`${tmpId} -> ${hashId}`);
     }
     await prepare({ exitOnError: true });
+}
+
+async function normalizePageReferencesInFiles(files) {
+    let changedFiles = 0;
+    for (const filePath of files) {
+        const original = await fs.readFile(filePath, 'utf8');
+        const updated = rewritePageReferences(original, relativePath(filePath));
+        if (updated !== original) {
+            await fs.writeFile(filePath, updated, 'utf8');
+            changedFiles++;
+        }
+    }
+    return changedFiles;
 }
 
 async function finish(args) {
@@ -357,6 +375,36 @@ function rewriteFormalIds(content, mapping, { rewriteDefinitions }) {
         return next;
     });
     return updated.join(eol);
+}
+
+function rewritePageReferences(content, file) {
+    const lines = content.split(/\r?\n/);
+    const eol = content.includes('\r\n') ? '\r\n' : '\n';
+    const pageRefRe = /(^|[^A-Za-z0-9_])@(chapter|page):([^\s<>"'`，。；;！？]+?\.md)(?:\.(title|full))?(?=$|[\s,，。；;:：.!！?？)\]}])/g;
+    let inFence = false;
+    let changed = false;
+
+    const updated = lines.map(line => {
+        if (/^\s*(```|~~~)/.test(line)) {
+            inFence = !inFence;
+            return line;
+        }
+        if (inFence) return line;
+
+        return splitProtectedInlineSegments(line).map(part => {
+            if (part.kind !== 'text') return part.text;
+
+            pageRefRe.lastIndex = 0;
+            return part.text.replace(pageRefRe, (match, prefix, kind, rawTarget, mode) => {
+                const normalized = normalizeFormalPagePath(rawTarget, file);
+                if (!normalized || normalized === rawTarget) return match;
+                changed = true;
+                return `${prefix}@${kind}:${normalized}${mode ? `.${mode}` : ''}`;
+            });
+        }).join('');
+    });
+
+    return changed ? updated.join(eol) : content;
 }
 
 async function resolveInputMarkdownFiles(inputs, config) {
@@ -1024,6 +1072,62 @@ function collectBareNumberCandidates(content, file) {
     return candidates;
 }
 
+function chapterReferenceNumber(text) {
+    const zh = String(text).match(/^第\s*(\d+)\s*章$/);
+    if (zh) return Number(zh[1]);
+    const en = String(text).match(/^Chapter\s+(\d+)$/i);
+    if (en) return Number(en[1]);
+    return undefined;
+}
+
+function describeChapterReference(text, file, pages) {
+    const number = chapterReferenceNumber(text);
+    if (!number) return { status: 'unresolved' };
+
+    const sourcePage = pages.find(page => page.filePath === file);
+    const candidates = pages.filter(page => (
+        page.kind === 'chapter'
+        && page.chapter === number
+        && (!sourcePage?.bookKey || page.bookKey === sourcePage.bookKey)
+    ));
+
+    if (candidates.length === 1) {
+        return { status: 'resolved', target: candidates[0].filePath };
+    }
+    return { status: candidates.length > 1 ? 'ambiguous' : 'unresolved' };
+}
+
+function collectChapterReferenceCandidates(content, file, pages) {
+    const candidates = [];
+    const lines = content.split(/\r?\n/);
+    const chapterRe = /(^|[^@#A-Za-z0-9_])((?:第\s*\d+\s*章)|(?:Chapter\s+\d+))(?![A-Za-z0-9_-])/gi;
+    let inFence = false;
+
+    lines.forEach((line, index) => {
+        if (/^\s*(```|~~~)/.test(line)) {
+            inFence = !inFence;
+            return;
+        }
+        if (inFence || /^#{1,6}\s+/.test(line)) return;
+
+        for (const segment of splitAuditTextSegments(line)) {
+            chapterRe.lastIndex = 0;
+            let match;
+            while ((match = chapterRe.exec(segment.text))) {
+                candidates.push({
+                    code: 'chapter-ref-candidate',
+                    file,
+                    line: index + 1,
+                    text: match[2],
+                    ...describeChapterReference(match[2], file, pages)
+                });
+            }
+        }
+    });
+
+    return candidates;
+}
+
 function normalizeAuditProofLine(line) {
     return line
         .trim()
@@ -1115,6 +1219,7 @@ function renderAuditReport(result) {
         `Files scanned: ${result.files}`,
         `Typed old references: ${result.replacements.length + result.unresolved.length + result.ambiguous.length}`,
         `Markdown links needing manual rewrite: ${result.linkedReferences.length}`,
+        `Chapter references needing page refs: ${result.chapterReferences.length}`,
         `Section headings needing numbered markers: ${result.sectionHeadings.length}`,
         `Bare number candidates: ${result.bareNumberCandidates.length}`,
         `Unused optional block hashes: ${result.unusedOptionalBlocks.length}`,
@@ -1155,6 +1260,18 @@ function renderAuditReport(result) {
         result.linkedReferences.forEach(item => {
             const suffix = item.status === 'resolved' ? `; suggested @${item.id} (${item.title || item.display || 'untitled'})` : `; ${item.status}`;
             lines.push(`- ${item.file}:${item.line}: ${item.link} contains ${item.text}${suffix}`);
+        });
+        lines.push('');
+    }
+
+    if (result.chapterReferences.length > 0) {
+        lines.push('## Chapter References Needing Page Refs', '');
+        lines.push('Use `@chapter:<formal-root-relative-path>` instead of handwritten chapter numbers.', '');
+        result.chapterReferences.forEach(item => {
+            const suffix = item.target
+                ? `; suggested @chapter:${item.target}`
+                : `; ${item.status}`;
+            lines.push(`- ${item.file}:${item.line}: ${item.text}${suffix}`);
         });
         lines.push('');
     }
@@ -1200,6 +1317,7 @@ function renderAuditReport(result) {
         result.unresolved,
         result.ambiguous,
         result.linkedReferences,
+        result.chapterReferences,
         result.sectionHeadings,
         result.bareNumberCandidates,
         result.unusedOptionalBlocks,
@@ -1227,6 +1345,7 @@ async function audit(args) {
         unresolved: [],
         ambiguous: [],
         linkedReferences: [],
+        chapterReferences: [],
         sectionHeadings: [],
         bareNumberCandidates: [],
         unusedOptionalBlocks: collectUnusedOptionalBlocks(state, targetFileSet),
@@ -1241,6 +1360,7 @@ async function audit(args) {
         result.unresolved.push(...rewritten.unresolved);
         result.ambiguous.push(...rewritten.ambiguous);
         result.linkedReferences.push(...rewritten.linkedReferences);
+        result.chapterReferences.push(...collectChapterReferenceCandidates(original, file, state.pages));
         result.sectionHeadings.push(...rewritten.sectionHeadings);
         result.bareNumberCandidates.push(...collectBareNumberCandidates(original, file));
         result.missingProofBoundaries.push(...collectMissingProofBoundaries(original, file));
@@ -1253,6 +1373,7 @@ async function audit(args) {
         + result.unresolved.length
         + result.ambiguous.length
         + result.linkedReferences.length
+        + result.chapterReferences.length
         + result.sectionHeadings.length
         + result.bareNumberCandidates.length
         + result.unusedOptionalBlocks.length

@@ -2130,23 +2130,26 @@
         if (!(target instanceof Element)) return;
 
         const ref = target.closest<HTMLAnchorElement>('.formal-ref');
+        const page = target.closest<HTMLAnchorElement>('.formal-page-ref');
         const toc = target.closest<HTMLAnchorElement>('.formal-toc-item');
         const chapter = target.closest<HTMLAnchorElement>('.formal-chapter-item');
-        if (!ref && !toc && !chapter) return;
+        if (!ref && !page && !toc && !chapter) return;
 
         const labels = readLabels();
         const pages = readPages();
         const currentFilePath = getCurrentFilePath(labels, pages);
         const rawTarget = ref
             ? ref.getAttribute('data-formal-target') || ref.getAttribute('data-href') || ref.getAttribute('href')
-            : toc
-                ? toc.getAttribute('href')
-                : chapter?.getAttribute('href');
+            : page
+                ? page.getAttribute('data-href') || page.getAttribute('href')
+                : toc
+                    ? toc.getAttribute('href')
+                    : chapter?.getAttribute('href');
 
         if (!rawTarget) return;
 
         const targetInfo = splitTargetUrl(rawTarget, currentFilePath);
-        if (!targetInfo.targetId && !chapter) return;
+        if (!targetInfo.targetId && !chapter && !page) return;
 
         event.preventDefault();
         event.stopPropagation();

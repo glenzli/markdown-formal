@@ -108,6 +108,15 @@ export interface FormalReference {
     line: number;
 }
 
+export interface FormalPageReference {
+    kind: 'chapter' | 'page';
+    target: string;
+    rawTarget: string;
+    mode?: 'title' | 'full';
+    file: string;
+    line: number;
+}
+
 export interface FormalDocument {
     filePath: string;
     content: string;
@@ -385,6 +394,41 @@ export function uiText(config: any, key: string, values: Record<string, string> 
 export function typeName(config: any, type: string): string {
     const language = getLanguage(config);
     return config?.dictionary?.[language]?.[type] || DEFAULT_CONFIG.dictionary[language]?.[type] || type;
+}
+
+export function normalizeFormalPagePath(target: string, sourceFilePath = ''): string {
+    let value = toPosix(String(target || '').trim()).replace(/^\/+/, '');
+    if (!value) return '';
+
+    if (/^\.\.?\//.test(value)) {
+        const baseDir = sourceFilePath ? path.posix.dirname(toPosix(sourceFilePath)) : '';
+        value = path.posix.join(baseDir, value);
+    }
+
+    return path.posix.normalize(value).replace(/^\.\/+/, '').replace(/^\/+/, '');
+}
+
+export function formatPageReference(page: PageData, config: any, mode: 'default' | 'title' | 'full' = 'default'): string {
+    const title = page.title || page.filePath;
+    let label = title;
+
+    if (page.kind === 'chapter' && page.chapter !== undefined) {
+        label = uiText(config, 'chapter', { number: String(page.chapter) });
+    } else if (page.kind === 'appendix' && page.appendix) {
+        label = uiText(config, 'appendix', { label: page.appendix });
+    } else if (page.kind === 'intro') {
+        label = uiText(config, 'intro');
+    } else if (page.kind === 'summary') {
+        label = uiText(config, 'summary');
+    }
+
+    if (mode === 'title') return title;
+    if (mode === 'full') {
+        if (!title || title === label) return label;
+        const colon = getLanguage(config) === 'en' ? ': ' : '：';
+        return `${label}${colon}${title}`;
+    }
+    return label;
 }
 
 export function getContentPreview(content: string, maxLength = 240): string {
@@ -1397,6 +1441,7 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
     const labels: Record<string, LabelData> = {};
     const definitions: FormalDefinition[] = [];
     const references: FormalReference[] = [];
+    const pageReferences: FormalPageReference[] = [];
     const pages: PageData[] = [];
     const issues: FormalIssue[] = [];
     const unitFiles = new Map<string, UnitFile[]>();
@@ -1437,7 +1482,7 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
             pages.push(page);
         }
 
-        collectReferences(content, filePath, references);
+        collectReferences(content, filePath, references, pageReferences);
         const markerStarts = collectMarkerStarts(content, filePath);
         if (markerStarts.some(marker => marker.type !== 'def') && !unit) {
             issues.push({
@@ -1555,11 +1600,12 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
     issues.push(...symbolResult.issues);
     issues.push(...lintDefinitions(definitions));
     issues.push(...lintReferences(references, labels, definitions, config));
+    issues.push(...lintPageReferences(pageReferences, pages, config));
     issues.push(...lintPages(pages));
 
     definitions.sort(compareDefinitionRecords);
     pages.sort(comparePages);
-    return { config, files: files.map(file => file.filePath), labels, pages, definitions, references, symbols: symbolResult.symbols, issues };
+    return { config, files: files.map(file => file.filePath), labels, pages, definitions, references, pageReferences, symbols: symbolResult.symbols, issues };
 }
 
 function collectMarkerStarts(content: string, filePath: string): any[] {
@@ -1579,14 +1625,29 @@ function collectMarkerStarts(content: string, filePath: string): any[] {
     return starts;
 }
 
-function collectReferences(content: string, filePath: string, references: FormalReference[]): void {
+function collectReferences(content: string, filePath: string, references: FormalReference[], pageReferences: FormalPageReference[]): void {
     const stripped = stripIgnoredMarkdown(content);
     const lineStarts = [0];
     for (let i = 0; i < stripped.length; i++) {
         if (stripped[i] === '\n') lineStarts.push(i + 1);
     }
 
-    const refRe = /(^|[^A-Za-z0-9_])@([A-Za-z0-9_-]+)(?:\.title)?\b/g;
+    const pageRefRe = /(^|[^A-Za-z0-9_])@(chapter|page):([^\s<>"'`，。；;！？]+?\.md)(?:\.(title|full))?(?=$|[\s,，。；;:：.!！?？)\]}])/g;
+    let pageMatch;
+    while ((pageMatch = pageRefRe.exec(stripped))) {
+        const offset = pageMatch.index + pageMatch[1].length;
+        const line = findLineForOffset(lineStarts, offset);
+        pageReferences.push({
+            kind: pageMatch[2] as 'chapter' | 'page',
+            rawTarget: pageMatch[3],
+            target: normalizeFormalPagePath(pageMatch[3], filePath),
+            mode: pageMatch[4] as 'title' | 'full' | undefined,
+            file: filePath,
+            line
+        });
+    }
+
+    const refRe = /(^|[^A-Za-z0-9_])@([A-Za-z0-9_-]+)(?:\.title)?\b(?!:)/g;
     let match;
     while ((match = refRe.exec(stripped))) {
         const offset = match.index + match[1].length;
@@ -1720,6 +1781,49 @@ function lintReferences(references: FormalReference[], labels: Record<string, La
     return issues;
 }
 
+function lintPageReferences(pageReferences: FormalPageReference[], pages: PageData[], config: any): FormalIssue[] {
+    const issues: FormalIssue[] = [];
+    const pageByPath = new Map(pages.map(page => [page.filePath, page]));
+
+    for (const ref of pageReferences) {
+        const target = pageByPath.get(ref.target);
+        if (!target) {
+            issues.push({
+                severity: 'error',
+                code: 'missing-page-ref',
+                file: ref.file,
+                line: ref.line,
+                message: `Page reference @${ref.kind}:${ref.rawTarget} resolves to ${ref.target || '(empty)'}, but no scanned page matches that path.`
+            });
+            continue;
+        }
+
+        if (ref.kind === 'chapter' && target.kind !== 'chapter') {
+            issues.push({
+                severity: 'error',
+                code: 'page-ref-kind-mismatch',
+                file: ref.file,
+                line: ref.line,
+                message: `@chapter:${ref.rawTarget} points to a ${target.kind} page. Use @page:${target.filePath} for non-chapter pages.`
+            });
+        }
+
+        const sourceBook = inferBookInfo(ref.file, config);
+        const targetBookKey = target.bookKey || inferBookInfo(target.filePath || '', config).key;
+        if (!canReferenceBook(sourceBook.key, targetBookKey, config)) {
+            issues.push({
+                severity: 'error',
+                code: 'cross-book-page-ref-disallowed',
+                file: ref.file,
+                line: ref.line,
+                message: `Page reference @${ref.kind}:${ref.rawTarget} crosses from ${sourceBook.title} to ${target.bookTitle || targetBookKey}; add lookup.bookDependencies if this dependency is intentional.`
+            });
+        }
+    }
+
+    return issues;
+}
+
 function lintPages(pages: PageData[]): FormalIssue[] {
     const issues: FormalIssue[] = [];
     const chaptersByBook = new Map<string, PageData[]>();
@@ -1815,13 +1919,25 @@ export function displayNumber(def: FormalDefinition): string {
     return formatLabelNumber(def.label);
 }
 
-export function renderReferenceMap(definitions: FormalDefinition[], config: any): string {
+export function renderReferenceMap(definitions: FormalDefinition[], config: any, pages: PageData[] = []): string {
     const lines = [
         '# Reference Map',
         '',
         'Generated by `npm run formal -- prepare`. Read this file to map human display numbers to stable hash IDs.',
         ''
     ];
+
+    if (pages.length > 0) {
+        lines.push('## Pages', '');
+        lines.push('| Display | Ref | Title | Location |');
+        lines.push('| --- | --- | --- | --- |');
+        for (const page of [...pages].sort(comparePages)) {
+            const prefix = page.kind === 'chapter' ? 'chapter' : 'page';
+            const ref = `@${prefix}:${page.filePath}`;
+            lines.push(`| ${escapeTable(formatPageReference(page, config))} | \`${ref}\` | ${escapeTable(page.title || '')} | \`${page.filePath}\` |`);
+        }
+        lines.push('');
+    }
 
     let currentBook = '';
     for (const def of definitions.filter(def => def.id && displayNumber(def))) {
@@ -1880,9 +1996,9 @@ export function renderAgentGuide(state: any): string {
         '## Normal Writing',
         '',
         '1. Read the target Markdown file.',
-        '2. Read `.markdown-formal/reference-map.md` to map display numbers to stable hash IDs.',
+        '2. Read `.markdown-formal/reference-map.md` to map display numbers to stable hash IDs and page paths.',
         '3. Put stable IDs directly where numbers used to appear: `## #tmp-1 Section`, `定理 #tmp-2（Title）：...`, `公式 #tmp-3：`, `图 #tmp-4（Caption）：...`, or `表 #tmp-5（Caption）：`. Definitions are not numbered objects and never get hash IDs or refs.',
-        '4. Reference numbered objects with `@h-...`; never handwrite display numbers as references.',
+        '4. Reference numbered objects with `@h-...`; reference chapters with `@chapter:path/to/file.md`; never handwrite display numbers as references.',
         '5. Keep Markdown and LaTeX unescaped.',
         '6. Run `npm run formal -- finish <file-or-dir>` after editing; it finalizes temporary IDs and verifies the workspace.',
         '7. Run `npm run formal -- audit <file-or-dir>` when you want an advisory cleanup list for old prose refs, bare number candidates, optional blocks, and proof-boundary hints.',
@@ -1893,6 +2009,7 @@ export function renderAgentGuide(state: any): string {
         '- Sections: `## #h-... Title` renders as the current section number plus title, and links jump to the section without hover recall.',
         '- Numbered objects: `命题 #h-...（Title）：...`, `引理 #h-...`, `定理 #h-...`, `推论 #h-...` share the theorem counter per chapter or appendix.',
         '- Equations, figures, and tables: `公式 #h-...：` binds the next display formula as a numbered equation, `图 #h-...（Title）：...` captions a nearby image, and `表 #h-...（Title）：` captions the following table. They have separate counters per chapter or appendix; equations render as `(1.1)`, appendices as `(A.1)`.',
+        '- Chapter/page refs: use `@chapter:book1/02-main.md`, `@chapter:book1/02-main.md.title`, or `@chapter:book1/02-main.md.full`; paths are relative to the formal root that owns `.markdown-formal/`. `@page:path.md` is for intro, summary, and appendix pages. `finish` normalizes `./` and `../` input sugar to root-relative paths.',
         '- Theorem-like recall captures the statement before `证明` / `Proof`; keep proofs after an explicit proof marker.',
         '- Definitions: lookup is a concept-index workflow. When editing a file, update `.markdown-formal/definitions.json` entries whose `source` is in that file and include Markdown `content`; standard `定义（Term）：...` / `Definition (Term): ...` lines are only a simple fallback scan.',
         '- Remarks/examples stay plain by default. Only when later text already cites one, convert that exact item to `注 #tmp-*` / `例 #tmp-*` and run `finish`.',
@@ -1912,7 +2029,7 @@ export function renderAgentGuide(state: any): string {
         '## Migration',
         '',
         '- Use `npm run formal -- migrate-text-refs <file-or-dir>` before applying old numbered prose migration; migration commands are dry-run by default.',
-        '- `migrate-text-refs` rewrites typed old references such as `定理 2.1`, `命题2.2`, `Theorem 2.1`, `公式 (2.1)`, `Figure 2.1`, `表 2.1`, `§2.1`, or `第 2.1 节`. It intentionally does not rewrite bare `2.1` or bare `(2.1)`; decide those by reading context. Matching is bounded so `2.1` is not replaced inside `2.12`, `2.1.3`, or `22.1`.',
+        '- `migrate-text-refs` rewrites typed old references such as `定理 2.1`, `命题2.2`, `Theorem 2.1`, `公式 (2.1)`, `Figure 2.1`, `表 2.1`, `§2.1`, or `第 2.1 节`. It intentionally does not rewrite bare `2.1`, bare `(2.1)`, or handwritten chapter refs such as `第 2 章`; decide those by reading context and convert chapter refs to `@chapter:path.md`. Matching is bounded so `2.1` is not replaced inside `2.12`, `2.1.3`, or `22.1`.',
         '- Scoped migrations update target files plus incoming references by default. Use `--target-only` only when intentionally restricting rewrites to the target files.',
         ''
     ];

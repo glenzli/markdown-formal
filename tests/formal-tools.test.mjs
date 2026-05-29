@@ -463,6 +463,71 @@ async function testCrossBookReferencesRequireDependencies() {
     assert.equal(allowed.status, 0, combinedOutput(allowed));
 }
 
+async function testChapterPageReferences() {
+    const root = await makeWorkspace('chapter-page-refs');
+    await fs.mkdir(path.join(root, 'book2'), { recursive: true });
+    await fs.writeFile(path.join(root, 'book1', 'intro.md'), [
+        '# Book Intro',
+        '',
+        'Intro page.',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
+        '# Chapter 1',
+        '',
+        '见 @chapter:./02-b.md.full，也可回到 @page:./intro.md.title。',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', '02-b.md'), [
+        '# Target Chapter',
+        '',
+        '定理 #h-1111111111111111（Target）：Statement.',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book2', '01-other.md'), [
+        '# Other Book',
+        '',
+        'Other content.',
+        ''
+    ].join('\n'));
+
+    const finish = runCli(root, ['finish', 'book1/01-a.md']);
+    assert.equal(finish.status, 0, combinedOutput(finish));
+    const chapter = await read(root, 'book1/01-a.md');
+    assert.match(chapter, /@chapter:book1\/02-b\.md\.full/);
+    assert.match(chapter, /@page:book1\/intro\.md\.title/);
+
+    const referenceMap = await read(root, '.markdown-formal/reference-map.md');
+    assert.match(referenceMap, /@chapter:book1\/02-b\.md/);
+    assert.match(referenceMap, /@page:book1\/intro\.md/);
+
+    await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
+        '# Chapter 1',
+        '',
+        'Wrong kind @chapter:book1/intro.md.',
+        ''
+    ].join('\n'));
+    const wrongKind = runCli(root, ['verify']);
+    assert.notEqual(wrongKind.status, 0, combinedOutput(wrongKind));
+    assert.match(combinedOutput(wrongKind), /page-ref-kind-mismatch/);
+
+    await fs.writeFile(path.join(root, 'book2', '01-other.md'), [
+        '# Other Book',
+        '',
+        'Cross book @chapter:../book1/02-b.md.',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
+        '# Chapter 1',
+        '',
+        'Back to valid @page:book1/intro.md.',
+        ''
+    ].join('\n'));
+    const blocked = runCli(root, ['verify']);
+    assert.notEqual(blocked.status, 0, combinedOutput(blocked));
+    assert.match(combinedOutput(blocked), /cross-book-page-ref-disallowed/);
+}
+
 async function testMigrateTextRefsSectionsAndAudits() {
     const root = await makeWorkspace('text-refs-audit');
     await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
@@ -706,11 +771,18 @@ async function testAuditReport() {
         '定理 #h-1111111111111111（Base）：Statement without a proof boundary.',
         '',
         '由 定理 1.1 和 (1.1) 可得结论。',
+        '进一步见第 2 章。',
         '链接 [定理 1.1](old.md#thm) 需要人工处理。',
         '',
         '## Plain Heading',
         '',
         '注 #h-2222222222222222（Unused）：This remark is indexed but never cited.',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', '02-b.md'), [
+        '# Chapter 2',
+        '',
+        'Second chapter.',
         ''
     ].join('\n'));
 
@@ -721,6 +793,7 @@ async function testAuditReport() {
     const report = await read(root, '.markdown-formal/audit.md');
     assert.match(report, /Typed old references: 1/);
     assert.match(report, /Markdown links needing manual rewrite: 1/);
+    assert.match(report, /Chapter references needing page refs: 1/);
     assert.match(report, /Section headings needing numbered markers: 1/);
     assert.match(report, /Bare number candidates: 1/);
     assert.match(report, /Unused optional block hashes: 1/);
@@ -728,6 +801,7 @@ async function testAuditReport() {
     assert.match(report, /定理 1\.1 -> @h-1111111111111111/);
     assert.match(report, /bare-number-candidate|Bare Number Candidates/);
     assert.match(report, /注 1\.1 `h-2222222222222222`/);
+    assert.match(report, /第 2 章; suggested @chapter:book1\/02-b\.md/);
 }
 
 const tests = [
@@ -742,6 +816,7 @@ const tests = [
     ['equation figure table numbering', testEquationFigureTableNumbering],
     ['structured marker validation', testStructuredMarkerValidation],
     ['cross-book references require dependencies', testCrossBookReferencesRequireDependencies],
+    ['chapter page references', testChapterPageReferences],
     ['migrate-text-refs sections and audits', testMigrateTextRefsSectionsAndAudits],
     ['migrate-text-refs updates incoming refs by default', testMigrateTextRefsUpdatesIncomingByDefault],
     ['verify rejects non-hash ids', testVerifyRejectsNonHashIds],
