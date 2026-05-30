@@ -732,6 +732,12 @@ async function testPageTitleUsesUniqueHighestHeading() {
     assert.equal(titleFor('book1/01-lowered.md'), 'Lowered Chapter Title');
     assert.equal(titleFor('book1/02-formal-only.md'), 'formal only');
     assert.equal(titleFor('book1/03-ambiguous.md'), 'ambiguous');
+
+    const audit = runCli(root, ['audit', 'book1/01-lowered.md']);
+    assert.equal(audit.status, 0, combinedOutput(audit));
+    const report = await read(root, '.markdown-formal/audit.md');
+    assert.doesNotMatch(report, /Lowered Chapter Title/);
+    assert.match(report, /Local Section/);
 }
 
 async function testPerfDummyThresholds() {

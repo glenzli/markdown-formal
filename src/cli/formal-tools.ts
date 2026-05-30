@@ -868,9 +868,44 @@ function rewriteTextReferenceLine(line, pattern, byAlias, file, lineNumber, repl
     return { line: updated, changed };
 }
 
-function collectSectionHeadingAudit(line, file, lineNumber, sectionHeadings) {
+function findAuditPageTitleHeadingLine(content) {
+    const headings = [];
+    const lines = String(content || '').split(/\r?\n/);
+    let inFence = false;
+
+    for (let index = 0; index < lines.length; index++) {
+        const line = lines[index];
+        if (/^\s*(```|~~~)/.test(line)) {
+            inFence = !inFence;
+            continue;
+        }
+        if (inFence) continue;
+
+        const match = line.match(/^[ \t]{0,3}(#{1,6})[ \t]+(.+?)\s*$/);
+        if (!match) continue;
+
+        const title = match[2].replace(/[ \t]+#+[ \t]*$/, '').trim();
+        if (!title) continue;
+
+        headings.push({
+            level: match[1].length,
+            line: index + 1,
+            formalMarker: /^#[A-Za-z0-9_-]+\b/.test(title)
+        });
+    }
+
+    if (headings.length === 0) return undefined;
+
+    const topLevel = Math.min(...headings.map(heading => heading.level));
+    const topHeadings = headings.filter(heading => heading.level === topLevel);
+    if (topHeadings.length !== 1 || topHeadings[0].formalMarker) return undefined;
+    return topHeadings[0].line;
+}
+
+function collectSectionHeadingAudit(line, file, lineNumber, sectionHeadings, pageTitleHeadingLine) {
     const match = line.match(/^(#{2,6})\s+(.+?)\s*$/);
     if (!match) return;
+    if (lineNumber === pageTitleHeadingLine) return;
 
     const rawTitle = match[2].replace(/\s*\{#[^}]+\}\s*$/, '').trim();
     if (!rawTitle) return;
@@ -893,6 +928,7 @@ function rewriteTextReferences(content, file, pattern, byAlias, options: any = {
     const ambiguous = [];
     const linkedReferences = [];
     const sectionHeadings = [];
+    const pageTitleHeadingLine = findAuditPageTitleHeadingLine(content);
     let inFence = false;
     let changed = false;
 
@@ -904,7 +940,7 @@ function rewriteTextReferences(content, file, pattern, byAlias, options: any = {
         if (inFence) return line;
 
         if (options.auditStructure !== false) {
-            collectSectionHeadingAudit(line, file, index + 1, sectionHeadings);
+            collectSectionHeadingAudit(line, file, index + 1, sectionHeadings, pageTitleHeadingLine);
         }
 
         const result = rewriteTextReferenceLine(
