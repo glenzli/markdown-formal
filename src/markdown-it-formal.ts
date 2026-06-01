@@ -82,6 +82,15 @@ function objectChars(value: unknown): number {
     return JSON.stringify(value ?? null).length;
 }
 
+function cheapHash(value: string): string {
+    let hash = 2166136261;
+    for (let i = 0; i < value.length; i++) {
+        hash ^= value.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16);
+}
+
 function getDictionary(config: any): Record<string, string> {
     const language = getLanguage(config);
     return {
@@ -764,6 +773,8 @@ export = function formalPlugin(md: any, options: any) {
             const formulasStr = escapeHtml(JSON.stringify(formulas));
             const configStr = escapeHtml(JSON.stringify(cachedConfig || mergeConfig(DEFAULT_CONFIG)));
             const currentFilePath = escapeHtml(rawCurrentFilePath);
+            const source = String(state.src || '');
+            const renderSignature = escapeHtml(`${source.length}:${cheapHash(source)}`);
             const tooltipStats = tooltipRenderStats(state.src || '', cachedLabels || {});
             const hoverIgnoredByConfig = shouldIgnorePreviewHover(rawCurrentFilePath, cachedConfig);
             state.env.ignoreFormalTooltips = !shouldEagerRenderTooltips(rawCurrentFilePath, cachedConfig);
@@ -802,7 +813,7 @@ export = function formalPlugin(md: any, options: any) {
                 elapsedMs: elapsedMs(templatesStartedAt)
             });
 
-            token.content = `<div id="formal-labels-data" style="display:none;" data-labels="${dataStr}"></div>\n<div id="formal-pages-data" style="display:none;" data-pages="${pagesStr}" data-current-file="${currentFilePath}"></div>\n<div id="formal-definitions-data" style="display:none;" data-definitions="${definitionsStr}"></div>\n<div id="formal-symbols-data" style="display:none;" data-symbols="${symbolsStr}"></div>\n<div id="formal-formulas-data" style="display:none;" data-formulas="${formulasStr}"></div>\n<div id="formal-definition-templates" style="display:none;">${definitionTemplates}</div>\n<div id="formal-symbol-templates" style="display:none;">${symbolTemplates}</div>\n<div id="formal-config-data" style="display:none;" data-config="${configStr}"></div>\n`;
+            token.content = `<div id="formal-render-data" style="display:none;" data-render-signature="${renderSignature}"></div>\n<div id="formal-labels-data" style="display:none;" data-labels="${dataStr}"></div>\n<div id="formal-pages-data" style="display:none;" data-pages="${pagesStr}" data-current-file="${currentFilePath}"></div>\n<div id="formal-definitions-data" style="display:none;" data-definitions="${definitionsStr}"></div>\n<div id="formal-symbols-data" style="display:none;" data-symbols="${symbolsStr}"></div>\n<div id="formal-formulas-data" style="display:none;" data-formulas="${formulasStr}"></div>\n<div id="formal-definition-templates" style="display:none;">${definitionTemplates}</div>\n<div id="formal-symbol-templates" style="display:none;">${symbolTemplates}</div>\n<div id="formal-config-data" style="display:none;" data-config="${configStr}"></div>\n`;
             state.tokens.push(token);
             appendPreviewDebugLog(rootPath, cachedConfig, 'render:inject:end', {
                 filePath: rawCurrentFilePath || '(unknown)',

@@ -17,28 +17,45 @@ const formalPlugin = require('./markdown-it-formal');
 let scanInProgress = false;
 let scanAgain = false;
 let scanTimer: any = undefined;
+let workspaceWatchersInstalled = false;
 
 function elapsedMs(startedAt: number): number {
     return Date.now() - startedAt;
 }
 
-async function ensureConfig(rootPath: string): Promise<any> {
+function workspaceRootPath(): string {
+    const folders = vscode.workspace.workspaceFolders;
+    return folders && folders.length > 0 ? folders[0].uri.fsPath : '';
+}
+
+function formalDirPath(rootPath: string): string {
+    return path.join(rootPath, '.markdown-formal');
+}
+
+function hasFormalWorkspace(rootPath: string): boolean {
+    return Boolean(rootPath && fs.existsSync(formalDirPath(rootPath)));
+}
+
+async function ensureConfig(rootPath: string, createIfMissing = true): Promise<any | undefined> {
     const cacheDir = path.join(rootPath, '.markdown-formal');
     if (!fs.existsSync(cacheDir)) {
+        if (!createIfMissing) return undefined;
         fs.mkdirSync(cacheDir, { recursive: true });
     }
 
     const configPath = path.join(cacheDir, 'config.json');
     if (!fs.existsSync(configPath)) {
         const config = mergeConfig(DEFAULT_CONFIG);
-        await fs.promises.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf-8');
+        if (createIfMissing) {
+            await fs.promises.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf-8');
+        }
         return config;
     }
 
     try {
         const rawConfig = JSON.parse(await fs.promises.readFile(configPath, 'utf-8'));
         const config = mergeConfig(rawConfig);
-        if (JSON.stringify(rawConfig) !== JSON.stringify(config)) {
+        if (createIfMissing && JSON.stringify(rawConfig) !== JSON.stringify(config)) {
             await fs.promises.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf-8');
         }
         return config;
@@ -82,13 +99,14 @@ async function readDefinitions(rootPath: string): Promise<any | undefined> {
     }
 }
 
-async function scanWorkspaceOnce() {
-    const folders = vscode.workspace.workspaceFolders;
-    if (!folders || folders.length === 0) return;
+async function scanWorkspaceOnce({ createConfig = false } = {}) {
+    const rootPath = workspaceRootPath();
+    if (!rootPath) return;
+    if (!createConfig && !hasFormalWorkspace(rootPath)) return;
 
     const startedAt = Date.now();
-    const rootPath = folders[0].uri.fsPath;
-    const config = await ensureConfig(rootPath);
+    const config = await ensureConfig(rootPath, createConfig);
+    if (!config) return;
     appendPreviewDebugLog(rootPath, config, 'extension:scan:start', { rootPath });
     const findStartedAt = Date.now();
     const mdFilesRaw = await vscode.workspace.findFiles(
@@ -166,14 +184,13 @@ async function removeStaleArtifact(cacheDir: string, fileName: string) {
     }
 }
 
-async function scanWorkspace() {
+async function scanWorkspace({ createConfig = false } = {}) {
     if (scanInProgress) {
         scanAgain = true;
-        const folders = vscode.workspace.workspaceFolders;
-        const rootPath = folders && folders.length > 0 ? folders[0].uri.fsPath : '';
+        const rootPath = workspaceRootPath();
         if (rootPath) {
-            const config = await ensureConfig(rootPath);
-            appendPreviewDebugLog(rootPath, config, 'extension:scan:queued');
+            const config = await ensureConfig(rootPath, createConfig);
+            if (config) appendPreviewDebugLog(rootPath, config, 'extension:scan:queued');
         }
         return;
     }
@@ -182,15 +199,14 @@ async function scanWorkspace() {
     try {
         do {
             scanAgain = false;
-            await scanWorkspaceOnce();
+            await scanWorkspaceOnce({ createConfig });
         } while (scanAgain);
     } catch (err) {
         console.error('[markdown-formal] Failed to scan workspace', err);
-        const folders = vscode.workspace.workspaceFolders;
-        const rootPath = folders && folders.length > 0 ? folders[0].uri.fsPath : '';
+        const rootPath = workspaceRootPath();
         if (rootPath) {
-            const config = await ensureConfig(rootPath);
-            appendPreviewDebugLog(rootPath, config, 'extension:scan:error', {
+            const config = await ensureConfig(rootPath, createConfig);
+            if (config) appendPreviewDebugLog(rootPath, config, 'extension:scan:error', {
                 error: err instanceof Error ? err.message : String(err)
             });
         }
@@ -199,7 +215,10 @@ async function scanWorkspace() {
     }
 }
 
-function scheduleScan(delay = 150) {
+function scheduleScan(delay = 1000) {
+    const rootPath = workspaceRootPath();
+    if (!hasFormalWorkspace(rootPath)) return;
+
     if (scanTimer) {
         clearTimeout(scanTimer);
     }
@@ -219,7 +238,29 @@ function shouldTriggerScanForPath(fileName: string, languageId?: string): boolea
 }
 
 export function activate(context: vscode.ExtensionContext) {
-    scanWorkspace();
+    if (hasFormalWorkspace(workspaceRootPath())) {
+        scheduleScan(1000);
+        installWorkspaceWatchers(context);
+    }
+
+    const refreshCmd = vscode.commands.registerCommand('markdown-formal.refreshIndex', async () => {
+        await scanWorkspace({ createConfig: true });
+        if (!workspaceWatchersInstalled) installWorkspaceWatchers(context);
+        vscode.window.showInformationMessage('Markdown Formal: References refreshed successfully.');
+    });
+    context.subscriptions.push(refreshCmd);
+
+    return {
+        extendMarkdownIt(md: any) {
+            const rootPath = workspaceRootPath();
+            return md.use(formalPlugin, { rootPath });
+        }
+    };
+}
+
+function installWorkspaceWatchers(context: vscode.ExtensionContext) {
+    if (workspaceWatchersInstalled) return;
+    workspaceWatchersInstalled = true;
 
     const watcher = vscode.workspace.onDidSaveTextDocument((doc: any) => {
         const fileName = doc.uri?.fsPath || '';
@@ -243,7 +284,7 @@ export function activate(context: vscode.ExtensionContext) {
             if (shouldTriggerScanForPath(uri?.fsPath || '')) scheduleScan();
         }),
         fileWatcher.onDidChange((uri: any) => {
-            if (shouldTriggerScanForPath(uri?.fsPath || '')) scheduleScan();
+            if (shouldTriggerScanForPath(uri?.fsPath || '')) scheduleScan(1500);
         }),
         configWatcher,
         configWatcher.onDidCreate(() => scheduleScan()),
@@ -259,19 +300,6 @@ export function activate(context: vscode.ExtensionContext) {
         definitionsWatcher.onDidChange(() => scheduleScan())
     );
 
-    const refreshCmd = vscode.commands.registerCommand('markdown-formal.refreshIndex', async () => {
-        await scanWorkspace();
-        vscode.window.showInformationMessage('Markdown Formal: References refreshed successfully.');
-    });
-    context.subscriptions.push(refreshCmd);
-
-    return {
-        extendMarkdownIt(md: any) {
-            const folders = vscode.workspace.workspaceFolders;
-            const rootPath = folders && folders.length > 0 ? folders[0].uri.fsPath : '';
-            return md.use(formalPlugin, { rootPath });
-        }
-    };
 }
 
 export function deactivate() {

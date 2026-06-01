@@ -1156,6 +1156,16 @@ function isDisplayMathLine(line: string): boolean {
         || /^\\(?:begin|end)\{(?:equation|align|alignat|gather|multline|flalign|split|aligned|cases|matrix|pmatrix|bmatrix|vmatrix|Vmatrix)\*?\}/.test(text);
 }
 
+function isStructuredDefinitionContinuation(line: string): boolean {
+    const text = line.trim();
+    return isDisplayMathLine(line)
+        || /^>\s*/.test(text)
+        || /^\|.*\|$/.test(text)
+        || /^[-+*]\s+/.test(text)
+        || /^\d+[.)]\s+/.test(text)
+        || /^(\*\*|__)?\s*[（(]?(?:[ivxlcdm]+|[a-z]|\d+)[）).、]\s*/i.test(text);
+}
+
 function isDisplayMathStartLine(line: string): boolean {
     const text = line.trim();
     return text.startsWith('$$')
@@ -1233,7 +1243,7 @@ function collectDefinitionContent(lines: string[], startLine: number, marker?: F
         if (!line.trim()) {
             const nextNonBlank = nextNonBlankLineIndex(lines, i + 1);
             if (nextNonBlank < 0 || isMarkerBoundaryLine(lines[nextNonBlank])) break;
-            if (!inDisplayMath && !previousNonBlankWasDisplayMath && !isDisplayMathLine(lines[nextNonBlank])) break;
+            if (!inDisplayMath && !previousNonBlankWasDisplayMath && !isStructuredDefinitionContinuation(lines[nextNonBlank])) break;
             contentLines.push(line);
             endLine = i;
             previousNonBlankWasDisplayMath = false;

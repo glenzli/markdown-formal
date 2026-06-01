@@ -163,19 +163,6 @@
     const WINDOW_NAV_PREFIX = 'markdown-formal-nav:';
     const ROOT_BOOK_KEY = '__workspace__';
     const ROOT_VOLUME_KEY = '__root__';
-    const OBSERVER_IGNORED_SELECTOR = [
-        '#formal-nav-bar',
-        '#formal-definition-popover',
-        '#formal-definition-selection-action',
-        '#formal-labels-data',
-        '#formal-pages-data',
-        '#formal-definitions-data',
-        '#formal-symbols-data',
-        '#formal-formulas-data',
-        '#formal-definition-templates',
-        '#formal-symbol-templates',
-        '#formal-config-data'
-    ].join(',');
     const DEFAULT_CONFIG: FormalConfig = {
         language: 'zh',
         ui: {
@@ -228,7 +215,11 @@
         }
     };
     let lastNavSignature = '';
+    let lastRenderSignature = '';
+    let navRebuildInProgress = false;
+    let navRebuildQueued = false;
     let retryCount = 0;
+    let retryStateSignature = '';
     let appliedNavigationHash = '';
     let suppressedSelectionText = '';
 
@@ -322,6 +313,10 @@
             console.error('[markdown-formal] Failed to parse labels', err);
             return {};
         }
+    }
+
+    function readRenderSignature(): string {
+        return document.getElementById('formal-render-data')?.getAttribute('data-render-signature') || '';
     }
 
     function readPages(): PageData[] {
@@ -944,33 +939,10 @@
             .toLowerCase();
     }
 
-    function escapeRegExp(value: string): string {
-        return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-
     function definitionCandidates(definition: DefinitionData): string[] {
         return [definition.title || '', ...(definition.aliases || [])]
             .map(candidate => normalizeDefinitionQuery(candidate))
             .filter(Boolean);
-    }
-
-    function hasCjk(value: string): boolean {
-        return /[\u3400-\u9fff]/.test(value);
-    }
-
-    function isShortDefinitionText(value: string): boolean {
-        const compact = value.replace(/\s+/g, '');
-        if (!compact) return true;
-        if (hasCjk(compact)) return compact.length <= 1;
-        return compact.length <= 2;
-    }
-
-    function containsSelectionCandidate(query: string, candidate: string): boolean {
-        if (isShortDefinitionText(candidate) || !query.includes(candidate)) return false;
-        if (/^[a-z0-9][a-z0-9\s-]*$/i.test(candidate)) {
-            return new RegExp(`(^|\\s)${escapeRegExp(candidate)}(?=\\s|$)`, 'i').test(query);
-        }
-        return true;
     }
 
     function definitionScore(definition: DefinitionData, query: string): number {
@@ -980,8 +952,7 @@
         return definitionCandidates(definition).reduce((best, title) => {
             if (title === normalizedQuery) return Math.min(best, 0);
             if (title.startsWith(normalizedQuery)) return Math.min(best, 1);
-            if (normalizedQuery.includes(title)) return Math.min(best, 2);
-            if (title.includes(normalizedQuery)) return Math.min(best, 3);
+            if (title.includes(normalizedQuery)) return Math.min(best, 2);
             return best;
         }, Number.MAX_SAFE_INTEGER);
     }
@@ -992,7 +963,8 @@
 
         return definitionCandidates(definition).reduce((best, candidate) => {
             if (candidate === normalizedQuery) return Math.min(best, 0);
-            if (containsSelectionCandidate(normalizedQuery, candidate)) return Math.min(best, 1);
+            if (candidate.startsWith(normalizedQuery)) return Math.min(best, 1);
+            if (candidate.includes(normalizedQuery)) return Math.min(best, 2);
             return best;
         }, Number.MAX_SAFE_INTEGER);
     }
@@ -1593,6 +1565,11 @@
     }
 
     function refreshDefinitionSelectionAction() {
+        if (refreshNavIfStale()) {
+            removeDefinitionSelectionAction();
+            return;
+        }
+
         const active = document.activeElement;
         if (active instanceof HTMLElement && active.closest('#formal-nav-bar, #formal-definition-popover, input, textarea, code, pre')) {
             removeDefinitionSelectionAction();
@@ -1825,6 +1802,7 @@
         containers.push(container);
 
         const open = () => {
+            if (refreshNavIfStale()) return;
             closeSearchPanel();
             closeNavDropdowns(containers, container);
             container.classList.add('formal-nav-menu-open');
@@ -2032,9 +2010,11 @@
             };
 
             definitionInput.addEventListener('input', () => {
+                if (refreshNavIfStale()) return;
                 renderDefinitionSearchResults(definitionPanel, definitions, definitionInput.value, currentFilePath, config);
             });
             definitionInput.addEventListener('focus', () => {
+                if (refreshNavIfStale()) return;
                 closeNavDropdowns(navDropdowns);
                 renderDefinitionSearchResults(definitionPanel, definitions, definitionInput.value, currentFilePath, config);
             });
@@ -2068,61 +2048,84 @@
     }
 
     function rebuildNav() {
-        formalWindow.__markdownFormalRebuildTimer = undefined;
-
-        const labels = readLabels();
-        const pages = readPages();
-        const definitions = readDefinitions();
-        const symbols = readSymbols();
-        const formulas = readFormulas();
-        const config = readConfig();
-        const currentFilePath = getCurrentFilePath(labels, pages);
-        const tocItems = collectTocItems();
-        const chapters = collectChapters(labels, pages, currentFilePath, config);
-        applyIncomingNavigation();
-
-        if (tocItems.length === 0 && chapters.length === 0 && definitions.length === 0 && symbols.length === 0 && retryCount < 40) {
-            retryCount++;
-            scheduleRebuild(75);
-            return;
-        }
-
-        retryCount = 0;
-        const language = getLanguage(config);
-        const uiSignature = JSON.stringify(config.ui?.[language] || {});
-        const signature = `${language}|${uiSignature}|${currentFilePath}|${tocItems.map(item => `${item.id}:${item.display || ''}:${item.title}`).join('|')}|${chapters.map(item => `${item.bookKey}:${item.volumeKey}:${item.unitKind}:${item.unitKey}:${item.filePath}:${item.title}`).join('|')}|${definitions.map(item => `${item.filePath}:${item.line}:${item.title}`).join('|')}|${symbols.map(item => `${item.pattern}:${item.scope}:${item.source || ''}`).join('|')}|${formulas.map(item => item.latex).join('|')}|${readHistory().length}`;
-        if (signature === lastNavSignature && document.getElementById('formal-nav-bar')) {
-            normalizeFormalLinks(currentFilePath);
-            return;
-        }
-
-        lastNavSignature = signature;
-        normalizeFormalLinks(currentFilePath);
-        renderNav(currentFilePath, tocItems, chapters, definitions, symbols, formulas, config);
-    }
-
-    function scheduleRebuild(delay = 50) {
         if (formalWindow.__markdownFormalRebuildTimer !== undefined) {
             window.clearTimeout(formalWindow.__markdownFormalRebuildTimer);
+            formalWindow.__markdownFormalRebuildTimer = undefined;
         }
+        if (navRebuildInProgress) {
+            navRebuildQueued = true;
+            return;
+        }
+
+        navRebuildInProgress = true;
+        try {
+            const renderSignature = readRenderSignature();
+            const labels = readLabels();
+            const pages = readPages();
+            const definitions = readDefinitions();
+            const symbols = readSymbols();
+            const formulas = readFormulas();
+            const config = readConfig();
+            const currentFilePath = getCurrentFilePath(labels, pages);
+            const tocItems = collectTocItems();
+            const chapters = collectChapters(labels, pages, currentFilePath, config);
+            applyIncomingNavigation();
+            const expectsRenderedAnchors = Boolean(currentFilePath) && (
+                Object.values(labels).some(label => normalizePath(label.filePath || '') === currentFilePath)
+                || definitions.some(definition => normalizePath(definition.filePath || '') === currentFilePath)
+            );
+            const hasRenderedAnchors = Boolean(document.querySelector('.formal-section[id^="formal-"], .formal-block[id^="formal-"], .formal-definition'));
+            const currentRetrySignature = `${renderSignature}|${currentFilePath}`;
+            if (currentRetrySignature !== retryStateSignature) {
+                retryStateSignature = currentRetrySignature;
+                retryCount = 0;
+            }
+
+            if (
+                retryCount < 40
+                && (
+                    (tocItems.length === 0 && chapters.length === 0 && definitions.length === 0 && symbols.length === 0)
+                    || (expectsRenderedAnchors && !hasRenderedAnchors)
+                )
+            ) {
+                retryCount++;
+                scheduleRebuild(75);
+                return;
+            }
+
+            retryCount = 0;
+            lastRenderSignature = renderSignature;
+            const language = getLanguage(config);
+            const uiSignature = JSON.stringify(config.ui?.[language] || {});
+            const signature = `${renderSignature}|${language}|${uiSignature}|${currentFilePath}|${tocItems.map(item => `${item.id}:${item.display || ''}:${item.title}`).join('|')}|${chapters.map(item => `${item.bookKey}:${item.volumeKey}:${item.unitKind}:${item.unitKey}:${item.filePath}:${item.title}`).join('|')}|${definitions.map(item => `${item.filePath}:${item.line}:${item.title}`).join('|')}|${symbols.map(item => `${item.pattern}:${item.scope}:${item.source || ''}`).join('|')}|${formulas.map(item => item.latex).join('|')}|${readHistory().length}`;
+            if (signature === lastNavSignature && document.getElementById('formal-nav-bar')) {
+                normalizeFormalLinks(currentFilePath);
+                return;
+            }
+
+            lastNavSignature = signature;
+            normalizeFormalLinks(currentFilePath);
+            renderNav(currentFilePath, tocItems, chapters, definitions, symbols, formulas, config);
+        } finally {
+            navRebuildInProgress = false;
+            if (navRebuildQueued) {
+                navRebuildQueued = false;
+                scheduleRebuild(0);
+            }
+        }
+    }
+
+    function scheduleRebuild(delay = 200) {
+        if (formalWindow.__markdownFormalRebuildTimer !== undefined) return;
 
         formalWindow.__markdownFormalRebuildTimer = window.setTimeout(rebuildNav, delay);
     }
 
-    function isIgnoredObserverNode(node: Node): boolean {
-        if (node instanceof Element) {
-            return Boolean(node.closest(OBSERVER_IGNORED_SELECTOR));
-        }
-
-        const parent = node.parentElement;
-        return Boolean(parent?.closest(OBSERVER_IGNORED_SELECTOR));
-    }
-
-    function isIgnoredObserverMutation(mutation: MutationRecord): boolean {
-        if (isIgnoredObserverNode(mutation.target)) return true;
-
-        const nodes = [...Array.from(mutation.addedNodes), ...Array.from(mutation.removedNodes)];
-        return nodes.length > 0 && nodes.every(isIgnoredObserverNode);
+    function refreshNavIfStale(): boolean {
+        const renderSignature = readRenderSignature();
+        if (!renderSignature || renderSignature === lastRenderSignature) return false;
+        rebuildNav();
+        return true;
     }
 
     function handleFormalClick(event: MouseEvent) {
@@ -2134,6 +2137,12 @@
         const toc = target.closest<HTMLAnchorElement>('.formal-toc-item');
         const chapter = target.closest<HTMLAnchorElement>('.formal-chapter-item');
         if (!ref && !page && !toc && !chapter) return;
+        if (refreshNavIfStale()) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+            return;
+        }
 
         const labels = readLabels();
         const pages = readPages();
@@ -2183,6 +2192,7 @@
 
         const selectedText = getSelectedLookupText();
         if (!selectedText) return;
+        if (refreshNavIfStale()) return;
 
         const definitions = readDefinitions();
         if (definitions.length === 0) return;
@@ -2256,11 +2266,6 @@
         document.addEventListener('keyup', scheduleDefinitionSelectionAction, true);
         document.addEventListener('selectionchange', scheduleDefinitionSelectionAction);
         installTooltipAdjustment();
-
-        const observer = new MutationObserver(mutations => {
-            if (!mutations.every(isIgnoredObserverMutation)) scheduleRebuild();
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
 
         scheduleRebuild();
     }

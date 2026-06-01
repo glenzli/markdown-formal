@@ -241,6 +241,39 @@ async function testCustomDictionaryTextRefs() {
     await assert.rejects(read(root, '.markdown-formal/definition-index.md'), /ENOENT/);
 }
 
+async function testStructuredDefinitionMarkerContent() {
+    const root = await makeWorkspace('structured-definition');
+    await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
+        '# Chapter 1',
+        '',
+        '定义（算子网络环路）：一个算子网络环路由以下数据构成。',
+        '',
+        '**(i)** 给定有限有向图',
+        '',
+        '$$',
+        'G=(V,E).',
+        '$$',
+        '',
+        '允许含有有向闭路。',
+        '',
+        '**(ii)** 对每个节点给定局域算子。',
+        '',
+        '这句是定义后的普通正文，不应进入定义预览。',
+        ''
+    ].join('\n'));
+
+    const prepare = runCli(root, ['prepare']);
+    assert.equal(prepare.status, 0, combinedOutput(prepare));
+    const previewCache = JSON.parse(await read(root, '.markdown-formal/preview-cache.json'));
+    const definition = previewCache.definitions.find(item => item.title === '算子网络环路');
+    assert.ok(definition);
+    assert.match(definition.content, /\*\*\(i\)\*\* 给定有限有向图/);
+    assert.match(definition.content, /G=\(V,E\)\./);
+    assert.match(definition.content, /允许含有有向闭路。/);
+    assert.match(definition.content, /\*\*\(ii\)\*\* 对每个节点给定局域算子。/);
+    assert.doesNotMatch(definition.content, /定义后的普通正文/);
+}
+
 async function testSymbolCache() {
     const root = await makeWorkspace('symbols');
     await fs.mkdir(path.join(root, '.markdown-formal'), { recursive: true });
@@ -816,6 +849,7 @@ const tests = [
     ['migrate-ids scoped safety', testMigrateIdsScopedSafety],
     ['migrate-text-refs report', testMigrateTextRefsReport],
     ['custom dictionary text refs', testCustomDictionaryTextRefs],
+    ['structured definition marker content', testStructuredDefinitionMarkerContent],
     ['symbol cache', testSymbolCache],
     ['warns unbalanced symbol pattern', testWarnsUnbalancedSymbolPattern],
     ['recall boundaries and optional blocks', testRecallBoundariesAndOptionalBlocks],
