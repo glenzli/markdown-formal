@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
     build: {
         outDir: 'out/cli',
-        emptyOutDir: true,
+        emptyOutDir: false,
         target: 'es2022',
         sourcemap: false,
         minify: false,
