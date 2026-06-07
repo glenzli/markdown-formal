@@ -319,6 +319,29 @@
         return document.getElementById('formal-render-data')?.getAttribute('data-render-signature') || '';
     }
 
+    function hasFormalRenderData(): boolean {
+        return Boolean(document.getElementById('formal-render-data'));
+    }
+
+    function clearScheduledRebuild() {
+        if (formalWindow.__markdownFormalRebuildTimer !== undefined) {
+            window.clearTimeout(formalWindow.__markdownFormalRebuildTimer);
+            formalWindow.__markdownFormalRebuildTimer = undefined;
+        }
+    }
+
+    function cleanupFormalPreviewUi() {
+        clearScheduledRebuild();
+        document.getElementById('formal-nav-bar')?.remove();
+        removeDefinitionPopover();
+        removeDefinitionSelectionAction();
+        lastNavSignature = '';
+        lastRenderSignature = '';
+        retryCount = 0;
+        retryStateSignature = '';
+        navRebuildQueued = false;
+    }
+
     function readPages(): PageData[] {
         const dataDiv = document.getElementById('formal-pages-data');
         if (!dataDiv) return [];
@@ -1565,6 +1588,11 @@
     }
 
     function refreshDefinitionSelectionAction() {
+        if (!hasFormalRenderData()) {
+            cleanupFormalPreviewUi();
+            return;
+        }
+
         if (refreshNavIfStale()) {
             removeDefinitionSelectionAction();
             return;
@@ -1608,6 +1636,7 @@
     }
 
     function scheduleDefinitionSelectionAction() {
+        if (!hasFormalRenderData()) return;
         window.setTimeout(refreshDefinitionSelectionAction, 0);
     }
 
@@ -2048,10 +2077,12 @@
     }
 
     function rebuildNav() {
-        if (formalWindow.__markdownFormalRebuildTimer !== undefined) {
-            window.clearTimeout(formalWindow.__markdownFormalRebuildTimer);
-            formalWindow.__markdownFormalRebuildTimer = undefined;
+        clearScheduledRebuild();
+        if (!hasFormalRenderData()) {
+            cleanupFormalPreviewUi();
+            return;
         }
+
         if (navRebuildInProgress) {
             navRebuildQueued = true;
             return;
@@ -2116,12 +2147,21 @@
     }
 
     function scheduleRebuild(delay = 200) {
+        if (!hasFormalRenderData()) {
+            cleanupFormalPreviewUi();
+            return;
+        }
         if (formalWindow.__markdownFormalRebuildTimer !== undefined) return;
 
         formalWindow.__markdownFormalRebuildTimer = window.setTimeout(rebuildNav, delay);
     }
 
     function refreshNavIfStale(): boolean {
+        if (!hasFormalRenderData()) {
+            cleanupFormalPreviewUi();
+            return false;
+        }
+
         const renderSignature = readRenderSignature();
         if (!renderSignature || renderSignature === lastRenderSignature) return false;
         rebuildNav();
@@ -2129,6 +2169,11 @@
     }
 
     function handleFormalClick(event: MouseEvent) {
+        if (!hasFormalRenderData()) {
+            cleanupFormalPreviewUi();
+            return;
+        }
+
         const target = event.target;
         if (!(target instanceof Element)) return;
 
@@ -2186,6 +2231,11 @@
     }
 
     function handleDefinitionContextMenu(event: MouseEvent) {
+        if (!hasFormalRenderData()) {
+            cleanupFormalPreviewUi();
+            return;
+        }
+
         const target = event.target;
         if (!(target instanceof Element)) return;
         if (target.closest('#formal-nav-bar, #formal-definition-popover, #formal-definition-selection-action, input, textarea, code, pre')) return;
@@ -2252,6 +2302,11 @@
     }
 
     function installOnce() {
+        if (!hasFormalRenderData()) {
+            cleanupFormalPreviewUi();
+            return;
+        }
+
         if (formalWindow.__markdownFormalInstalled) {
             scheduleRebuild();
             return;

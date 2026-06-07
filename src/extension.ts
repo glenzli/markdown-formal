@@ -5,6 +5,7 @@ import {
     DEFAULT_CONFIG,
     buildPreviewCache,
     mergeConfig,
+    renderDependencyReport,
     scanFormalDocuments,
     scanExcludePatterns,
     shouldExcludeScanPath,
@@ -23,17 +24,35 @@ function elapsedMs(startedAt: number): number {
     return Date.now() - startedAt;
 }
 
-function workspaceRootPath(): string {
-    const folders = vscode.workspace.workspaceFolders;
-    return folders && folders.length > 0 ? folders[0].uri.fsPath : '';
-}
-
 function formalDirPath(rootPath: string): string {
     return path.join(rootPath, '.markdown-formal');
 }
 
+function findFormalRoot(startPath: string): string {
+    let current = startPath;
+    while (current) {
+        if (fs.existsSync(path.join(formalDirPath(current), 'config.json'))) return current;
+        const parent = path.dirname(current);
+        if (!parent || parent === current) break;
+        current = parent;
+    }
+    return '';
+}
+
+function workspaceRootPath(): string {
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders || folders.length === 0) return '';
+
+    for (const folder of folders) {
+        const formalRoot = findFormalRoot(folder.uri.fsPath);
+        if (formalRoot) return formalRoot;
+    }
+
+    return folders[0].uri.fsPath;
+}
+
 function hasFormalWorkspace(rootPath: string): boolean {
-    return Boolean(rootPath && fs.existsSync(formalDirPath(rootPath)));
+    return Boolean(rootPath && fs.existsSync(path.join(formalDirPath(rootPath), 'config.json')));
 }
 
 async function ensureConfig(rootPath: string, createIfMissing = true): Promise<any | undefined> {
@@ -48,8 +67,9 @@ async function ensureConfig(rootPath: string, createIfMissing = true): Promise<a
         const config = mergeConfig(DEFAULT_CONFIG);
         if (createIfMissing) {
             await fs.promises.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf-8');
+            return config;
         }
-        return config;
+        return undefined;
     }
 
     try {
@@ -65,10 +85,11 @@ async function ensureConfig(rootPath: string, createIfMissing = true): Promise<a
 }
 
 async function readWorkspaceDocuments(mdFiles: any[]) {
+    const rootPath = workspaceRootPath();
     const documents = [];
     for (const fileUri of mdFiles) {
         documents.push({
-            filePath: toPosix(vscode.workspace.asRelativePath(fileUri, false)),
+            filePath: toPosix(path.relative(rootPath, fileUri.fsPath)),
             content: await fs.promises.readFile(fileUri.fsPath, 'utf-8')
         });
     }
@@ -154,6 +175,8 @@ async function scanWorkspaceOnce({ createConfig = false } = {}) {
 
     const writeStartedAt = Date.now();
     await fs.promises.writeFile(path.join(cacheDir, 'preview-cache.json'), `${JSON.stringify(buildPreviewCache(state), null, 2)}\n`, 'utf-8');
+    await fs.promises.writeFile(path.join(cacheDir, 'dependency-graph.json'), `${JSON.stringify(state.dependencyGraph, null, 2)}\n`, 'utf-8');
+    await fs.promises.writeFile(path.join(cacheDir, 'dependency-report.md'), renderDependencyReport(state.dependencyGraph), 'utf-8');
     await removeStaleArtifact(cacheDir, 'definition-index.md');
     await removeStaleArtifact(cacheDir, 'labels.json');
     await removeStaleArtifact(cacheDir, 'pages.json');

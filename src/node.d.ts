@@ -20,6 +20,8 @@ declare module 'node:fs/promises' {
 declare module 'path' {
     export const join: any;
     export const basename: any;
+    export const dirname: any;
+    export const relative: any;
 }
 
 declare module 'node:path' {

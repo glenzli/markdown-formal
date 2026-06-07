@@ -153,6 +153,26 @@
     function readRenderSignature() {
         return document.getElementById('formal-render-data')?.getAttribute('data-render-signature') || '';
     }
+    function hasFormalRenderData() {
+        return Boolean(document.getElementById('formal-render-data'));
+    }
+    function clearScheduledRebuild() {
+        if (formalWindow.__markdownFormalRebuildTimer !== undefined) {
+            window.clearTimeout(formalWindow.__markdownFormalRebuildTimer);
+            formalWindow.__markdownFormalRebuildTimer = undefined;
+        }
+    }
+    function cleanupFormalPreviewUi() {
+        clearScheduledRebuild();
+        document.getElementById('formal-nav-bar')?.remove();
+        removeDefinitionPopover();
+        removeDefinitionSelectionAction();
+        lastNavSignature = '';
+        lastRenderSignature = '';
+        retryCount = 0;
+        retryStateSignature = '';
+        navRebuildQueued = false;
+    }
     function readPages() {
         const dataDiv = document.getElementById('formal-pages-data');
         if (!dataDiv)
@@ -1289,6 +1309,10 @@
         action.style.top = `${top}px`;
     }
     function refreshDefinitionSelectionAction() {
+        if (!hasFormalRenderData()) {
+            cleanupFormalPreviewUi();
+            return;
+        }
         if (refreshNavIfStale()) {
             removeDefinitionSelectionAction();
             return;
@@ -1326,6 +1350,8 @@
         showDefinitionSelectionAction(selectedText, results, rect, config);
     }
     function scheduleDefinitionSelectionAction() {
+        if (!hasFormalRenderData())
+            return;
         window.setTimeout(refreshDefinitionSelectionAction, 0);
     }
     function setImportantStyle(element, property, value) {
@@ -1706,9 +1732,10 @@
         document.body.appendChild(navBar);
     }
     function rebuildNav() {
-        if (formalWindow.__markdownFormalRebuildTimer !== undefined) {
-            window.clearTimeout(formalWindow.__markdownFormalRebuildTimer);
-            formalWindow.__markdownFormalRebuildTimer = undefined;
+        clearScheduledRebuild();
+        if (!hasFormalRenderData()) {
+            cleanupFormalPreviewUi();
+            return;
         }
         if (navRebuildInProgress) {
             navRebuildQueued = true;
@@ -1764,11 +1791,19 @@
         }
     }
     function scheduleRebuild(delay = 200) {
+        if (!hasFormalRenderData()) {
+            cleanupFormalPreviewUi();
+            return;
+        }
         if (formalWindow.__markdownFormalRebuildTimer !== undefined)
             return;
         formalWindow.__markdownFormalRebuildTimer = window.setTimeout(rebuildNav, delay);
     }
     function refreshNavIfStale() {
+        if (!hasFormalRenderData()) {
+            cleanupFormalPreviewUi();
+            return false;
+        }
         const renderSignature = readRenderSignature();
         if (!renderSignature || renderSignature === lastRenderSignature)
             return false;
@@ -1776,6 +1811,10 @@
         return true;
     }
     function handleFormalClick(event) {
+        if (!hasFormalRenderData()) {
+            cleanupFormalPreviewUi();
+            return;
+        }
         const target = event.target;
         if (!(target instanceof Element))
             return;
@@ -1830,6 +1869,10 @@
         });
     }
     function handleDefinitionContextMenu(event) {
+        if (!hasFormalRenderData()) {
+            cleanupFormalPreviewUi();
+            return;
+        }
         const target = event.target;
         if (!(target instanceof Element))
             return;
@@ -1895,6 +1938,10 @@
         }, true);
     }
     function installOnce() {
+        if (!hasFormalRenderData()) {
+            cleanupFormalPreviewUi();
+            return;
+        }
         if (formalWindow.__markdownFormalInstalled) {
             scheduleRebuild();
             return;

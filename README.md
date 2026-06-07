@@ -5,6 +5,7 @@
 The project is designed for AI-assisted writing:
 
 - Preview renders lightweight numbered markers, references, LaTeX, chapter navigation, volumes, intro/summary pages, appendices, definition lookup, and a current-page declared-symbol table.
+- The CLI generates theorem-like dependency graph data from explicit `@h-...` references, split into statement and proof edges.
 - Source Markdown stores stable hash IDs for numbered objects, such as `#h-8f2a91c4d7e03b6a`.
 - AI agents write new numbered markers with temporary IDs such as `tmp-1`, then the CLI finalizes them.
 - Generated or migrated content is checked with a strict `verify` gate.
@@ -27,7 +28,7 @@ Supported markers:
 - Numbered together per chapter or appendix: `命题 #h-...`, `引理 #h-...`, `定理 #h-...`, `推论 #h-...`
 - Separate counters per chapter or appendix: `公式 #h-...：`, `图 #h-...（Caption）：...`, `表 #h-...（Caption）：`
 - English numbered markers are also supported: `Proposition #h-...`, `Lemma #h-...`, `Theorem #h-...`, `Corollary #h-...`, `Equation #h-...`, `Figure #h-...`, `Table #h-...`
-- Definition lookup entries are AI-maintained concept-index entries. Standard `定义（Term）：...` / `Definition (Term): ...` lines are scanned automatically; nonstandard prose definitions are indexed through `.markdown-formal/definitions.json`.
+- Definition lookup uses a tool-first, AI-exception workflow. Standard `定义（Term）：...` / `Definition (Term): ...` lines are scanned automatically with structural range heuristics; nonstandard prose definitions, aliases, bilingual lookup, or unreliable boundaries are indexed through `.markdown-formal/definitions.json`.
 - Optional indexed blocks: write plain `注（...）` / `例（...）` by default; only add `#h-...` later when a remark/example is explicitly cited.
 
 Hover recall is generated for propositions, lemmas, theorems, corollaries, and explicitly cited remarks/examples. For theorem-like blocks, the preview captures the statement and stops before `证明` / `Proof`.
@@ -62,9 +63,11 @@ References:
 - `@page:path/to/page.md` is the same mechanism for intro, summary, and appendix pages; use `@chapter:` only for real chapter files.
 - Definitions do not have hash IDs and do not participate in references. Lookup is driven by definition names in the concept index; definition bodies are shown after a name match but are not used as broad search text.
 
+Important syntax split: `#h-...` / `#tmp-*` is declaration syntax and belongs only where the numbered object is defined, such as `命题 #tmp-*（Title）：...` or `## #tmp-* Title`. Running prose references must use `@h-...` or `@h-....title`; do not write `命题 #h-...`, `Theorem #h-...`, or `由 #h-...` as a reference.
+
 During drafting, `./chapter.md` and `../vol-2/chapter.md` are accepted as input sugar for page refs. `finish` normalizes them to formal-root-relative paths so the source stays stable regardless of CLI `workdir` or the current Markdown file.
 
-Use `.markdown-formal/definitions.json` when a concept should be queryable but the prose should stay in its natural form:
+Use `.markdown-formal/definitions.json` only for definition lookup exceptions: nonstandard prose definitions, aliases, bilingual lookup, stable multi-paragraph preview content, or cases where the automatic boundary is likely wrong. Standard definitions that naturally end by punctuation or structure can stay in the Markdown source only:
 
 ```json
 [
@@ -102,12 +105,12 @@ Give AI agents this instruction:
 Follow skills/editor.md.
 Before writing or migrating, run npm run formal -- prepare.
 Read .markdown-formal/agent-guide.md, the target Markdown file, and .markdown-formal/reference-map.md.
-Reference existing numbered objects only by copying @h-... or @h-....title from reference-map.md.
+Reference existing numbered objects only by copying @h-... or @h-....title from reference-map.md. #h-... / #tmp-* is only for declarations; never write "命题 #h-..." or "Theorem #h-..." in prose as a reference.
 Reference existing chapters only by copying @chapter:path/to/file.md from reference-map.md. Use @chapter:path.md.title for the title and @chapter:path.md.full for number plus title; use @page:path.md for intro/summary/appendix pages.
 Keep a short natural-language cue near important refs, such as "by the spectral-radius lemma `@h-...`"; do not leave important prose as only a bare `@h-...`.
 Use tmp-1/tmp-2/... for new markers; do not generate hash IDs manually.
 Use the same tmp-ID rule for equations, figures, and tables: `公式 #tmp-*：`, `图 #tmp-*（Caption）：...`, `表 #tmp-*（Caption）：`.
-Definitions do not get hash IDs or refs. Maintain .markdown-formal/definitions.json as part of the AI writing workflow: when editing a file, update definition entries whose source is in that file and include verbatim Markdown content for query previews. Standard definition markers are scanned automatically as a simple fallback, and nonstandard phrases such as "called X", "we call it X", "所谓 X", "称为 X", or "记作 X" should be indexed when the concept should be queryable. Do not mechanically rewrite prose just to fit a marker format.
+Definitions do not get hash IDs or refs. Tool scanning handles standard `定义（Term）：...` / `Definition (Term): ...` definitions first, including common multiline ranges. When editing a file, AI only updates .markdown-formal/definitions.json for exceptions in that file: nonstandard phrases such as "called X", "we call it X", "所谓 X", "称为 X", or "记作 X", aliases/bilingual lookup, stable multi-paragraph preview content, or boundaries the heuristic may get wrong. Do not mechanically rewrite prose just to fit a marker format, and do not full-book regenerate definitions.json.
 Maintain .markdown-formal/symbols.json only for explicit project-specific notation conventions, not ordinary formulas or complete equations.
 After editing, run npm run formal -- finish <file-or-dir>.
 Keep Markdown and LaTeX unescaped.
@@ -149,7 +152,7 @@ Definition search and the current-page symbol panel are scoped to the current bo
 }
 ```
 
-Run `npm run formal` from the project root that owns `.markdown-formal/definitions.json` and `.markdown-formal/symbols.json`. Use `scan.exclude` to keep generated, context, draft, or build directories out of the formal book scan. Use `preview.ignoreHover` for concept appendices or other recall-heavy files where inline `@hash` hover previews should be skipped; numbering, navigation, jumps, definition search, and the current-page symbol panel still work. Patterns may be full relative paths, bare filenames such as `appendix-b-concepts.md`, or globs such as `concept-*.md` and `book/**/appendix-*.md`. `00-introduction.md`, `intro.md`, and `introduction.md` are treated as intro pages, not chapter 0.
+Run `npm run formal` from the project root that owns `.markdown-formal/definitions.json` and `.markdown-formal/symbols.json`. `.markdown-formal/config.json` is the explicit opt-in switch for enhanced Markdown preview; if the config or generated `preview-cache.json` is missing, the extension leaves the preview as ordinary Markdown and does not inject navigation, search, or formal reference data. Use `scan.exclude` to keep generated, context, draft, or build directories out of the formal book scan. Use `preview.ignoreHover` for concept appendices or other recall-heavy files where inline `@hash` hover previews should be skipped; numbering, navigation, jumps, definition search, and the current-page symbol panel still work. Patterns may be full relative paths, bare filenames such as `appendix-b-concepts.md`, or globs such as `concept-*.md` and `book/**/appendix-*.md`. `00-introduction.md`, `intro.md`, and `introduction.md` are treated as intro pages, not chapter 0.
 
 Formal references across different `book*` roots are blocked by `verify` unless the source book declares the target book in `lookup.bookDependencies`. This keeps independent books from silently depending on each other while still allowing explicit dependency chains.
 
@@ -160,6 +163,8 @@ Set `debug.previewLog` to `true` temporarily when diagnosing blank previews or e
 - `agent-guide.md`: compact AI workflow card
 - `reference-map.md`: display number to hash ID map
 - `preview-cache.json`: runtime preview/navigation/definition/symbol table cache
+- `dependency-graph.json`: canonical theorem-like dependency graph built from explicit `@h-...` references
+- `dependency-report.md`: human/AI-readable dependency summary with statement/proof edges, cross-scope edges, cycles, and isolated nodes
 - `report.md`: lint/verify details
 - `audit.md`: advisory cleanup report generated by `npm run formal -- audit`
 
@@ -250,6 +255,7 @@ npm run formal -- migrate-ids <file-or-dir>
 npm run formal -- migrate-ids --apply <file-or-dir>
 npm run formal -- migrate-ids --apply --target-only <file-or-dir>
 npm run formal -- audit [file-or-dir]
+npm run formal -- graph
 npm run formal -- perf-dummy 50 200 --max-ms 2000 --max-heap-mb 256
 npm test
 ```
@@ -257,6 +263,8 @@ npm test
 `verify` is the strict generated/migrated-content gate. It fails on missing refs, missing page refs, duplicate IDs, remaining temporary IDs, non-hash IDs, disallowed cross-book refs, malformed equation/figure/table markers, and unresolved text-reference migration reports.
 
 `audit` is advisory and exits successfully. It writes `.markdown-formal/audit.md` with old typed references, handwritten chapter references, old Markdown links, plain section headings that may need stable markers, suspicious bare number references, unused remark/example hashes, and theorem-like blocks that do not have a visible `证明` / `Proof` boundary.
+
+`graph` refreshes `.markdown-formal/dependency-graph.json` and `.markdown-formal/dependency-report.md`. `prepare`, `finish`, and `verify` also write these files, so `graph` is mainly for focused dependency inspection. The graph only treats `prop`/`lemma`/`theorem`/`cor` nodes as theorem dependencies; references outside theorem-like statement/proof blocks are reported as ambient diagnostics rather than dependency edges.
 
 ## Local Release
 

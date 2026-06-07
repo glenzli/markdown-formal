@@ -384,6 +384,62 @@ async function testRecallBoundariesAndOptionalBlocks() {
     assert.match(referenceMap, /例 1\.1/);
 }
 
+async function testDependencyGraph() {
+    const root = await makeWorkspace('dependency-graph');
+    await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
+        '# Chapter 1',
+        '',
+        '定理 #h-1111111111111111（Base）：Base statement.',
+        '',
+        '证明：',
+        'The proof uses @h-2222222222222222.',
+        '',
+        '命题 #h-2222222222222222（Statement Uses）：由 @h-1111111111111111 可得 statement.',
+        '',
+        'Proof.',
+        'The proof uses @h-3333333333333333.',
+        '',
+        '## #h-4444444444444444 Notes',
+        '',
+        'Ambient prose cites @h-1111111111111111 but should not become a theorem dependency.',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', '02-b.md'), [
+        '# Chapter 2',
+        '',
+        '引理 #h-3333333333333333（Cross Chapter）：Cross statement.',
+        ''
+    ].join('\n'));
+
+    const prepare = runCli(root, ['prepare']);
+    assert.equal(prepare.status, 0, combinedOutput(prepare));
+
+    const graph = JSON.parse(await read(root, '.markdown-formal/dependency-graph.json'));
+    assert.equal(graph.schemaVersion, 1);
+    assert.equal(graph.nodes.length, 3);
+    assert.equal(graph.edges.length, 3);
+    assert.equal(graph.summary.statementEdges, 1);
+    assert.equal(graph.summary.proofEdges, 2);
+    assert.equal(graph.summary.crossChapterEdges, 1);
+    assert.equal(graph.summary.cycles, 1);
+    assert.equal(graph.diagnostics.filter(item => item.code === 'ambient-theorem-ref').length, 1);
+
+    const edgeKey = edge => `${edge.from}->${edge.to}:${edge.where}`;
+    assert.ok(graph.edges.map(edgeKey).includes('h-1111111111111111->h-2222222222222222:proof'));
+    assert.ok(graph.edges.map(edgeKey).includes('h-2222222222222222->h-1111111111111111:statement'));
+    assert.ok(graph.edges.map(edgeKey).includes('h-2222222222222222->h-3333333333333333:proof'));
+    assert.deepEqual(graph.cycles[0].ids.sort(), ['h-1111111111111111', 'h-2222222222222222']);
+
+    const report = await read(root, '.markdown-formal/dependency-report.md');
+    assert.match(report, /Proof edges: 2/);
+    assert.match(report, /Cross-Scope Edges/);
+    assert.match(report, /ambient-theorem-ref/);
+
+    const graphCommand = runCli(root, ['graph']);
+    assert.equal(graphCommand.status, 0, combinedOutput(graphCommand));
+    assert.match(combinedOutput(graphCommand), /OK graph: 3 nodes, 3 explicit edges, 2 proof edges, 1 cycles/);
+}
+
 async function testEquationFigureTableNumbering() {
     const root = await makeWorkspace('media-numbering');
     await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
@@ -853,6 +909,7 @@ const tests = [
     ['symbol cache', testSymbolCache],
     ['warns unbalanced symbol pattern', testWarnsUnbalancedSymbolPattern],
     ['recall boundaries and optional blocks', testRecallBoundariesAndOptionalBlocks],
+    ['dependency graph', testDependencyGraph],
     ['equation figure table numbering', testEquationFigureTableNumbering],
     ['structured marker validation', testStructuredMarkerValidation],
     ['cross-book references require dependencies', testCrossBookReferencesRequireDependencies],

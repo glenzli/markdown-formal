@@ -8,9 +8,10 @@
 
 完整融合必须保留四块能力：
 
-- 编号与引用：正文用稳定 hash ID，新增对象先写 `tmp-*`，编号对象和章/页引用都从 `reference-map.md` 复制。
-- 定义查询：定义不编号不 ref；需要可靠查询的定义由 AI 维护 `.markdown-formal/definitions.json`，包括 `term`、`source`、`content`，标准定义自动扫描只作为简单 fallback。
+- 编号与引用：正文用稳定 hash ID，新增对象先写 `tmp-*`，编号对象和章/页引用都从 `reference-map.md` 复制；`#hash` 只用于声明，正文引用只用 `@hash`。
+- 定义查询：定义不编号不 ref；工具先启发式抽取标准定义，AI 只为非标准定义、别名、中英互查和不可靠边界维护 `.markdown-formal/definitions.json`。
 - 符号表：项目特有 LaTeX 记号由 AI 维护 `.markdown-formal/symbols.json`。
+- 命题依赖图：命题/引理/定理/推论之间的显式 `@h-...` 依赖由工具生成 JSON，并区分陈述依赖和证明依赖。
 - 工具闭环：`prepare` 生成上下文，`finish` 固化临时 ID，`verify` 检查引用和索引。
 
 如果目标项目只合并了 hash 编号规则，却丢掉定义提取、符号提取、`.markdown-formal` 源表、`prepare` / `finish` / `verify` 调用方式，就不是完整接入。
@@ -22,7 +23,7 @@
 3. 保留目标项目原有文风、证明组织、术语偏好和章节模板；不要为了工具统一改写所有定义句式。
 4. 接入 CLI 后运行 `npm run formal -- prepare`，确认能生成 `.markdown-formal/agent-guide.md`、`.markdown-formal/reference-map.md` 和 `.markdown-formal/report.md`。
 5. 试写或迁移一个小范围，运行 `npm run formal -- finish <file-or-dir>` 和 `npm run formal -- verify`。
-6. 根据试写结果调整目标项目原生写作规则，直到 AI 在正常写作时会按本次修改范围维护 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbols.json`，而不是全书重抽或只维护编号。
+6. 根据试写结果调整目标项目原生写作规则，直到 AI 在正常写作时会按本次修改范围检查定义/符号索引，只为例外维护 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbols.json`，而不是全书重抽或只维护编号。
 
 ## 必须融入的最小提示
 
@@ -32,17 +33,18 @@
 写作或迁移前运行 npm run formal -- prepare。
 优先读取 .markdown-formal/agent-guide.md，再读取目标原文和 .markdown-formal/reference-map.md。
 
-引用已有编号对象时，只能从 reference-map.md 复制 @h-... 或 @h-....title。引用已有章时，复制 @chapter:path/to/chapter.md；路径以拥有 .markdown-formal/ 的 formal root 为基准，不以当前 workdir 为基准。@chapter:path.md.title 只显示标题，@chapter:path.md.full 显示编号加标题；导读、小结、附录等非正文章用 @page:path.md。重要引用附近保留自然语言语义，例如“由谱半径引理 `@h-...` 可得”；不要写成只有裸 `@h-...`。
+硬规则：#h-... / #tmp-* 只用于编号对象声明，例如 `命题 #tmp-*（Title）：...`、`## #tmp-* Title`、`公式 #tmp-*：`。正文引用一律使用 @h-... 或 @h-....title；不要写 `命题 #h-...`、`定理 #h-...`、`由 #h-...`。引用已有编号对象时，只能从 reference-map.md 复制 @h-... 或 @h-....title。引用已有章时，复制 @chapter:path/to/chapter.md；路径以拥有 .markdown-formal/ 的 formal root 为基准，不以当前 workdir 为基准。@chapter:path.md.title 只显示标题，@chapter:path.md.full 显示编号加标题；导读、小结、附录等非正文章用 @page:path.md。重要引用附近保留自然语言语义，例如“由谱半径引理 `@h-...` 可得”；不要写成只有裸 `@h-...`。
 新增小节、命题、引理、定理、推论、公式、图、表等 marker 使用 tmp-1/tmp-2/...，不要手动生成 hash。
 小节只用于编号和跳转；命题、引理、定理、推论的 recall 只覆盖 `证明` / `Proof` 前的陈述。
 公式、图、表各自独立编号：`公式 #tmp-*：` 放在 display math 前，图 caption 写 `图 #tmp-*（Title）：...`，表 caption 写 `表 #tmp-*（Title）：`。不要把 hash 写进 LaTeX 公式内部。
 
-定义不加 hash、不参与 ref。定义查询是 AI 必须维护的概念索引工作流：修改某个文件后，只检查该文件内新增、删除、改写的定义，并同步更新 .markdown-formal/definitions.json 中 source 指向该文件的条目。需要可靠查询的条目必须记录 term、可选 aliases、source 和 Markdown content；`定义（术语）：...` / `Definition (Term): ...` 自动扫描只作为简单 fallback。非标准句式如“称为 X”“所谓 X”“定义其 X”“记作 X”“called X”如果应当可查询，就写入 .markdown-formal/definitions.json。不要为了工具机械改写项目文风，也不要每次全书重抽。
+定义不加 hash、不参与 ref。定义查询采用“工具先抽，AI 只补”的最小工作流：工具自动扫描标准 `定义（术语）：...` / `Definition (Term): ...` 并用结构启发式收集跨行范围；修改某个文件后，AI 只检查该文件内新增、删除、改写的定义。常规标准定义不用重复写入 .markdown-formal/definitions.json；非标准句式如“称为 X”“所谓 X”“定义其 X”“记作 X”“called X”、需要 aliases/中英互查、需要稳定多段预览、或 AI 判断自动边界不可靠的定义，才写入 .markdown-formal/definitions.json，并记录 term、可选 aliases、source 和 Markdown content。不要为了工具机械改写项目文风，也不要每次全书重抽。
 
 只把项目明确约定的特殊 LaTeX 记号写入 .markdown-formal/symbols.json，维护 source、pattern、meaning；pattern 必须是记号本身或完整记号族，括号/方括号要闭合，不要记录通用数学符号、整条推导公式或缺右边界的公式片段。预览端不把公式内部符号做成可点击 ref；导航栏符号表只展示当前预览文件公式中实际匹配到的符号，搜索框只过滤定义。
 注和例默认不加 hash；只有后文已经明确引用某个注/例时，才反向把那个注/例改成 `注 #tmp-*` 或 `例 #tmp-*`。
+命题依赖图由工具从显式 @h-... 生成，权威数据是 .markdown-formal/dependency-graph.json，审阅报告是 .markdown-formal/dependency-report.md。它只把命题/引理/定理/推论之间的引用作为依赖边，并标记 statement/proof/body；AI 或 Lean 推测出的边必须另存为 suggested 数据，不能混入 explicit_ref 图。
 
-完成编辑后按本次修改范围检查编号对象、章/页引用、定义索引、符号索引、跨 book 查询配置、tmp ID 和迁移报告；不要只运行编号工具就结束。
+完成编辑后按本次修改范围检查编号对象、章/页引用、定义索引例外、符号索引、跨 book 查询配置、tmp ID 和迁移报告；不要只运行编号工具就结束。
 写完运行 npm run formal -- finish <file-or-dir>，必要时再运行 npm run formal -- verify。
 保持 Markdown 和 LaTeX 原样。
 ```
@@ -72,11 +74,13 @@ npm run formal -- verify
 
 - `.markdown-formal/agent-guide.md`：工具生成的当次 AI 操作卡。
 - `.markdown-formal/reference-map.md`：显示编号到 hash ID 的表。
+- `.markdown-formal/dependency-graph.json`：命题/引理/定理/推论显式依赖图的权威 JSON。
+- `.markdown-formal/dependency-report.md`：依赖图审阅报告。
 - `.markdown-formal/report.md`：校验和迁移报告。
 - `.markdown-formal/audit.md`：`audit` 生成的 AI 清理建议，不是门禁。
-- `.markdown-formal/preview-cache.json`：预览运行时缓存，AI 不直接编辑。
-- `.markdown-formal/config.json`：语言、扫描排除、跨 book 查询依赖等配置。
-- `.markdown-formal/definitions.json`：AI 维护的定义查询源表；需要可靠预览的条目必须含 `content`。
+- `.markdown-formal/preview-cache.json`：预览运行时缓存，AI 不直接编辑；由 `prepare` / `finish` 生成。
+- `.markdown-formal/config.json`：语言、扫描排除、跨 book 查询依赖等配置，也是编辑器增强预览的显式启用开关。
+- `.markdown-formal/definitions.json`：AI 维护的定义查询例外源表；非标准定义、别名/中英互查或不可靠边界条目必须含 `content`。
 - `.markdown-formal/symbols.json`：AI 维护的特殊符号表源表。
 
 定义搜索和当前页符号表默认只在当前 book 内生效。跨 book 查询必须显式声明：
@@ -129,10 +133,12 @@ npm run formal -- verify
 
 ```text
 .markdown-formal/
-  config.json       # 可选；没有时工具会生成默认配置
-  definitions.json  # 可选；需要 AI 维护定义查询预览时创建
+  config.json       # 必须存在；CLI 会生成默认配置，也是预览增强的启用开关
+  definitions.json  # 可选；存在定义查询例外时创建
   symbols.json      # 可选；存在特殊符号约定时创建
 ```
+
+编辑器插件只在目标项目根目录存在 `.markdown-formal/config.json` 且已有生成的 `.markdown-formal/preview-cache.json` 时注入导航、定义搜索、符号表和 formal ref 数据。缺少这些文件时，Markdown 预览保持原生行为；先运行 `npm run formal -- prepare` 或命令面板的 `Markdown Formal: Refresh References`。
 
 ## 迁移旧项目
 
@@ -151,7 +157,7 @@ npm run formal -- migrate-ids --apply path/to/chapter-or-volume
 
 如果 `migrate-ids --target-only` 发现目标范围内旧 ID 被范围外文件引用，工具会拒绝 apply。此时去掉 `--target-only`，或选择更大的闭合范围。
 
-`migrate-text-refs` 的报告还会列出旧 Markdown 链接和缺少 hash 的小节标题候选。AI 应读取 `.markdown-formal/text-ref-migration.md` 后手工处理这些项，同时维护迁移范围内发现的 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbols.json` 条目；定义条目要写 `content`，不要只写 `source`。
+`migrate-text-refs` 的报告还会列出旧 Markdown 链接和缺少 hash 的小节标题候选。AI 应读取 `.markdown-formal/text-ref-migration.md` 后手工处理这些项，同时检查迁移范围内发现的定义和符号约定：标准定义交给工具扫描，非标准定义、别名/中英互查或不可靠边界才写入 `.markdown-formal/definitions.json`，定义条目要写 `content`，不要只写 `source`。
 
 ## 项目约定
 

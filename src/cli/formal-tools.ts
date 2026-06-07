@@ -15,6 +15,7 @@ import {
     normalizeFormalPagePath,
     parseFormalMarkerLine,
     renderAgentGuide,
+    renderDependencyReport,
     renderReferenceMap,
     renderReport,
     scanFormalDocuments,
@@ -110,6 +111,8 @@ async function scanWorkspace() {
 async function writeArtifacts(state) {
     await ensureCacheDir();
     await fs.writeFile(path.join(CACHE_DIR, 'preview-cache.json'), `${JSON.stringify(buildPreviewCache(state), null, 2)}\n`, 'utf8');
+    await fs.writeFile(path.join(CACHE_DIR, 'dependency-graph.json'), `${JSON.stringify(state.dependencyGraph, null, 2)}\n`, 'utf8');
+    await fs.writeFile(path.join(CACHE_DIR, 'dependency-report.md'), renderDependencyReport(state.dependencyGraph), 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'reference-map.md'), renderReferenceMap(state.definitions, state.config, state.pages), 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'agent-guide.md'), renderAgentGuide(state), 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'report.md'), renderReport(state), 'utf8');
@@ -158,6 +161,15 @@ async function lint() {
     await writeArtifacts(state);
     printSummary('lint', state);
     if (state.issues.some(issue => issue.severity === 'error')) process.exitCode = 1;
+}
+
+async function graph() {
+    const state = await scanWorkspace();
+    await writeArtifacts(state);
+    const dependencyGraph = state.dependencyGraph;
+    console.log(`OK graph: ${dependencyGraph.summary.nodes} nodes, ${dependencyGraph.summary.edges} explicit edges, ${dependencyGraph.summary.proofEdges} proof edges, ${dependencyGraph.summary.cycles} cycles`);
+    console.log('Graph: .markdown-formal/dependency-graph.json');
+    console.log('Report: .markdown-formal/dependency-report.md');
 }
 
 const VERIFY_BLOCKING_WARNING_CODES = new Set([
@@ -1585,6 +1597,7 @@ function printHelp({ all = false } = {}) {
   npm run formal -- migrate-text-refs <file-or-dir> [...] [--apply] [--target-only] [--all]
   npm run formal -- migrate-ids <file-or-dir> [...] [--apply] [--target-only] [--all]
   npm run formal -- audit [file-or-dir] [...]
+  npm run formal -- graph
   npm run formal -- verify [--strict-chapters]
 
 Migrations are dry-run by default. Pass --apply to edit files.
@@ -1607,6 +1620,7 @@ Advanced commands:
   npm run formal -- migrate-text-refs <file-or-dir> [...] [--apply] [--target-only] [--all]
   npm run formal -- migrate-ids <file-or-dir> [...] [--apply] [--target-only] [--all]
   npm run formal -- audit [file-or-dir] [...]
+  npm run formal -- graph
   npm run formal -- verify [--strict-chapters]
 
 Advanced:
@@ -1635,6 +1649,8 @@ async function main() {
         await prepare({ exitOnError: true });
     } else if (command === 'lint') {
         await lint();
+    } else if (command === 'graph') {
+        await graph();
     } else if (command === 'verify') {
         await verify(args);
     } else if (command === 'finalize') {

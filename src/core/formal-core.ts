@@ -117,9 +117,87 @@ export interface FormalPageReference {
     line: number;
 }
 
+export type DependencyEdgeWhere = 'statement' | 'proof' | 'body';
+
+export interface DependencyGraphNode {
+    id: string;
+    kind: string;
+    display: string;
+    title: string;
+    path: string;
+    line: number;
+    endLine?: number;
+    bookKey?: string;
+    bookTitle?: string;
+    bookOrder?: number;
+    volumeKey?: string;
+    volumeTitle?: string;
+    volumeOrder?: number;
+    unitKind?: string;
+    unitKey?: string;
+    unitLabel?: string;
+    unitOrder?: number;
+    chapter?: number;
+    appendix?: string;
+    number?: number;
+}
+
+export interface DependencyGraphEdge {
+    from: string;
+    to: string;
+    kind: 'explicit_ref';
+    where: DependencyEdgeWhere;
+    path: string;
+    line: number;
+}
+
+export interface DependencyGraphDiagnostic {
+    severity: 'info' | 'warn';
+    code: string;
+    file?: string;
+    line?: number;
+    message: string;
+}
+
+export interface DependencyGraphCycle {
+    ids: string[];
+    displays: string[];
+}
+
+export interface DependencyGraph {
+    schemaVersion: 1;
+    generatedBy: 'markdown-formal';
+    nodes: DependencyGraphNode[];
+    edges: DependencyGraphEdge[];
+    cycles: DependencyGraphCycle[];
+    diagnostics: DependencyGraphDiagnostic[];
+    summary: {
+        nodes: number;
+        edges: number;
+        isolated: number;
+        cycles: number;
+        crossBookEdges: number;
+        crossVolumeEdges: number;
+        crossChapterEdges: number;
+        statementEdges: number;
+        proofEdges: number;
+        bodyEdges: number;
+    };
+}
+
 export interface FormalDocument {
     filePath: string;
     content: string;
+}
+
+interface DependencySourceBlock {
+    id: string;
+    file: string;
+    startLine: number;
+    statementEndLine: number;
+    proofStartLine?: number;
+    proofEndLine?: number;
+    endLine: number;
 }
 
 interface VolumeInfo {
@@ -1615,7 +1693,8 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
 
     definitions.sort(compareDefinitionRecords);
     pages.sort(comparePages);
-    return { config, files: files.map(file => file.filePath), labels, pages, definitions, references, pageReferences, symbols: symbolResult.symbols, issues };
+    const dependencyGraph = buildDependencyGraph({ config, labels, definitions, references }, files);
+    return { config, files: files.map(file => file.filePath), labels, pages, definitions, references, pageReferences, symbols: symbolResult.symbols, issues, dependencyGraph };
 }
 
 function collectMarkerStarts(content: string, filePath: string): any[] {
@@ -1993,6 +2072,388 @@ export function buildPreviewCache(state: any) {
     };
 }
 
+function buildDocumentMap(documents: FormalDocument[]): Map<string, string> {
+    return new Map(documents.map(document => [toPosix(document.filePath), document.content || '']));
+}
+
+function findProofRange(lines: string[], startLine: number, statementEndLine: number): { proofStartLine?: number; proofEndLine?: number; endLine: number } {
+    const startIndex = Math.max(0, startLine - 1);
+    const statementEndIndex = Math.max(startIndex, statementEndLine - 1);
+    let proofStartIndex = -1;
+
+    for (let i = statementEndIndex + 1; i < lines.length; i++) {
+        if (isMarkerBoundaryLine(lines[i])) break;
+        if (isProofBoundaryLine(lines[i])) {
+            proofStartIndex = i;
+            break;
+        }
+    }
+
+    if (proofStartIndex < 0) {
+        return { endLine: statementEndLine };
+    }
+
+    let proofEndIndex = proofStartIndex;
+    for (let i = proofStartIndex + 1; i < lines.length; i++) {
+        if (isMarkerBoundaryLine(lines[i])) break;
+        proofEndIndex = i;
+    }
+
+    return {
+        proofStartLine: proofStartIndex + 1,
+        proofEndLine: proofEndIndex + 1,
+        endLine: proofEndIndex + 1
+    };
+}
+
+function dependencySourceBlocks(definitions: FormalDefinition[], documents: FormalDocument[]): Map<string, DependencySourceBlock[]> {
+    const documentMap = buildDocumentMap(documents);
+    const blocksByFile = new Map<string, DependencySourceBlock[]>();
+
+    for (const def of definitions) {
+        if (!def.id || !THEOREM_COUNTER_TYPES.has(def.type)) continue;
+        const content = documentMap.get(def.file);
+        if (content === undefined) continue;
+        const lines = content.split(/\r?\n/);
+        const startLine = def.line;
+        const labelEndLine = typeof def.label.endLine === 'number' ? def.label.endLine + 1 : startLine;
+        const statementEndLine = Math.max(startLine, labelEndLine);
+        const proofRange = findProofRange(lines, startLine, statementEndLine);
+        const block: DependencySourceBlock = {
+            id: def.id,
+            file: def.file,
+            startLine,
+            statementEndLine,
+            proofStartLine: proofRange.proofStartLine,
+            proofEndLine: proofRange.proofEndLine,
+            endLine: Math.max(statementEndLine, proofRange.endLine)
+        };
+        if (!blocksByFile.has(def.file)) blocksByFile.set(def.file, []);
+        blocksByFile.get(def.file)!.push(block);
+    }
+
+    for (const blocks of blocksByFile.values()) {
+        blocks.sort((a, b) => a.startLine - b.startLine);
+    }
+    return blocksByFile;
+}
+
+function findDependencySourceBlock(blocks: DependencySourceBlock[] | undefined, line: number): DependencySourceBlock | undefined {
+    if (!blocks) return undefined;
+    return blocks.find(block => block.startLine <= line && line <= block.endLine);
+}
+
+function dependencyEdgeWhere(block: DependencySourceBlock, line: number): DependencyEdgeWhere {
+    if (line <= block.statementEndLine) return 'statement';
+    if (block.proofStartLine !== undefined && block.proofEndLine !== undefined && block.proofStartLine <= line && line <= block.proofEndLine) {
+        return 'proof';
+    }
+    return 'body';
+}
+
+function dependencyGraphNode(def: FormalDefinition, config: any): DependencyGraphNode {
+    const label = def.label;
+    const node: DependencyGraphNode = {
+        id: def.id as string,
+        kind: def.type,
+        display: displayLabel(def, config),
+        title: def.title || '',
+        path: def.file,
+        line: def.line,
+        endLine: typeof label.endLine === 'number' ? label.endLine + 1 : undefined,
+        bookKey: label.bookKey,
+        bookTitle: label.bookTitle,
+        bookOrder: label.bookOrder,
+        volumeKey: label.volumeKey,
+        volumeTitle: label.volumeTitle,
+        volumeOrder: label.volumeOrder,
+        unitKind: label.unitKind,
+        unitKey: label.unitKey,
+        unitLabel: label.unitLabel,
+        unitOrder: label.unitOrder,
+        chapter: label.chapter,
+        appendix: label.appendix,
+        number: label.number
+    };
+
+    Object.keys(node).forEach(key => {
+        if ((node as any)[key] === undefined) delete (node as any)[key];
+    });
+    return node;
+}
+
+function dependencyGraphCycles(nodes: DependencyGraphNode[], edges: DependencyGraphEdge[]): DependencyGraphCycle[] {
+    const nodeIds = new Set(nodes.map(node => node.id));
+    const nodeById = new Map(nodes.map(node => [node.id, node]));
+    const adjacency = new Map<string, Set<string>>();
+    for (const node of nodes) adjacency.set(node.id, new Set());
+    for (const edge of edges) {
+        if (nodeIds.has(edge.from) && nodeIds.has(edge.to)) {
+            adjacency.get(edge.from)!.add(edge.to);
+        }
+    }
+
+    let index = 0;
+    const indexes = new Map<string, number>();
+    const lowlinks = new Map<string, number>();
+    const stack: string[] = [];
+    const onStack = new Set<string>();
+    const cycles: DependencyGraphCycle[] = [];
+
+    const strongConnect = (id: string) => {
+        indexes.set(id, index);
+        lowlinks.set(id, index);
+        index++;
+        stack.push(id);
+        onStack.add(id);
+
+        for (const next of adjacency.get(id) || []) {
+            if (!indexes.has(next)) {
+                strongConnect(next);
+                lowlinks.set(id, Math.min(lowlinks.get(id) || 0, lowlinks.get(next) || 0));
+            } else if (onStack.has(next)) {
+                lowlinks.set(id, Math.min(lowlinks.get(id) || 0, indexes.get(next) || 0));
+            }
+        }
+
+        if (lowlinks.get(id) !== indexes.get(id)) return;
+
+        const component: string[] = [];
+        while (stack.length > 0) {
+            const item = stack.pop() as string;
+            onStack.delete(item);
+            component.push(item);
+            if (item === id) break;
+        }
+
+        const hasSelfLoop = component.length === 1 && (adjacency.get(component[0]) || new Set()).has(component[0]);
+        if (component.length > 1 || hasSelfLoop) {
+            const ids = component.sort((a, b) => (nodeById.get(a)?.display || a).localeCompare(nodeById.get(b)?.display || b));
+            cycles.push({
+                ids,
+                displays: ids.map(item => nodeById.get(item)?.display || item)
+            });
+        }
+    };
+
+    for (const node of nodes) {
+        if (!indexes.has(node.id)) strongConnect(node.id);
+    }
+
+    return cycles.sort((a, b) => a.displays.join(' -> ').localeCompare(b.displays.join(' -> ')));
+}
+
+export function buildDependencyGraph(state: any, documents: FormalDocument[]): DependencyGraph {
+    const config = state.config || mergeConfig(DEFAULT_CONFIG);
+    const definitions: FormalDefinition[] = state.definitions || [];
+    const references: FormalReference[] = state.references || [];
+    const theoremDefinitions = definitions
+        .filter(def => def.id && THEOREM_COUNTER_TYPES.has(def.type))
+        .sort(compareDefinitionRecords);
+    const nodeById = new Map(theoremDefinitions.map(def => [def.id as string, dependencyGraphNode(def, config)]));
+    const blocksByFile = dependencySourceBlocks(theoremDefinitions, documents);
+    const edges: DependencyGraphEdge[] = [];
+    const diagnostics: DependencyGraphDiagnostic[] = [];
+
+    for (const ref of references) {
+        const target = nodeById.get(ref.id);
+        const sourceBlock = findDependencySourceBlock(blocksByFile.get(ref.file), ref.line);
+        if (!target) continue;
+        if (!sourceBlock) {
+            diagnostics.push({
+                severity: 'info',
+                code: 'ambient-theorem-ref',
+                file: ref.file,
+                line: ref.line,
+                message: `Reference @${ref.id} targets a theorem-like object but is outside a theorem-like statement/proof block.`
+            });
+            continue;
+        }
+
+        edges.push({
+            from: sourceBlock.id,
+            to: ref.id,
+            kind: 'explicit_ref',
+            where: dependencyEdgeWhere(sourceBlock, ref.line),
+            path: ref.file,
+            line: ref.line
+        });
+    }
+
+    const nodes = [...nodeById.values()].sort((a, b) => (
+        (a.bookOrder || 0) - (b.bookOrder || 0)
+        || (a.volumeOrder || 0) - (b.volumeOrder || 0)
+        || (a.unitOrder || 0) - (b.unitOrder || 0)
+        || a.path.localeCompare(b.path)
+        || a.line - b.line
+    ));
+    const incoming = new Map(nodes.map(node => [node.id, 0]));
+    const outgoing = new Map(nodes.map(node => [node.id, 0]));
+    for (const edge of edges) {
+        incoming.set(edge.to, (incoming.get(edge.to) || 0) + 1);
+        outgoing.set(edge.from, (outgoing.get(edge.from) || 0) + 1);
+    }
+
+    const cycles = dependencyGraphCycles(nodes, edges);
+    const isCrossBook = (edge: DependencyGraphEdge) => (nodeById.get(edge.from)?.bookKey || '') !== (nodeById.get(edge.to)?.bookKey || '');
+    const isCrossVolume = (edge: DependencyGraphEdge) => (nodeById.get(edge.from)?.volumeKey || '') !== (nodeById.get(edge.to)?.volumeKey || '');
+    const isCrossChapter = (edge: DependencyGraphEdge) => (nodeById.get(edge.from)?.unitKey || '') !== (nodeById.get(edge.to)?.unitKey || '');
+
+    return {
+        schemaVersion: 1,
+        generatedBy: 'markdown-formal',
+        nodes,
+        edges,
+        cycles,
+        diagnostics,
+        summary: {
+            nodes: nodes.length,
+            edges: edges.length,
+            isolated: nodes.filter(node => (incoming.get(node.id) || 0) === 0 && (outgoing.get(node.id) || 0) === 0).length,
+            cycles: cycles.length,
+            crossBookEdges: edges.filter(isCrossBook).length,
+            crossVolumeEdges: edges.filter(isCrossVolume).length,
+            crossChapterEdges: edges.filter(isCrossChapter).length,
+            statementEdges: edges.filter(edge => edge.where === 'statement').length,
+            proofEdges: edges.filter(edge => edge.where === 'proof').length,
+            bodyEdges: edges.filter(edge => edge.where === 'body').length
+        }
+    };
+}
+
+function dependencyNodeById(graph: DependencyGraph): Map<string, DependencyGraphNode> {
+    return new Map(graph.nodes.map(node => [node.id, node]));
+}
+
+function dependencyDegreeRows(graph: DependencyGraph, direction: 'incoming' | 'outgoing'): Array<{ node: DependencyGraphNode; count: number }> {
+    const nodeById = dependencyNodeById(graph);
+    const counts = new Map(graph.nodes.map(node => [node.id, 0]));
+    for (const edge of graph.edges) {
+        const id = direction === 'incoming' ? edge.to : edge.from;
+        counts.set(id, (counts.get(id) || 0) + 1);
+    }
+    return [...counts.entries()]
+        .map(([id, count]) => ({ node: nodeById.get(id) as DependencyGraphNode, count }))
+        .filter(row => row.node && row.count > 0)
+        .sort((a, b) => b.count - a.count || a.node.display.localeCompare(b.node.display));
+}
+
+function dependencyNodeLocation(node: DependencyGraphNode): string {
+    return `${node.path}:${node.line}`;
+}
+
+function pushLimitedRows<T>(lines: string[], rows: T[], limit: number, render: (row: T) => string, moreRow?: (remaining: number) => string) {
+    rows.slice(0, limit).forEach(row => lines.push(render(row)));
+    if (rows.length > limit) {
+        const remaining = rows.length - limit;
+        lines.push(moreRow ? moreRow(remaining) : `| ... | ... | ${remaining} more |`);
+    }
+}
+
+export function renderDependencyReport(graph: DependencyGraph): string {
+    const nodeById = dependencyNodeById(graph);
+    const lines = [
+        '# Dependency Graph Report',
+        '',
+        'Generated by `npm run formal -- prepare`. The canonical data is `.markdown-formal/dependency-graph.json`.',
+        '',
+        '## Summary',
+        '',
+        `- Nodes: ${graph.summary.nodes}`,
+        `- Explicit edges: ${graph.summary.edges}`,
+        `- Statement edges: ${graph.summary.statementEdges}`,
+        `- Proof edges: ${graph.summary.proofEdges}`,
+        `- Body edges: ${graph.summary.bodyEdges}`,
+        `- Cross-chapter edges: ${graph.summary.crossChapterEdges}`,
+        `- Cross-volume edges: ${graph.summary.crossVolumeEdges}`,
+        `- Cross-book edges: ${graph.summary.crossBookEdges}`,
+        `- Isolated nodes: ${graph.summary.isolated}`,
+        `- Cycles: ${graph.summary.cycles}`,
+        ''
+    ];
+
+    const outgoing = dependencyDegreeRows(graph, 'outgoing');
+    lines.push('## High Outgoing Dependencies', '');
+    if (outgoing.length === 0) {
+        lines.push('No outgoing dependencies.', '');
+    } else {
+        lines.push('| Count | Node | Location |');
+        lines.push('| ---: | --- | --- |');
+        pushLimitedRows(lines, outgoing, 20, row => `| ${row.count} | ${escapeTable(row.node.display)} ${escapeTable(row.node.title || '')} | \`${dependencyNodeLocation(row.node)}\` |`);
+        lines.push('');
+    }
+
+    const incoming = dependencyDegreeRows(graph, 'incoming');
+    lines.push('## High Incoming Dependencies', '');
+    if (incoming.length === 0) {
+        lines.push('No incoming dependencies.', '');
+    } else {
+        lines.push('| Count | Node | Location |');
+        lines.push('| ---: | --- | --- |');
+        pushLimitedRows(lines, incoming, 20, row => `| ${row.count} | ${escapeTable(row.node.display)} ${escapeTable(row.node.title || '')} | \`${dependencyNodeLocation(row.node)}\` |`);
+        lines.push('');
+    }
+
+    const crossScopeEdges = graph.edges.filter(edge => {
+        const from = nodeById.get(edge.from);
+        const to = nodeById.get(edge.to);
+        return from && to && ((from.bookKey || '') !== (to.bookKey || '') || (from.volumeKey || '') !== (to.volumeKey || '') || (from.unitKey || '') !== (to.unitKey || ''));
+    });
+    lines.push('## Cross-Scope Edges', '');
+    if (crossScopeEdges.length === 0) {
+        lines.push('No cross-scope theorem dependencies.', '');
+    } else {
+        lines.push('| Where | From | To | Reference |');
+        lines.push('| --- | --- | --- | --- |');
+        pushLimitedRows(lines, crossScopeEdges, 50, edge => {
+            const from = nodeById.get(edge.from);
+            const to = nodeById.get(edge.to);
+            return `| ${edge.where} | ${escapeTable(from?.display || edge.from)} ${escapeTable(from?.title || '')} | ${escapeTable(to?.display || edge.to)} ${escapeTable(to?.title || '')} | \`${edge.path}:${edge.line}\` |`;
+        });
+        lines.push('');
+    }
+
+    lines.push('## Cycles', '');
+    if (graph.cycles.length === 0) {
+        lines.push('No theorem dependency cycles found.', '');
+    } else {
+        lines.push('| Cycle |');
+        lines.push('| --- |');
+        pushLimitedRows(lines, graph.cycles, 50, cycle => `| ${escapeTable(cycle.displays.join(' -> '))} |`, remaining => `| ... ${remaining} more |`);
+        lines.push('');
+    }
+
+    const incomingCounts = new Map(graph.nodes.map(node => [node.id, 0]));
+    const outgoingCounts = new Map(graph.nodes.map(node => [node.id, 0]));
+    for (const edge of graph.edges) {
+        incomingCounts.set(edge.to, (incomingCounts.get(edge.to) || 0) + 1);
+        outgoingCounts.set(edge.from, (outgoingCounts.get(edge.from) || 0) + 1);
+    }
+    const isolated = graph.nodes.filter(node => (incomingCounts.get(node.id) || 0) === 0 && (outgoingCounts.get(node.id) || 0) === 0);
+    lines.push('## Isolated Nodes', '');
+    if (isolated.length === 0) {
+        lines.push('No isolated theorem-like nodes.', '');
+    } else {
+        lines.push('| Node | Location |');
+        lines.push('| --- | --- |');
+        pushLimitedRows(lines, isolated, 100, node => `| ${escapeTable(node.display)} ${escapeTable(node.title || '')} | \`${dependencyNodeLocation(node)}\` |`);
+        lines.push('');
+    }
+
+    if (graph.diagnostics.length > 0) {
+        lines.push('## Diagnostics', '');
+        lines.push('| Code | Location | Message |');
+        lines.push('| --- | --- | --- |');
+        pushLimitedRows(lines, graph.diagnostics, 100, diagnostic => {
+            const location = diagnostic.file ? `${diagnostic.file}${diagnostic.line ? `:${diagnostic.line}` : ''}` : 'workspace';
+            return `| ${diagnostic.code} | \`${location}\` | ${escapeTable(diagnostic.message)} |`;
+        });
+        lines.push('');
+    }
+
+    return `${lines.join('\n')}\n`;
+}
+
 export function renderAgentGuide(state: any): string {
     const errors = state.issues.filter((issue: FormalIssue) => issue.severity === 'error').length;
     const warnings = state.issues.filter((issue: FormalIssue) => issue.severity !== 'error').length;
@@ -2008,7 +2469,7 @@ export function renderAgentGuide(state: any): string {
         '1. Read the target Markdown file.',
         '2. Read `.markdown-formal/reference-map.md` to map display numbers to stable hash IDs and page paths.',
         '3. Put stable IDs directly where numbers used to appear: `## #tmp-1 Section`, `定理 #tmp-2（Title）：...`, `公式 #tmp-3：`, `图 #tmp-4（Caption）：...`, or `表 #tmp-5（Caption）：`. Definitions are not numbered objects and never get hash IDs or refs.',
-        '4. Reference numbered objects with `@h-...`; reference chapters with `@chapter:path/to/file.md`; never handwrite display numbers as references.',
+        '4. Reference numbered objects with `@h-...`; reference chapters with `@chapter:path/to/file.md`; never handwrite display numbers as references. `#h-...` / `#tmp-*` is declaration syntax only; do not write `命题 #h-...` or `Theorem #h-...` in prose references.',
         '5. Keep Markdown and LaTeX unescaped.',
         '6. Run `npm run formal -- finish <file-or-dir>` after editing; it finalizes temporary IDs and verifies the workspace.',
         '7. Run `npm run formal -- audit <file-or-dir>` when you want an advisory cleanup list for old prose refs, bare number candidates, optional blocks, and proof-boundary hints.',
@@ -2021,7 +2482,8 @@ export function renderAgentGuide(state: any): string {
         '- Equations, figures, and tables: `公式 #h-...：` binds the next display formula as a numbered equation, `图 #h-...（Title）：...` captions a nearby image, and `表 #h-...（Title）：` captions the following table. They have separate counters per chapter or appendix; equations render as `(1.1)`, appendices as `(A.1)`.',
         '- Chapter/page refs: use `@chapter:book1/02-main.md`, `@chapter:book1/02-main.md.title`, or `@chapter:book1/02-main.md.full`; paths are relative to the formal root that owns `.markdown-formal/`. `@page:path.md` is for intro, summary, and appendix pages. `finish` normalizes `./` and `../` input sugar to root-relative paths.',
         '- Theorem-like recall captures the statement before `证明` / `Proof`; keep proofs after an explicit proof marker.',
-        '- Definitions: lookup is a concept-index workflow. When editing a file, update `.markdown-formal/definitions.json` entries whose `source` is in that file and include Markdown `content`; standard `定义（Term）：...` / `Definition (Term): ...` lines are only a simple fallback scan.',
+        '- Dependency graph: `.markdown-formal/dependency-graph.json` is the canonical explicit theorem-like dependency graph. It uses only `@h-...` references between propositions/lemmas/theorems/corollaries and marks edges as `statement`, `proof`, or `body`; `.markdown-formal/dependency-report.md` is the review view.',
+        '- Definitions: lookup is a tool-first, AI-exception workflow. The tool scans standard `定义（Term）：...` / `Definition (Term): ...` definitions with structural range heuristics. When editing a file, AI only updates `.markdown-formal/definitions.json` for nonstandard phrases, aliases/bilingual lookup, stable multi-paragraph previews, or boundaries the heuristic may get wrong; include Markdown `content` for those entries.',
         '- Remarks/examples stay plain by default. Only when later text already cites one, convert that exact item to `注 #tmp-*` / `例 #tmp-*` and run `finish`.',
         '- Symbols: maintain only project-specific `source`, `pattern`, and `meaning` entries in `.markdown-formal/symbols.json`; patterns describe the notation itself with balanced delimiters, not whole equations or open-ended formula fragments. The navigation symbol table lists symbols matched in the current preview file. Symbols are not inline formula refs and are not searched through the definition search box.',
         '- Appendices use the appendix file prefix, so markers in `appendix-a-*.md` render as `A.1`, `A.2`, etc. `00-introduction.md`, `intro.md`, and `introduction.md` are intro pages, not chapter 0.',
@@ -2030,11 +2492,13 @@ export function renderAgentGuide(state: any): string {
         '',
         '- `.markdown-formal/reference-map.md`: compact display-number to hash-ID table.',
         '- `.markdown-formal/preview-cache.json`: runtime preview/navigation/definition/symbol table cache.',
+        '- `.markdown-formal/dependency-graph.json`: canonical theorem-like dependency graph from explicit `@h-...` references.',
+        '- `.markdown-formal/dependency-report.md`: human/AI dependency graph review report.',
         '- `.markdown-formal/report.md`: lint/verify details.',
         '- `.markdown-formal/audit.md`: advisory AI cleanup list generated by `audit`.',
         '- `.markdown-formal/text-ref-migration.md`: generated only after text-reference migration.',
-        '- `.markdown-formal/definitions.json` / `.markdown-formal/symbols.json`: optional AI-maintained source tables for nonstandard definitions and project-specific notation.',
-        '- `.markdown-formal/config.json`: use `scan.exclude` when project-root scans must ignore build, draft, context, or generated Markdown directories; use `preview.ignoreHover` for concept appendices or recall-heavy files that should keep numbering/navigation but skip inline `@hash` hover previews. `ignoreHover` accepts full relative paths, bare filenames, and globs. Temporarily set `debug.previewLog` to write `.markdown-formal/preview-debug.log` when diagnosing blank previews.',
+        '- `.markdown-formal/definitions.json` / `.markdown-formal/symbols.json`: optional AI-maintained source tables for definition lookup exceptions and project-specific notation.',
+        '- `.markdown-formal/config.json`: explicit opt-in switch for enhanced Markdown preview. Without this config or generated `preview-cache.json`, the extension leaves previews as ordinary Markdown and does not inject navigation/search/formal reference data. Use `scan.exclude` when project-root scans must ignore build, draft, context, or generated Markdown directories; use `preview.ignoreHover` for concept appendices or recall-heavy files that should keep numbering/navigation but skip inline `@hash` hover previews. `ignoreHover` accepts full relative paths, bare filenames, and globs. Temporarily set `debug.previewLog` to write `.markdown-formal/preview-debug.log` when diagnosing blank previews.',
         '',
         '## Migration',
         '',

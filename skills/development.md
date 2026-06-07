@@ -26,7 +26,7 @@
 需要注意：
 
 - `src/webview/formal-script.ts` 会编译到 `media/formal-script.js`，改预览端交互后必须运行 `npm run build`。
-- 扫描缓存位于 `.markdown-formal/`，包含 `preview-cache.json`、`config.json`、`agent-guide.md`、`reference-map.md` 和 `report.md`。
+- 扫描缓存位于 `.markdown-formal/`，包含 `preview-cache.json`、`config.json`、`agent-guide.md`、`reference-map.md`、`dependency-graph.json`、`dependency-report.md` 和 `report.md`。
 - 项目根的 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbols.json` 分别是非标准定义查询、符号表源表，修改后会刷新 `preview-cache.json`。
 - CLI 源码位于 `src/cli/formal-tools.ts`；`npm run formal -- ...` 会先编译到 `out/cli/formal-tools.js` 再执行。
 - `config.json` 支持 `"language": "zh"` 或 `"language": "en"`；`scan.exclude` 排除扫描目录，`preview.ignoreHover` 按完整相对路径、裸文件名或 glob 关闭正文 `@hash` recall hover，`debug.previewLog` 临时写入 `.markdown-formal/preview-debug.log` 用于排查空白预览；旧配置缺少字段时会自动合并默认值。
@@ -72,7 +72,8 @@ npm run release:local
 ## 故障排查
 
 如果在预览 Markdown 时发现插件未生效：
-1. 确保所在工作区目录存在有效的 `*.md` 文件，并且触发了首次缓存扫描。
-2. 确保没有权限问题导致无法写入工作区根目录的 `.markdown-formal/preview-cache.json`。
+1. 确保所在工作区根目录存在 `.markdown-formal/config.json`；没有这个文件时增强预览会保持关闭。
+2. 运行 `npm run formal -- prepare` 或命令面板 `Markdown Formal: Refresh References`，生成 `.markdown-formal/preview-cache.json`。
 3. 确保包含 Markdown 文件的所在文件夹已经在编辑器中打开作为工作区，单独拖拽文件可能无法获取 `workspaceRoot`。
-4. 可通过菜单栏 `Help > Toggle Developer Tools` 检查控制台（Console）中是否有 `[markdown-formal]` 相关的启动日志或报错。
+4. 确保没有权限问题导致无法写入工作区根目录的 `.markdown-formal/preview-cache.json`。
+5. 可通过菜单栏 `Help > Toggle Developer Tools` 检查控制台（Console）中是否有 `[markdown-formal]` 相关的启动日志或报错。

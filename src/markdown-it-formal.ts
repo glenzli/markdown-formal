@@ -153,6 +153,46 @@ function tooltipRenderStats(src: string, labels: Record<string, LabelData>): Too
     };
 }
 
+function hasFormalPreviewConfig(rootPath: string): boolean {
+    return Boolean(rootPath && fs.existsSync(path.join(rootPath, '.markdown-formal', 'config.json')));
+}
+
+function hasFormalPreviewCache(rootPath: string): boolean {
+    return Boolean(rootPath && fs.existsSync(path.join(rootPath, '.markdown-formal', 'preview-cache.json')));
+}
+
+function findFormalPreviewRoot(startPath: string): string {
+    let current = startPath;
+    while (current) {
+        if (hasFormalPreviewConfig(current)) return current;
+        const parent = path.dirname(current);
+        if (!parent || parent === current) break;
+        current = parent;
+    }
+    return '';
+}
+
+function disableFormalPreview(env: any, reason: string) {
+    if (!env) return;
+    env.formalPreviewEnabled = false;
+    env.formalPreviewDisabledReason = reason;
+    delete env.labels;
+    delete env.pages;
+    delete env.definitions;
+    delete env.symbols;
+    delete env.formalCurrentFilePath;
+}
+
+function enableFormalPreview(env: any) {
+    if (!env) return;
+    env.formalPreviewEnabled = true;
+    delete env.formalPreviewDisabledReason;
+}
+
+function isFormalPreviewEnabled(env: any): boolean {
+    return Boolean(env?.formalPreviewEnabled);
+}
+
 function shouldEagerRenderTooltips(filePath: string, config: any): boolean {
     return !shouldIgnorePreviewHover(filePath, config);
 }
@@ -217,17 +257,39 @@ function addTokenClass(token: any, className: string) {
     }
 }
 
-function replaceFirstTextChild(inlineToken: any, from: string, to: string) {
+function replaceFirstTextChild(inlineToken: any, from: string, to: string): boolean {
     inlineToken.content = String(inlineToken.content || '').replace(from, to);
-    if (!inlineToken.children) return;
-    for (const child of inlineToken.children) {
-        if (child.type !== 'text') continue;
-        const next = String(child.content || '').replace(from, to);
-        if (next !== child.content) {
-            child.content = next;
-            return;
+    if (!inlineToken.children) return false;
+
+    const replaceInChildren = (children: any[]): boolean => {
+        for (const child of children) {
+            if (child.type === 'text') {
+                const next = String(child.content || '').replace(from, to);
+                if (next !== child.content) {
+                    child.content = next;
+                    return true;
+                }
+            }
+
+            if (Array.isArray(child.children) && replaceInChildren(child.children)) {
+                return true;
+            }
         }
-    }
+
+        return false;
+    };
+
+    return replaceInChildren(inlineToken.children);
+}
+
+interface MarkerApplyResult {
+    parsed: boolean;
+    replaced: boolean;
+    missingLabel?: string;
+}
+
+function emptyMarkerResult(): MarkerApplyResult {
+    return { parsed: false, replaced: false };
 }
 
 function markerTypeName(config: any, type: string): string {
@@ -447,23 +509,23 @@ function findInlineDollarEnd(line: string, start: number): number {
     return -1;
 }
 
-function applyLightweightMarker(tokens: any[], inlineIndex: number, labels: Record<string, LabelData>, definitions: RuntimeDefinitionData[], currentFilePath: string, config: any) {
+function applyLightweightMarker(tokens: any[], inlineIndex: number, labels: Record<string, LabelData>, definitions: RuntimeDefinitionData[], currentFilePath: string, config: any): MarkerApplyResult {
     const inlineToken = tokens[inlineIndex];
     const openToken = tokens[inlineIndex - 1];
-    if (!inlineToken || !openToken) return;
+    if (!inlineToken || !openToken) return emptyMarkerResult();
 
     const isHeading = /^h[2-6]$/.test(openToken.tag || '');
     const line = isHeading
         ? `${'#'.repeat(Number(openToken.tag.slice(1)))} ${inlineToken.content || ''}`
         : String(inlineToken.content || '');
     const marker = parseFormalMarkerLine(line);
-    if (!marker) return;
-    if (isHeading && marker.type !== 'section') return;
+    if (!marker) return emptyMarkerResult();
+    if (isHeading && marker.type !== 'section') return { parsed: true, replaced: false };
 
     if (marker.type === 'def' && !marker.id) {
         const lineNumber = openToken.map ? openToken.map[0] + 1 : undefined;
         const definitionIndex = findDefinitionIndex(definitions, currentFilePath, lineNumber, marker.title);
-        if (definitionIndex < 0) return;
+        if (definitionIndex < 0) return { parsed: true, replaced: false };
 
         setAttr(openToken, 'id', definitionTargetId(definitionIndex));
         setAttr(openToken, 'dir', 'auto');
@@ -472,20 +534,20 @@ function applyLightweightMarker(tokens: any[], inlineIndex: number, labels: Reco
         setAttr(openToken, 'data-formal-type', marker.type);
         if (openToken.map) setAttr(openToken, 'data-line', String(openToken.map[0]));
         addTokenClass(openToken, 'formal-definition');
-        return;
+        return { parsed: true, replaced: true };
     }
 
-    if (!marker.id) return;
+    if (!marker.id) return { parsed: true, replaced: false };
 
-    const labelData = (labels[marker.id] || {
-        type: marker.type,
-        title: marker.title,
-        filePath: ''
-    }) as LabelData;
+    const labelData = labels[marker.id];
+    if (!labelData) {
+        return { parsed: true, replaced: false, missingLabel: marker.id };
+    }
+
     const replacement = renderedMarkerPrefix(marker, labelData, config);
     const replacementText = replacement ? replacement : '';
 
-    replaceFirstTextChild(inlineToken, marker.markerText, replacementText);
+    const replaced = replaceFirstTextChild(inlineToken, marker.markerText, replacementText);
     setAttr(openToken, 'id', `formal-${marker.id}`);
     setAttr(openToken, 'dir', 'auto');
     setAttr(openToken, 'data-formal-title', labelData.title || marker.title || '');
@@ -498,6 +560,8 @@ function applyLightweightMarker(tokens: any[], inlineIndex: number, labels: Reco
     } else {
         addTokenClass(openToken, `formal-block formal-${escapeHtml(marker.type)}`);
     }
+
+    return { parsed: true, replaced };
 }
 
 function addSourceLineAttributes(tokens: any[]) {
@@ -616,15 +680,36 @@ function getCurrentFilePath(rootPath: string, env: any, src: string, pages: Page
 }
 
 export = function formalPlugin(md: any, options: any) {
-    const rootPath = options ? options.rootPath : '';
+    const requestedRootPath = options ? options.rootPath : '';
+    const rootPath = findFormalPreviewRoot(requestedRootPath) || requestedRootPath;
     let cachedLabels: Record<string, LabelData> = {};
     let cachedPages: PageData[] = [];
     let cachedDefinitions: RuntimeDefinitionData[] = [];
     let cachedSymbols: RuntimeSymbolData[] = [];
     let cachedConfig: any = mergeConfig(DEFAULT_CONFIG);
 
+    function resetPreviewCache() {
+        cachedLabels = {};
+        cachedPages = [];
+        cachedDefinitions = [];
+        cachedSymbols = [];
+        cachedConfig = mergeConfig(DEFAULT_CONFIG);
+    }
+
+    function hasLoadedPreviewCache(): boolean {
+        return Object.keys(cachedLabels || {}).length > 0
+            || (cachedPages || []).length > 0
+            || (cachedDefinitions || []).length > 0
+            || (cachedSymbols || []).length > 0;
+    }
+
+    function canUseFormalPreview(env: any): boolean {
+        return isFormalPreviewEnabled(env) || hasLoadedPreviewCache();
+    }
+
     function traceCore(event: string, state: any) {
         if (state?.env?.tooltipDepth) return;
+        if (!canUseFormalPreview(state?.env)) return;
         appendPreviewDebugLog(rootPath, cachedConfig, event, {
             filePath: getCurrentFilePath(rootPath, state?.env, state?.src || '', cachedPages || []) || '(unknown)',
             tokenCount: Array.isArray(state?.tokens) ? state.tokens.length : undefined,
@@ -655,25 +740,33 @@ export = function formalPlugin(md: any, options: any) {
     
     // Core rule to load the preview index once per render.
     md.core.ruler.before('normalize', 'formal_load_preview_index', (state: any) => {
+        state.env = state.env || {};
         if (state.env && state.env.tooltipDepth) {
             state.env.labels = cachedLabels;
             state.env.pages = cachedPages;
             state.env.definitions = cachedDefinitions;
             state.env.symbols = cachedSymbols;
+            if (hasLoadedPreviewCache()) enableFormalPreview(state.env);
             return;
         }
 
-        if (!rootPath) return;
-        state.env = state.env || {};
+        if (!rootPath) {
+            resetPreviewCache();
+            disableFormalPreview(state.env, 'missing-root');
+            return;
+        }
+
+        if (!hasFormalPreviewConfig(rootPath)) {
+            resetPreviewCache();
+            disableFormalPreview(state.env, 'missing-config');
+            return;
+        }
+
         const startedAt = Date.now();
         let currentFilePath = getCurrentFilePathFromEnv(rootPath, state.env);
         const configPath = path.join(rootPath, '.markdown-formal', 'config.json');
         try {
-            if (fs && fs.existsSync && fs.existsSync(configPath)) {
-                cachedConfig = mergeConfig(JSON.parse(fs.readFileSync(configPath, 'utf-8')));
-            } else {
-                cachedConfig = mergeConfig(DEFAULT_CONFIG);
-            }
+            cachedConfig = mergeConfig(JSON.parse(fs.readFileSync(configPath, 'utf-8')));
         } catch (e: any) {
             cachedConfig = mergeConfig(DEFAULT_CONFIG);
             appendPreviewDebugLog(rootPath, cachedConfig, 'render:config-error', {
@@ -690,7 +783,7 @@ export = function formalPlugin(md: any, options: any) {
 
         const cachePath = path.join(rootPath, '.markdown-formal', 'preview-cache.json');
         try {
-            if (fs && fs.existsSync && fs.existsSync(cachePath)) {
+            if (hasFormalPreviewCache(rootPath)) {
                 const readStartedAt = Date.now();
                 const rawCache = fs.readFileSync(cachePath, 'utf-8');
                 const data = JSON.parse(rawCache);
@@ -706,6 +799,7 @@ export = function formalPlugin(md: any, options: any) {
                 state.env.definitions = cachedDefinitions;
                 state.env.symbols = cachedSymbols;
                 state.env.formalCurrentFilePath = currentFilePath;
+                enableFormalPreview(state.env);
                 appendPreviewDebugLog(rootPath, cachedConfig, 'render:cache-loaded', {
                     filePath: currentFilePath || '(unknown)',
                     inferredFilePath: currentFilePath || undefined,
@@ -721,6 +815,7 @@ export = function formalPlugin(md: any, options: any) {
                 cachedPages = [];
                 cachedDefinitions = [];
                 cachedSymbols = [];
+                disableFormalPreview(state.env, 'missing-cache');
                 appendPreviewDebugLog(rootPath, cachedConfig, 'render:cache-missing', {
                     filePath: currentFilePath || '(unknown)',
                     cachePath
@@ -737,6 +832,7 @@ export = function formalPlugin(md: any, options: any) {
             cachedPages = [];
             cachedDefinitions = [];
             cachedSymbols = [];
+            disableFormalPreview(state.env, 'cache-error');
         }
 
         appendPreviewDebugLog(rootPath, cachedConfig, 'render:load:end', {
@@ -748,6 +844,7 @@ export = function formalPlugin(md: any, options: any) {
     // Inject labels data at the end of the document for frontend JS
     md.core.ruler.push('formal_inject_data', (state: any) => {
         if (state.env && state.env.tooltipDepth) return;
+        if (!canUseFormalPreview(state.env)) return;
 
         const startedAt = Date.now();
         const rawCurrentFilePath = getCurrentFilePath(rootPath, state.env, state.src || '', cachedPages || []);
@@ -832,9 +929,13 @@ export = function formalPlugin(md: any, options: any) {
 
     md.core.ruler.after('inline', 'formal_lightweight_markers', (state: any) => {
         if (state.env && state.env.tooltipDepth) return;
+        if (!canUseFormalPreview(state.env)) return;
         const startedAt = Date.now();
         const currentFilePath = normalizePreviewFilePath(getCurrentFilePath(rootPath, state.env, state.src || '', cachedPages || []));
         let inlineCount = 0;
+        let parsedMarkerCount = 0;
+        let replacedMarkerCount = 0;
+        const missingMarkerLabels: string[] = [];
         try {
             appendPreviewDebugLog(rootPath, cachedConfig, 'render:markers:start', {
                 filePath: currentFilePath || '(unknown)',
@@ -844,13 +945,20 @@ export = function formalPlugin(md: any, options: any) {
             for (let i = 0; i < state.tokens.length; i++) {
                 if (state.tokens[i].type === 'inline') {
                     inlineCount++;
-                    applyLightweightMarker(state.tokens, i, cachedLabels || {}, cachedDefinitions || [], currentFilePath, cachedConfig);
+                    const result = applyLightweightMarker(state.tokens, i, cachedLabels || {}, cachedDefinitions || [], currentFilePath, cachedConfig);
+                    if (result.parsed) parsedMarkerCount++;
+                    if (result.replaced) replacedMarkerCount++;
+                    if (result.missingLabel) missingMarkerLabels.push(result.missingLabel);
                 }
             }
             appendPreviewDebugLog(rootPath, cachedConfig, 'render:markers:end', {
                 filePath: currentFilePath || '(unknown)',
                 tokenCount: Array.isArray(state.tokens) ? state.tokens.length : undefined,
                 inlineCount,
+                parsedMarkerCount,
+                replacedMarkerCount,
+                missingMarkerLabels: missingMarkerLabels.slice(0, 12),
+                missingMarkerLabelCount: missingMarkerLabels.length,
                 elapsedMs: elapsedMs(startedAt)
             });
         } catch (e: any) {
@@ -866,6 +974,7 @@ export = function formalPlugin(md: any, options: any) {
 
     // Inline rules for @h-... object refs and @chapter:/@page: page refs.
     md.inline.ruler.before('link', 'formal_inline', (state: any, silent: boolean) => {
+        if (!canUseFormalPreview(state.env)) return false;
         if (state.env) state.env.formalInlineRuleCalls = (state.env.formalInlineRuleCalls || 0) + 1;
         const start = state.pos;
         if (state.src.charCodeAt(start) !== 0x40 /* @ */) return false;
@@ -909,6 +1018,7 @@ export = function formalPlugin(md: any, options: any) {
     // Auto-trim spaces around formal_inline when adjacent to Chinese characters
     md.core.ruler.after('inline', 'formal_trim_cjk_spaces', (state: any) => {
         if (state.env && state.env.tooltipDepth) return;
+        if (!canUseFormalPreview(state.env)) return;
         const startedAt = Date.now();
         const currentFilePath = normalizePreviewFilePath(getCurrentFilePath(rootPath, state.env, state.src || '', cachedPages || []));
         let formalInlineCount = 0;
@@ -956,6 +1066,9 @@ export = function formalPlugin(md: any, options: any) {
     md.renderer.rules.formal_inline = (tokens: any, idx: number, options: any, env: any, self: any) => {
         const token = tokens[idx];
         const { id, isTitle } = token.meta;
+        if (!canUseFormalPreview(env)) {
+            return `@${escapeHtml(id)}${isTitle ? '.title' : ''}`;
+        }
         const labels = cachedLabels || {};
         env.formalInlineRenderCalls = (env.formalInlineRenderCalls || 0) + 1;
         if (env.formalInlineRenderCalls === 1 || env.formalInlineRenderCalls % 25 === 0) {
@@ -1030,9 +1143,12 @@ export = function formalPlugin(md: any, options: any) {
         return `<span class="formal-ref-wrap"><a class="formal-ref" href="${escapeHtml(uri)}" data-href="${escapeHtml(uri)}"${targetLineAttr} title="${escapeHtml(titleAttr)}" style="color: inherit; text-decoration: none;">${escapeHtml(text)}</a>${tooltipHtml}</span>`;
     };
 
-    md.renderer.rules.formal_page_ref = (tokens: any, idx: number) => {
+    md.renderer.rules.formal_page_ref = (tokens: any, idx: number, options: any, env: any) => {
         const token = tokens[idx];
         const { kind, rawTarget, target, mode } = token.meta;
+        if (!canUseFormalPreview(env)) {
+            return `@${escapeHtml(kind)}:${escapeHtml(rawTarget)}${mode ? `.${escapeHtml(mode)}` : ''}`;
+        }
         const page = (cachedPages || []).find(item => normalizePreviewFilePath(item.filePath) === normalizePreviewFilePath(target));
 
         if (!page) {
