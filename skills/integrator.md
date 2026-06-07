@@ -42,7 +42,7 @@
 
 只把项目明确约定的特殊 LaTeX 记号写入 .markdown-formal/symbols.json，维护 source、pattern、meaning；pattern 必须是记号本身或完整记号族，括号/方括号要闭合，不要记录通用数学符号、整条推导公式或缺右边界的公式片段。预览端不把公式内部符号做成可点击 ref；导航栏符号表只展示当前预览文件公式中实际匹配到的符号，搜索框只过滤定义。
 注和例默认不加 hash；只有后文已经明确引用某个注/例时，才反向把那个注/例改成 `注 #tmp-*` 或 `例 #tmp-*`。
-命题依赖图由工具从显式 @h-... 生成，权威数据是 .markdown-formal/dependency-graph.json，审阅报告是 .markdown-formal/dependency-report.md。它只把命题/引理/定理/推论之间的引用作为依赖边，并标记 statement/proof/body；AI 或 Lean 推测出的边必须另存为 suggested 数据，不能混入 explicit_ref 图。
+命题依赖图由工具从显式 @h-... 生成，权威数据是 .markdown-formal/dependency-graph.json，审阅报告是 .markdown-formal/dependency-report.md。它只把命题/引理/定理/推论之间的引用作为依赖边，并标记 statement/proof/body；AI 或 Lean 推测出的边必须另存为 suggested 数据，不能混入 explicit_ref 图。修改已有命题前，优先运行 `npm run formal -- graph impact <h-id>` 和 `npm run formal -- graph focus <h-id> --depth 2` 看影响闭包和局部上下游；修改后用 `graph summary`、`graph cycles`、`graph matrix chapter|volume|book` 做结构审阅。`--where statement|proof|body` 可只看陈述依赖或证明依赖。
 
 完成编辑后按本次修改范围检查编号对象、章/页引用、定义索引例外、符号索引、跨 book 查询配置、tmp ID 和迁移报告；不要只运行编号工具就结束。
 写完运行 npm run formal -- finish <file-or-dir>，必要时再运行 npm run formal -- verify。
@@ -67,6 +67,9 @@
 npm run formal -- prepare
 npm run formal -- finish path/to/chapter-or-dir
 npm run formal -- audit path/to/chapter-or-dir
+npm run formal -- graph impact <h-id>
+npm run formal -- graph focus <h-id> --depth 2
+npm run formal -- graph matrix chapter
 npm run formal -- verify
 ```
 

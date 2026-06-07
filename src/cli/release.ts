@@ -146,7 +146,6 @@ async function main(): Promise<void> {
 
     await writeJson(path.join(cliRoot, 'package.json'), makeCliPackageJson(pkg));
     await copyDir(path.join(ROOT, 'out', 'cli'), path.join(cliRoot, 'out', 'cli'));
-    await copyDir(path.join(ROOT, 'out', 'core'), path.join(cliRoot, 'out', 'core'));
     await copyDir(path.join(ROOT, 'skills'), path.join(cliRoot, 'skills'));
     await copyFile(path.join(ROOT, 'LICENSE'), path.join(cliRoot, 'LICENSE'));
 

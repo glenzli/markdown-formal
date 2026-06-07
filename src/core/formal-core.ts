@@ -118,6 +118,8 @@ export interface FormalPageReference {
 }
 
 export type DependencyEdgeWhere = 'statement' | 'proof' | 'body';
+export type DependencyGraphWhereFilter = DependencyEdgeWhere | 'all';
+export type DependencyGraphMatrixScope = 'book' | 'volume' | 'chapter';
 
 export interface DependencyGraphNode {
     id: string;
@@ -2325,10 +2327,10 @@ function dependencyNodeById(graph: DependencyGraph): Map<string, DependencyGraph
     return new Map(graph.nodes.map(node => [node.id, node]));
 }
 
-function dependencyDegreeRows(graph: DependencyGraph, direction: 'incoming' | 'outgoing'): Array<{ node: DependencyGraphNode; count: number }> {
+function dependencyDegreeRows(graph: DependencyGraph, direction: 'incoming' | 'outgoing', edges: DependencyGraphEdge[] = graph.edges): Array<{ node: DependencyGraphNode; count: number }> {
     const nodeById = dependencyNodeById(graph);
     const counts = new Map(graph.nodes.map(node => [node.id, 0]));
-    for (const edge of graph.edges) {
+    for (const edge of edges) {
         const id = direction === 'incoming' ? edge.to : edge.from;
         counts.set(id, (counts.get(id) || 0) + 1);
     }
@@ -2340,6 +2342,10 @@ function dependencyDegreeRows(graph: DependencyGraph, direction: 'incoming' | 'o
 
 function dependencyNodeLocation(node: DependencyGraphNode): string {
     return `${node.path}:${node.line}`;
+}
+
+function dependencyNodeTitle(node: DependencyGraphNode): string {
+    return `${node.display}${node.title ? ` ${node.title}` : ''}`;
 }
 
 function pushLimitedRows<T>(lines: string[], rows: T[], limit: number, render: (row: T) => string, moreRow?: (remaining: number) => string) {
@@ -2454,6 +2460,331 @@ export function renderDependencyReport(graph: DependencyGraph): string {
     return `${lines.join('\n')}\n`;
 }
 
+function dependencyWhereMatches(edge: DependencyGraphEdge, where: DependencyGraphWhereFilter = 'all'): boolean {
+    return where === 'all' || edge.where === where;
+}
+
+function filteredDependencyEdges(graph: DependencyGraph, where: DependencyGraphWhereFilter = 'all'): DependencyGraphEdge[] {
+    return graph.edges.filter(edge => dependencyWhereMatches(edge, where));
+}
+
+function dependencyWhereSuffix(where: DependencyGraphWhereFilter = 'all'): string {
+    return where === 'all' ? '' : ` (${where} edges only)`;
+}
+
+function dependencyFilteredSummary(graph: DependencyGraph, where: DependencyGraphWhereFilter = 'all') {
+    const edges = filteredDependencyEdges(graph, where);
+    const incoming = new Map(graph.nodes.map(node => [node.id, 0]));
+    const outgoing = new Map(graph.nodes.map(node => [node.id, 0]));
+    const nodeById = dependencyNodeById(graph);
+    for (const edge of edges) {
+        incoming.set(edge.to, (incoming.get(edge.to) || 0) + 1);
+        outgoing.set(edge.from, (outgoing.get(edge.from) || 0) + 1);
+    }
+
+    const isCrossBook = (edge: DependencyGraphEdge) => (nodeById.get(edge.from)?.bookKey || '') !== (nodeById.get(edge.to)?.bookKey || '');
+    const isCrossVolume = (edge: DependencyGraphEdge) => (nodeById.get(edge.from)?.volumeKey || '') !== (nodeById.get(edge.to)?.volumeKey || '');
+    const isCrossChapter = (edge: DependencyGraphEdge) => (nodeById.get(edge.from)?.unitKey || '') !== (nodeById.get(edge.to)?.unitKey || '');
+    const cycles = dependencyGraphCycles(graph.nodes, edges);
+
+    return {
+        edges,
+        incoming,
+        outgoing,
+        cycles,
+        isolated: graph.nodes.filter(node => (incoming.get(node.id) || 0) === 0 && (outgoing.get(node.id) || 0) === 0),
+        crossBookEdges: edges.filter(isCrossBook).length,
+        crossVolumeEdges: edges.filter(isCrossVolume).length,
+        crossChapterEdges: edges.filter(isCrossChapter).length,
+        statementEdges: edges.filter(edge => edge.where === 'statement').length,
+        proofEdges: edges.filter(edge => edge.where === 'proof').length,
+        bodyEdges: edges.filter(edge => edge.where === 'body').length
+    };
+}
+
+function pushDependencyEdgeTable(lines: string[], graph: DependencyGraph, edges: DependencyGraphEdge[], limit = 100) {
+    const nodeById = dependencyNodeById(graph);
+    if (edges.length === 0) {
+        lines.push('No dependency edges.', '');
+        return;
+    }
+
+    lines.push('| Where | From | To | Reference |');
+    lines.push('| --- | --- | --- | --- |');
+    const sorted = [...edges].sort((a, b) => (
+        a.path.localeCompare(b.path)
+        || a.line - b.line
+        || (nodeById.get(a.from)?.display || a.from).localeCompare(nodeById.get(b.from)?.display || b.from)
+        || (nodeById.get(a.to)?.display || a.to).localeCompare(nodeById.get(b.to)?.display || b.to)
+    ));
+    pushLimitedRows(lines, sorted, limit, edge => {
+        const from = nodeById.get(edge.from);
+        const to = nodeById.get(edge.to);
+        return `| ${edge.where} | ${escapeTable(from ? dependencyNodeTitle(from) : edge.from)} | ${escapeTable(to ? dependencyNodeTitle(to) : edge.to)} | \`${edge.path}:${edge.line}\` |`;
+    });
+    lines.push('');
+}
+
+export function renderDependencyGraphSummary(graph: DependencyGraph, where: DependencyGraphWhereFilter = 'all'): string {
+    const summary = dependencyFilteredSummary(graph, where);
+    const lines = [
+        `# Dependency Graph Summary${dependencyWhereSuffix(where)}`,
+        '',
+        `- Nodes: ${graph.nodes.length}`,
+        `- Explicit edges: ${summary.edges.length}`,
+        `- Statement edges: ${summary.statementEdges}`,
+        `- Proof edges: ${summary.proofEdges}`,
+        `- Body edges: ${summary.bodyEdges}`,
+        `- Cross-chapter edges: ${summary.crossChapterEdges}`,
+        `- Cross-volume edges: ${summary.crossVolumeEdges}`,
+        `- Cross-book edges: ${summary.crossBookEdges}`,
+        `- Isolated nodes: ${summary.isolated.length}`,
+        `- Cycles: ${summary.cycles.length}`,
+        ''
+    ];
+
+    const outgoing = dependencyDegreeRows(graph, 'outgoing', summary.edges);
+    lines.push('## Top Outgoing', '');
+    if (outgoing.length === 0) {
+        lines.push('No outgoing dependencies.', '');
+    } else {
+        lines.push('| Count | Node | Location |');
+        lines.push('| ---: | --- | --- |');
+        pushLimitedRows(lines, outgoing, 10, row => `| ${row.count} | ${escapeTable(dependencyNodeTitle(row.node))} | \`${dependencyNodeLocation(row.node)}\` |`);
+        lines.push('');
+    }
+
+    const incoming = dependencyDegreeRows(graph, 'incoming', summary.edges);
+    lines.push('## Top Incoming', '');
+    if (incoming.length === 0) {
+        lines.push('No incoming dependencies.', '');
+    } else {
+        lines.push('| Count | Node | Location |');
+        lines.push('| ---: | --- | --- |');
+        pushLimitedRows(lines, incoming, 10, row => `| ${row.count} | ${escapeTable(dependencyNodeTitle(row.node))} | \`${dependencyNodeLocation(row.node)}\` |`);
+        lines.push('');
+    }
+
+    return `${lines.join('\n')}\n`;
+}
+
+function dependencyReachable(graph: DependencyGraph, rootId: string, direction: 'upstream' | 'impact', where: DependencyGraphWhereFilter = 'all', maxDepth = Number.POSITIVE_INFINITY): Array<{ node: DependencyGraphNode; depth: number }> {
+    const nodeById = dependencyNodeById(graph);
+    if (!nodeById.has(rootId)) return [];
+
+    const adjacency = new Map<string, Set<string>>();
+    for (const node of graph.nodes) adjacency.set(node.id, new Set());
+    for (const edge of filteredDependencyEdges(graph, where)) {
+        if (direction === 'upstream') {
+            adjacency.get(edge.from)?.add(edge.to);
+        } else {
+            adjacency.get(edge.to)?.add(edge.from);
+        }
+    }
+
+    const visited = new Map<string, number>([[rootId, 0]]);
+    const queue = [rootId];
+    for (let index = 0; index < queue.length; index++) {
+        const current = queue[index];
+        const currentDepth = visited.get(current) || 0;
+        if (currentDepth >= maxDepth) continue;
+        for (const next of adjacency.get(current) || []) {
+            if (visited.has(next)) continue;
+            visited.set(next, currentDepth + 1);
+            queue.push(next);
+        }
+    }
+
+    return [...visited.entries()]
+        .filter(([id]) => id !== rootId)
+        .map(([id, depth]) => ({ node: nodeById.get(id) as DependencyGraphNode, depth }))
+        .filter(row => row.node)
+        .sort((a, b) => a.depth - b.depth || dependencyNodeLocation(a.node).localeCompare(dependencyNodeLocation(b.node)));
+}
+
+function renderDependencyNodeHeader(title: string, graph: DependencyGraph, id: string, where: DependencyGraphWhereFilter): string[] {
+    const node = dependencyNodeById(graph).get(id);
+    const lines = [`# ${title}${dependencyWhereSuffix(where)}`, ''];
+    if (!node) {
+        lines.push(`Node \`${id}\` was not found in dependency graph.`, '');
+        return lines;
+    }
+    lines.push(`- Node: ${dependencyNodeTitle(node)}`);
+    lines.push(`- ID: \`${node.id}\``);
+    lines.push(`- Location: \`${dependencyNodeLocation(node)}\``);
+    lines.push('');
+    return lines;
+}
+
+function pushDependencyNodeRows(lines: string[], rows: Array<{ node: DependencyGraphNode; depth: number }>) {
+    if (rows.length === 0) {
+        lines.push('No nodes.', '');
+        return;
+    }
+    lines.push('| Depth | Node | Location |');
+    lines.push('| ---: | --- | --- |');
+    pushLimitedRows(lines, rows, 200, row => `| ${row.depth} | ${escapeTable(dependencyNodeTitle(row.node))} | \`${dependencyNodeLocation(row.node)}\` |`);
+    lines.push('');
+}
+
+export function renderDependencyGraphImpact(graph: DependencyGraph, id: string, where: DependencyGraphWhereFilter = 'all'): string {
+    const lines = renderDependencyNodeHeader('Dependency Impact Closure', graph, id, where);
+    if (!dependencyNodeById(graph).has(id)) return `${lines.join('\n')}\n`;
+    const rows = dependencyReachable(graph, id, 'impact', where);
+    lines.push(`Downstream impacted nodes: ${rows.length}`, '');
+    pushDependencyNodeRows(lines, rows);
+    return `${lines.join('\n')}\n`;
+}
+
+export function renderDependencyGraphUpstream(graph: DependencyGraph, id: string, where: DependencyGraphWhereFilter = 'all'): string {
+    const lines = renderDependencyNodeHeader('Dependency Upstream Closure', graph, id, where);
+    if (!dependencyNodeById(graph).has(id)) return `${lines.join('\n')}\n`;
+    const rows = dependencyReachable(graph, id, 'upstream', where);
+    lines.push(`Upstream dependency nodes: ${rows.length}`, '');
+    pushDependencyNodeRows(lines, rows);
+    return `${lines.join('\n')}\n`;
+}
+
+export function renderDependencyGraphFocus(graph: DependencyGraph, id: string, depth = 2, where: DependencyGraphWhereFilter = 'all'): string {
+    const safeDepth = Math.max(1, Math.floor(depth || 2));
+    const lines = renderDependencyNodeHeader(`Dependency Focus Depth ${safeDepth}`, graph, id, where);
+    if (!dependencyNodeById(graph).has(id)) return `${lines.join('\n')}\n`;
+
+    const upstream = dependencyReachable(graph, id, 'upstream', where, safeDepth);
+    const impact = dependencyReachable(graph, id, 'impact', where, safeDepth);
+    lines.push('## Upstream', '');
+    pushDependencyNodeRows(lines, upstream);
+    lines.push('## Downstream Impact', '');
+    pushDependencyNodeRows(lines, impact);
+
+    const focusIds = new Set([id, ...upstream.map(row => row.node.id), ...impact.map(row => row.node.id)]);
+    const focusEdges = filteredDependencyEdges(graph, where).filter(edge => focusIds.has(edge.from) && focusIds.has(edge.to));
+    lines.push('## Local Edges', '');
+    pushDependencyEdgeTable(lines, graph, focusEdges, 200);
+    return `${lines.join('\n')}\n`;
+}
+
+export function renderDependencyGraphIsolated(graph: DependencyGraph, where: DependencyGraphWhereFilter = 'all'): string {
+    const summary = dependencyFilteredSummary(graph, where);
+    const lines = [`# Isolated Theorem-Like Nodes${dependencyWhereSuffix(where)}`, '', `Isolated nodes: ${summary.isolated.length}`, ''];
+    if (summary.isolated.length === 0) {
+        lines.push('No isolated theorem-like nodes.', '');
+        return `${lines.join('\n')}\n`;
+    }
+    lines.push('| Node | Location |');
+    lines.push('| --- | --- |');
+    pushLimitedRows(lines, summary.isolated, 500, node => `| ${escapeTable(dependencyNodeTitle(node))} | \`${dependencyNodeLocation(node)}\` |`);
+    lines.push('');
+    return `${lines.join('\n')}\n`;
+}
+
+export function renderDependencyGraphCycles(graph: DependencyGraph, where: DependencyGraphWhereFilter = 'all'): string {
+    const cycles = dependencyGraphCycles(graph.nodes, filteredDependencyEdges(graph, where));
+    const lines = [`# Dependency Cycles${dependencyWhereSuffix(where)}`, '', `Cycles: ${cycles.length}`, ''];
+    if (cycles.length === 0) {
+        lines.push('No theorem dependency cycles found.', '');
+        return `${lines.join('\n')}\n`;
+    }
+    lines.push('| Cycle | IDs |');
+    lines.push('| --- | --- |');
+    pushLimitedRows(lines, cycles, 200, cycle => `| ${escapeTable(cycle.displays.join(' -> '))} | \`${cycle.ids.join(' -> ')}\` |`);
+    lines.push('');
+    return `${lines.join('\n')}\n`;
+}
+
+function dependencyScopeLabel(node: DependencyGraphNode, scope: DependencyGraphMatrixScope): string {
+    const book = node.bookTitle || node.bookKey || 'Workspace';
+    if (scope === 'book') return book;
+
+    const volume = node.volumeTitle || node.volumeKey || 'No volume';
+    if (scope === 'volume') return `${book} / ${volume}`;
+
+    const unit = node.unitKind === 'appendix'
+        ? `Appendix ${node.unitLabel || node.appendix || '?'}`
+        : node.unitLabel
+            ? `Chapter ${node.unitLabel}`
+            : node.unitKey || node.path;
+    return `${book} / ${volume} / ${unit}`;
+}
+
+export function renderDependencyGraphMatrix(graph: DependencyGraph, scope: DependencyGraphMatrixScope, where: DependencyGraphWhereFilter = 'all'): string {
+    const nodeById = dependencyNodeById(graph);
+    const edges = filteredDependencyEdges(graph, where);
+    const rowTotals = new Map<string, number>();
+    const columnTotals = new Map<string, number>();
+    const counts = new Map<string, number>();
+
+    for (const edge of edges) {
+        const from = nodeById.get(edge.from);
+        const to = nodeById.get(edge.to);
+        if (!from || !to) continue;
+        const row = dependencyScopeLabel(from, scope);
+        const column = dependencyScopeLabel(to, scope);
+        rowTotals.set(row, (rowTotals.get(row) || 0) + 1);
+        columnTotals.set(column, (columnTotals.get(column) || 0) + 1);
+        counts.set(`${row}\t${column}`, (counts.get(`${row}\t${column}`) || 0) + 1);
+    }
+
+    const rows = [...rowTotals.keys()].sort((a, b) => a.localeCompare(b));
+    const columns = [...columnTotals.keys()].sort((a, b) => a.localeCompare(b));
+    const lines = [`# Dependency Matrix By ${scope}${dependencyWhereSuffix(where)}`, '', `Edges: ${edges.length}`, ''];
+    if (rows.length === 0 || columns.length === 0) {
+        lines.push('No dependency edges.', '');
+        return `${lines.join('\n')}\n`;
+    }
+
+    lines.push(`| From \u2192 To | ${columns.map(escapeTable).join(' | ')} | Total |`);
+    lines.push(`| --- | ${columns.map(() => '---:').join(' | ')} | ---: |`);
+    for (const row of rows) {
+        const values = columns.map(column => counts.get(`${row}\t${column}`) || 0);
+        const total = values.reduce((sum, value) => sum + value, 0);
+        lines.push(`| ${escapeTable(row)} | ${values.join(' | ')} | ${total} |`);
+    }
+    lines.push(`| Total | ${columns.map(column => columnTotals.get(column) || 0).join(' | ')} | ${edges.length} |`);
+    lines.push('');
+    return `${lines.join('\n')}\n`;
+}
+
+export function renderDependencyGraphBridges(graph: DependencyGraph, where: DependencyGraphWhereFilter = 'all'): string {
+    const edges = filteredDependencyEdges(graph, where);
+    const nodeById = dependencyNodeById(graph);
+    const incoming = new Map(graph.nodes.map(node => [node.id, 0]));
+    const outgoing = new Map(graph.nodes.map(node => [node.id, 0]));
+    const crossScope = new Map(graph.nodes.map(node => [node.id, 0]));
+
+    for (const edge of edges) {
+        const from = nodeById.get(edge.from);
+        const to = nodeById.get(edge.to);
+        incoming.set(edge.to, (incoming.get(edge.to) || 0) + 1);
+        outgoing.set(edge.from, (outgoing.get(edge.from) || 0) + 1);
+        if (from && to && ((from.bookKey || '') !== (to.bookKey || '') || (from.volumeKey || '') !== (to.volumeKey || '') || (from.unitKey || '') !== (to.unitKey || ''))) {
+            crossScope.set(edge.from, (crossScope.get(edge.from) || 0) + 1);
+            crossScope.set(edge.to, (crossScope.get(edge.to) || 0) + 1);
+        }
+    }
+
+    const rows = graph.nodes
+        .map(node => ({
+            node,
+            incoming: incoming.get(node.id) || 0,
+            outgoing: outgoing.get(node.id) || 0,
+            crossScope: crossScope.get(node.id) || 0
+        }))
+        .filter(row => row.incoming > 0 && row.outgoing > 0)
+        .sort((a, b) => b.crossScope - a.crossScope || (b.incoming + b.outgoing) - (a.incoming + a.outgoing) || dependencyNodeTitle(a.node).localeCompare(dependencyNodeTitle(b.node)));
+
+    const lines = [`# Bridge Candidates${dependencyWhereSuffix(where)}`, '', 'A bridge candidate is a theorem-like node with both incoming and outgoing explicit dependencies. This is structural only, not a domain judgment.', '', `Candidates: ${rows.length}`, ''];
+    if (rows.length === 0) {
+        lines.push('No bridge candidates.', '');
+        return `${lines.join('\n')}\n`;
+    }
+    lines.push('| Cross-scope | Incoming | Outgoing | Node | Location |');
+    lines.push('| ---: | ---: | ---: | --- | --- |');
+    pushLimitedRows(lines, rows, 200, row => `| ${row.crossScope} | ${row.incoming} | ${row.outgoing} | ${escapeTable(dependencyNodeTitle(row.node))} | \`${dependencyNodeLocation(row.node)}\` |`);
+    lines.push('');
+    return `${lines.join('\n')}\n`;
+}
+
 export function renderAgentGuide(state: any): string {
     const errors = state.issues.filter((issue: FormalIssue) => issue.severity === 'error').length;
     const warnings = state.issues.filter((issue: FormalIssue) => issue.severity !== 'error').length;
@@ -2473,7 +2804,8 @@ export function renderAgentGuide(state: any): string {
         '5. Keep Markdown and LaTeX unescaped.',
         '6. Run `npm run formal -- finish <file-or-dir>` after editing; it finalizes temporary IDs and verifies the workspace.',
         '7. Run `npm run formal -- audit <file-or-dir>` when you want an advisory cleanup list for old prose refs, bare number candidates, optional blocks, and proof-boundary hints.',
-        '8. If you use `finalize` directly, also run `npm run formal -- verify` before treating generated or migrated content as complete.',
+        '8. Before changing an existing theorem-like block, run `npm run formal -- graph impact <h-id>` or `npm run formal -- graph focus <h-id> --depth 2` when downstream dependencies matter.',
+        '9. If you use `finalize` directly, also run `npm run formal -- verify` before treating generated or migrated content as complete.',
         '',
         '## Lightweight Syntax',
         '',
@@ -2482,7 +2814,7 @@ export function renderAgentGuide(state: any): string {
         '- Equations, figures, and tables: `公式 #h-...：` binds the next display formula as a numbered equation, `图 #h-...（Title）：...` captions a nearby image, and `表 #h-...（Title）：` captions the following table. They have separate counters per chapter or appendix; equations render as `(1.1)`, appendices as `(A.1)`.',
         '- Chapter/page refs: use `@chapter:book1/02-main.md`, `@chapter:book1/02-main.md.title`, or `@chapter:book1/02-main.md.full`; paths are relative to the formal root that owns `.markdown-formal/`. `@page:path.md` is for intro, summary, and appendix pages. `finish` normalizes `./` and `../` input sugar to root-relative paths.',
         '- Theorem-like recall captures the statement before `证明` / `Proof`; keep proofs after an explicit proof marker.',
-        '- Dependency graph: `.markdown-formal/dependency-graph.json` is the canonical explicit theorem-like dependency graph. It uses only `@h-...` references between propositions/lemmas/theorems/corollaries and marks edges as `statement`, `proof`, or `body`; `.markdown-formal/dependency-report.md` is the review view.',
+        '- Dependency graph: `.markdown-formal/dependency-graph.json` is the canonical explicit theorem-like dependency graph. It uses only `@h-...` references between propositions/lemmas/theorems/corollaries and marks edges as `statement`, `proof`, or `body`; `.markdown-formal/dependency-report.md` is the review view. Use `npm run formal -- graph summary`, `graph impact <h-id>`, `graph upstream <h-id>`, `graph focus <h-id> --depth 2`, `graph bridges`, `graph isolated`, `graph cycles`, or `graph matrix chapter|volume|book` for Markdown analysis. Add `--where statement|proof|body` to filter edge placement. These are structural graph tools, not domain interpretation.',
         '- Definitions: lookup is a tool-first, AI-exception workflow. The tool scans standard `定义（Term）：...` / `Definition (Term): ...` definitions with structural range heuristics. When editing a file, AI only updates `.markdown-formal/definitions.json` for nonstandard phrases, aliases/bilingual lookup, stable multi-paragraph previews, or boundaries the heuristic may get wrong; include Markdown `content` for those entries.',
         '- Remarks/examples stay plain by default. Only when later text already cites one, convert that exact item to `注 #tmp-*` / `例 #tmp-*` and run `finish`.',
         '- Symbols: maintain only project-specific `source`, `pattern`, and `meaning` entries in `.markdown-formal/symbols.json`; patterns describe the notation itself with balanced delimiters, not whole equations or open-ended formula fragments. The navigation symbol table lists symbols matched in the current preview file. Symbols are not inline formula refs and are not searched through the definition search box.',

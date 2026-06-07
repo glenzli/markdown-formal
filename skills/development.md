@@ -21,14 +21,15 @@
 
 ## 热更新
 
-基于软链接机制，当您或 AI Agent 通过 `npm run build` 更新了 TypeScript 编译产物后，只需要在编辑器中重新加载窗口（`Developer: Reload Window`），最新逻辑即可立刻生效。
+基于软链接机制，当您或 AI Agent 通过 `npm run build` 更新了构建产物后，只需要在编辑器中重新加载窗口（`Developer: Reload Window`），最新逻辑即可立刻生效。
 
 需要注意：
 
-- `src/webview/formal-script.ts` 会编译到 `media/formal-script.js`，改预览端交互后必须运行 `npm run build`。
+- `src/webview/formal-script.ts` 会打包到 `media/formal-script.js`，改预览端交互后必须运行 `npm run build`。
+- Webview 端由固定版本 `vite@6.4.2` 打包成单文件 IIFE；不要新增 Vite dev server 脚本，预览运行时只加载 `media/formal-script.js` 和 `media/styles.css`。
 - 扫描缓存位于 `.markdown-formal/`，包含 `preview-cache.json`、`config.json`、`agent-guide.md`、`reference-map.md`、`dependency-graph.json`、`dependency-report.md` 和 `report.md`。
 - 项目根的 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbols.json` 分别是非标准定义查询、符号表源表，修改后会刷新 `preview-cache.json`。
-- CLI 源码位于 `src/cli/formal-tools.ts`；`npm run formal -- ...` 会先编译到 `out/cli/formal-tools.js` 再执行。
+- CLI 源码位于 `src/cli/`；`npm run formal -- ...` 会先 typecheck 并用 Vite 打包到 `out/cli/formal-tools.js` 再执行。
 - `config.json` 支持 `"language": "zh"` 或 `"language": "en"`；`scan.exclude` 排除扫描目录，`preview.ignoreHover` 按完整相对路径、裸文件名或 glob 关闭正文 `@hash` recall hover，`debug.previewLog` 临时写入 `.markdown-formal/preview-debug.log` 用于排查空白预览；旧配置缺少字段时会自动合并默认值。
 - 修改示例书结构后，重新打开预览或重新加载窗口可以触发扫描。
 
@@ -50,7 +51,7 @@ npm run formal -- perf-dummy 50 200
 
 ## 本地 Release
 
-当前 release 不引入 bundler、vsce 或压缩依赖，只组装可复制目录：
+当前 release 不引入 vsce 或压缩依赖，只组装可复制目录；CLI 和 webview 脚本在 `npm run build` 阶段已经由 Vite 输出到 `out/cli/*.js` 和 `media/formal-script.js`：
 
 ```bash
 npm run release:local
@@ -63,11 +64,19 @@ npm run release:local
 - `manifest.json`：产物结构说明。
 - `checksums.txt`：所有产物文件的 sha256。
 
-`.vsix` 和单文件 CLI 暂不生成；需要时再单独审查相关打包依赖。
+`.vsix` 暂不生成；CLI release 直接复制已经打包好的 `out/cli/formal-tools.js` 和 `out/cli/release.js`。
 
 ## 依赖安全
 
-当前维护工具不引入任何新依赖，只使用 Node 内置模块。以后如果确实需要新增包，必须先审查 npm/GitHub/OSV/advisory、近期发布记录、维护者变更、install/postinstall 脚本和 tarball 内容，并固定精确版本，不使用最新版范围。
+运行时维护工具仍只使用 Node 内置模块；新增依赖只允许作为开发期构建依赖。当前额外开发依赖为固定版本 `vite@6.4.2`，仅用于 `vite build` 生成 CLI 和 webview 单文件脚本。
+
+新增或升级 npm 包前必须：
+
+1. 审查官方 GitHub Security Advisories、npm 元数据、近期 release 记录和维护者变更。
+2. 避开刚发布的最新大版本，除非安全补丁只能通过最新大版本获得。
+3. 使用 `--save-exact` 固定精确版本，并提交 `package-lock.json`。
+4. 检查依赖树、install/postinstall 脚本和 tarball 内容；不要引入运行时远程加载。
+5. 运行 `npm audit --registry=https://registry.npmjs.org --omit=optional`，默认镜像不支持 audit 时不要把失败误判为安全通过。
 
 ## 故障排查
 

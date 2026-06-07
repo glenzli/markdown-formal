@@ -35,6 +35,7 @@ npm run formal -- finish path/to/chapter-or-dir
 - `.markdown-formal/reference-map.md`：AI 复制已有 `@h-...` / `@h-....title` 的来源。
 - `.markdown-formal/dependency-graph.json`：命题/引理/定理/推论之间显式 `@h-...` 依赖的权威 JSON。
 - `.markdown-formal/dependency-report.md`：依赖图的人类/AI 审阅报告，区分陈述依赖、证明依赖、跨章/跨卷边、循环和孤立节点。
+- `npm run formal -- graph impact|upstream|focus|matrix|bridges|isolated|cycles`：对权威依赖图做局部查询和结构分析；输出给人和 AI 读，不替代 JSON。
 - `.markdown-formal/report.md`：lint、verify、迁移报告入口。
 - `.markdown-formal/preview-cache.json`：预览运行时缓存，不直接编辑。
 - `.markdown-formal/config.json`：语言、扫描排除、跨 book 查询依赖等配置，可人工维护；也是编辑器增强预览的显式启用开关。
@@ -250,7 +251,7 @@ AI 应从拥有 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbol
 3. 是否新增、删除或改写了可查询定义？标准定义交给工具扫描；如果是非标准定义、别名/中英互查或边界不可靠的例外条目，同步 `.markdown-formal/definitions.json` 中 `source` 指向这些文件的条目，并确保每个 AI 维护条目都有最新 `content`。
 4. 是否新增、删除或改写了项目特有符号约定？如果有，同步 `.markdown-formal/symbols.json` 中对应 `source`、`pattern`、`meaning`。
 5. 是否引入新的跨 book 查询或引用需求？如果有，更新 `.markdown-formal/config.json` 的 `lookup.bookDependencies`。
-6. 是否新增或重写了命题/引理/定理/推论的陈述或证明引用？如果需要审阅依赖结构，读取 `.markdown-formal/dependency-report.md`；机器处理读取 `.markdown-formal/dependency-graph.json`。显式依赖只来自 `@h-...`，不要把 AI 推测边混入这个 JSON。
+6. 是否新增或重写了命题/引理/定理/推论的陈述或证明引用？如果要改动某个已有命题，先用 `npm run formal -- graph impact <h-id>` 看下游影响，用 `npm run formal -- graph focus <h-id> --depth 2` 看局部上下游；改完再用 `graph summary` / `graph cycles` / `graph matrix chapter` 审阅结构。机器处理读取 `.markdown-formal/dependency-graph.json`。显式依赖只来自 `@h-...`，不要把 AI 推测边混入这个 JSON。
 7. 是否留下 `@tmp-*`、`#tmp-*`、旧文字编号引用、手写章引用或迁移报告中的 unresolved/ambiguous？如果有，先处理再结束。
 8. 需要清理建议时运行 `npm run formal -- audit <file-or-dir>`，读取 `.markdown-formal/audit.md`。它只给 AI 审阅清单，不作为提交门禁。
 9. 最后运行 `npm run formal -- verify`。

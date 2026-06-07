@@ -256,6 +256,12 @@ npm run formal -- migrate-ids --apply <file-or-dir>
 npm run formal -- migrate-ids --apply --target-only <file-or-dir>
 npm run formal -- audit [file-or-dir]
 npm run formal -- graph
+npm run formal -- graph summary [--where all|statement|proof|body]
+npm run formal -- graph focus <h-id> [--depth N] [--where all|statement|proof|body]
+npm run formal -- graph impact <h-id> [--where all|statement|proof|body]
+npm run formal -- graph upstream <h-id> [--where all|statement|proof|body]
+npm run formal -- graph bridges|isolated|cycles [--where all|statement|proof|body]
+npm run formal -- graph matrix chapter|volume|book [--where all|statement|proof|body]
 npm run formal -- perf-dummy 50 200 --max-ms 2000 --max-heap-mb 256
 npm test
 ```
@@ -266,9 +272,20 @@ npm test
 
 `graph` refreshes `.markdown-formal/dependency-graph.json` and `.markdown-formal/dependency-report.md`. `prepare`, `finish`, and `verify` also write these files, so `graph` is mainly for focused dependency inspection. The graph only treats `prop`/`lemma`/`theorem`/`cor` nodes as theorem dependencies; references outside theorem-like statement/proof blocks are reported as ambient diagnostics rather than dependency edges.
 
+Use graph analysis commands when changing theorem-like content:
+
+- `graph impact <h-id>` shows downstream theorem-like nodes that explicitly depend on a node.
+- `graph upstream <h-id>` shows the upstream dependencies of a node.
+- `graph focus <h-id> --depth 2` shows a local upstream/downstream neighborhood and local edges.
+- `graph matrix chapter|volume|book` summarizes dependency flow between scopes.
+- `graph bridges`, `graph isolated`, and `graph cycles` give structural review lists.
+- `--where statement|proof|body` filters edges by where the explicit `@h-...` reference occurs.
+
+These commands are generic graph analysis only. Domain meanings such as "foundation theorem", "bridge lemma", "Lean priority", or project-specific coupling rules belong in the target project, not in markdown-formal's canonical explicit graph.
+
 ## Local Release
 
-This project intentionally avoids bundlers and release-time npm dependencies. Build a local directory release with:
+The editor extension is compiled with `tsc`; the CLI and Markdown preview script are bundled by the pinned dev dependency `vite@6.4.2` into `out/cli/*.js` and `media/formal-script.js`. Runtime artifacts remain dependency-free. Build a local directory release with:
 
 ```bash
 npm run release:local

@@ -1,7 +1,7 @@
 {
   "name": "markdown-formal",
   "displayName": "Markdown Formal",
-  "description": "Agent-native, zero-dependency formal mathematics markdown assistant",
+  "description": "Agent-native, runtime-zero-dependency formal mathematics markdown assistant",
   "version": "0.1.0",
   "publisher": "glenzli",
   "engines": {
@@ -12,8 +12,14 @@
   ],
   "main": "./out/extension.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json && tsc -p tsconfig.webview.json",
-    "formal": "tsc -p tsconfig.json && node out/cli/formal-tools.js",
+    "build": "npm run build:extension && npm run build:cli && npm run build:webview",
+    "build:extension": "tsc -p tsconfig.json",
+    "typecheck:cli": "tsc -p tsconfig.cli.json",
+    "build:cli": "npm run typecheck:cli && vite build --config vite.cli.config.ts",
+    "build:cli:quiet": "npm run --silent typecheck:cli && vite build --config vite.cli.config.ts --logLevel warn",
+    "typecheck:webview": "tsc -p tsconfig.webview.json",
+    "build:webview": "npm run typecheck:webview && vite build --config vite.webview.config.ts",
+    "formal": "npm run --silent build:cli:quiet && node out/cli/formal-tools.js",
     "check": "npm run build && npm run formal -- verify",
     "test:migrations": "node tests/formal-tools.test.mjs",
     "test": "npm run check && npm run test:migrations",
@@ -35,6 +41,7 @@
     ]
   },
   "devDependencies": {
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vite": "6.4.2"
   }
 }

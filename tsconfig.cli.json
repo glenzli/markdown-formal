@@ -1,13 +1,14 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "CommonJS",
-    "outDir": "./out",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022"],
     "rootDir": "./src",
+    "noEmit": true,
     "strict": false,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["src/cli/**/*", "src/webview/**/*"]
+  "include": ["src/cli/**/*", "src/core/**/*", "src/node.d.ts"]
 }

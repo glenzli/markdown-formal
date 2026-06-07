@@ -15,6 +15,14 @@ import {
     normalizeFormalPagePath,
     parseFormalMarkerLine,
     renderAgentGuide,
+    renderDependencyGraphBridges,
+    renderDependencyGraphCycles,
+    renderDependencyGraphFocus,
+    renderDependencyGraphImpact,
+    renderDependencyGraphIsolated,
+    renderDependencyGraphMatrix,
+    renderDependencyGraphSummary,
+    renderDependencyGraphUpstream,
     renderDependencyReport,
     renderReferenceMap,
     renderReport,
@@ -22,7 +30,9 @@ import {
     shouldExcludeScanPath,
     toPosix,
     typeName,
-    unique
+    unique,
+    type DependencyGraphMatrixScope,
+    type DependencyGraphWhereFilter
 } from '../core/formal-core';
 
 const ROOT = process.cwd();
@@ -163,13 +173,135 @@ async function lint() {
     if (state.issues.some(issue => issue.severity === 'error')) process.exitCode = 1;
 }
 
-async function graph() {
+function normalizeGraphId(value) {
+    return String(value || '').trim().replace(/^[@#]/, '').replace(/\.title$/, '');
+}
+
+function isGraphWhere(value): value is DependencyGraphWhereFilter {
+    return value === 'all' || value === 'statement' || value === 'proof' || value === 'body';
+}
+
+function parseGraphArgs(args) {
+    const options: {
+        action: string;
+        positionals: string[];
+        depth: number;
+        where: DependencyGraphWhereFilter | string;
+    } = {
+        action: args[0] || '',
+        positionals: [],
+        depth: 2,
+        where: 'all'
+    };
+
+    const rest = args.slice(options.action ? 1 : 0);
+    for (let i = 0; i < rest.length; i++) {
+        const arg = rest[i];
+        if (arg === '--depth') {
+            options.depth = Number(rest[++i]);
+        } else if (arg.startsWith('--depth=')) {
+            options.depth = Number(arg.slice('--depth='.length));
+        } else if (arg === '--where') {
+            options.where = rest[++i] || 'all';
+        } else if (arg.startsWith('--where=')) {
+            options.where = arg.slice('--where='.length);
+        } else {
+            options.positionals.push(arg);
+        }
+    }
+
+    if (!Number.isFinite(options.depth) || options.depth < 1) options.depth = 2;
+    options.depth = Math.floor(options.depth);
+    if (!isGraphWhere(options.where)) {
+        throw new Error(`Invalid graph --where value: ${options.where}. Use all, statement, proof, or body.`);
+    }
+    return options as {
+        action: string;
+        positionals: string[];
+        depth: number;
+        where: DependencyGraphWhereFilter;
+    };
+}
+
+function printGraphUsage() {
+    console.log(`Usage:
+  npm run formal -- graph
+  npm run formal -- graph summary [--where all|statement|proof|body]
+  npm run formal -- graph focus <h-id> [--depth N] [--where all|statement|proof|body]
+  npm run formal -- graph impact <h-id> [--where all|statement|proof|body]
+  npm run formal -- graph upstream <h-id> [--where all|statement|proof|body]
+  npm run formal -- graph bridges [--where all|statement|proof|body]
+  npm run formal -- graph isolated [--where all|statement|proof|body]
+  npm run formal -- graph cycles [--where all|statement|proof|body]
+  npm run formal -- graph matrix chapter|volume|book [--where all|statement|proof|body]`);
+}
+
+async function graph(args = []) {
+    const options = parseGraphArgs(args);
+    if (options.action === 'help' || options.action === '--help') {
+        printGraphUsage();
+        return;
+    }
+
     const state = await scanWorkspace();
     await writeArtifacts(state);
     const dependencyGraph = state.dependencyGraph;
-    console.log(`OK graph: ${dependencyGraph.summary.nodes} nodes, ${dependencyGraph.summary.edges} explicit edges, ${dependencyGraph.summary.proofEdges} proof edges, ${dependencyGraph.summary.cycles} cycles`);
-    console.log('Graph: .markdown-formal/dependency-graph.json');
-    console.log('Report: .markdown-formal/dependency-report.md');
+
+    if (!options.action) {
+        console.log(`OK graph: ${dependencyGraph.summary.nodes} nodes, ${dependencyGraph.summary.edges} explicit edges, ${dependencyGraph.summary.proofEdges} proof edges, ${dependencyGraph.summary.cycles} cycles`);
+        console.log('Graph: .markdown-formal/dependency-graph.json');
+        console.log('Report: .markdown-formal/dependency-report.md');
+        console.log('Run `npm run formal -- graph summary` for a Markdown summary.');
+        return;
+    }
+
+    if (options.action === 'summary') {
+        console.log(renderDependencyGraphSummary(dependencyGraph, options.where));
+        return;
+    }
+
+    if (options.action === 'isolated') {
+        console.log(renderDependencyGraphIsolated(dependencyGraph, options.where));
+        return;
+    }
+
+    if (options.action === 'cycles') {
+        console.log(renderDependencyGraphCycles(dependencyGraph, options.where));
+        return;
+    }
+
+    if (options.action === 'bridges') {
+        console.log(renderDependencyGraphBridges(dependencyGraph, options.where));
+        return;
+    }
+
+    if (options.action === 'matrix') {
+        const scope = options.positionals[0] || 'chapter';
+        if (scope !== 'chapter' && scope !== 'volume' && scope !== 'book') {
+            throw new Error(`Invalid graph matrix scope: ${scope}. Use chapter, volume, or book.`);
+        }
+        console.log(renderDependencyGraphMatrix(dependencyGraph, scope as DependencyGraphMatrixScope, options.where));
+        return;
+    }
+
+    if (options.action === 'focus' || options.action === 'impact' || options.action === 'upstream') {
+        const id = normalizeGraphId(options.positionals[0]);
+        if (!id) {
+            throw new Error(`graph ${options.action} requires a hash id.`);
+        }
+        if (options.action === 'focus') {
+            console.log(renderDependencyGraphFocus(dependencyGraph, id, options.depth, options.where));
+        } else if (options.action === 'impact') {
+            console.log(renderDependencyGraphImpact(dependencyGraph, id, options.where));
+        } else {
+            console.log(renderDependencyGraphUpstream(dependencyGraph, id, options.where));
+        }
+        return;
+    }
+
+    console.error(`Unknown graph command: ${options.action}`);
+    printGraphUsage();
+    process.exitCode = 1;
 }
 
 const VERIFY_BLOCKING_WARNING_CODES = new Set([
@@ -1598,6 +1730,9 @@ function printHelp({ all = false } = {}) {
   npm run formal -- migrate-ids <file-or-dir> [...] [--apply] [--target-only] [--all]
   npm run formal -- audit [file-or-dir] [...]
   npm run formal -- graph
+  npm run formal -- graph impact <h-id>
+  npm run formal -- graph focus <h-id> [--depth N]
+  npm run formal -- graph matrix chapter|volume|book
   npm run formal -- verify [--strict-chapters]
 
 Migrations are dry-run by default. Pass --apply to edit files.
@@ -1621,6 +1756,12 @@ Advanced commands:
   npm run formal -- migrate-ids <file-or-dir> [...] [--apply] [--target-only] [--all]
   npm run formal -- audit [file-or-dir] [...]
   npm run formal -- graph
+  npm run formal -- graph summary [--where all|statement|proof|body]
+  npm run formal -- graph focus <h-id> [--depth N] [--where all|statement|proof|body]
+  npm run formal -- graph impact <h-id> [--where all|statement|proof|body]
+  npm run formal -- graph upstream <h-id> [--where all|statement|proof|body]
+  npm run formal -- graph bridges|isolated|cycles [--where all|statement|proof|body]
+  npm run formal -- graph matrix chapter|volume|book [--where all|statement|proof|body]
   npm run formal -- verify [--strict-chapters]
 
 Advanced:
@@ -1650,7 +1791,7 @@ async function main() {
     } else if (command === 'lint') {
         await lint();
     } else if (command === 'graph') {
-        await graph();
+        await graph(args);
     } else if (command === 'verify') {
         await verify(args);
     } else if (command === 'finalize') {

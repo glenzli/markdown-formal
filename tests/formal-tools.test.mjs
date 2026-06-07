@@ -438,6 +438,60 @@ async function testDependencyGraph() {
     const graphCommand = runCli(root, ['graph']);
     assert.equal(graphCommand.status, 0, combinedOutput(graphCommand));
     assert.match(combinedOutput(graphCommand), /OK graph: 3 nodes, 3 explicit edges, 2 proof edges, 1 cycles/);
+
+    const graphSummary = runCli(root, ['graph', 'summary']);
+    assert.equal(graphSummary.status, 0, combinedOutput(graphSummary));
+    assert.match(combinedOutput(graphSummary), /# Dependency Graph Summary/);
+    assert.match(combinedOutput(graphSummary), /- Proof edges: 2/);
+    assert.match(combinedOutput(graphSummary), /- Cross-chapter edges: 1/);
+
+    const proofSummary = runCli(root, ['graph', 'summary', '--where', 'proof']);
+    assert.equal(proofSummary.status, 0, combinedOutput(proofSummary));
+    assert.match(combinedOutput(proofSummary), /# Dependency Graph Summary \(proof edges only\)/);
+    assert.match(combinedOutput(proofSummary), /- Statement edges: 0/);
+    assert.match(combinedOutput(proofSummary), /- Proof edges: 2/);
+
+    const impact = runCli(root, ['graph', 'impact', '@h-1111111111111111']);
+    assert.equal(impact.status, 0, combinedOutput(impact));
+    assert.match(combinedOutput(impact), /# Dependency Impact Closure/);
+    assert.match(combinedOutput(impact), /Downstream impacted nodes: 1/);
+    assert.match(combinedOutput(impact), /命题 1\.2 Statement Uses/);
+
+    const upstream = runCli(root, ['graph', 'upstream', 'h-2222222222222222']);
+    assert.equal(upstream.status, 0, combinedOutput(upstream));
+    assert.match(combinedOutput(upstream), /# Dependency Upstream Closure/);
+    assert.match(combinedOutput(upstream), /定理 1\.1 Base/);
+    assert.match(combinedOutput(upstream), /引理 2\.1 Cross Chapter/);
+
+    const focus = runCli(root, ['graph', 'focus', 'h-2222222222222222', '--depth', '1']);
+    assert.equal(focus.status, 0, combinedOutput(focus));
+    assert.match(combinedOutput(focus), /# Dependency Focus Depth 1/);
+    assert.match(combinedOutput(focus), /## Upstream/);
+    assert.match(combinedOutput(focus), /## Downstream Impact/);
+    assert.match(combinedOutput(focus), /## Local Edges/);
+
+    const matrix = runCli(root, ['graph', 'matrix', 'chapter']);
+    assert.equal(matrix.status, 0, combinedOutput(matrix));
+    assert.match(combinedOutput(matrix), /# Dependency Matrix By chapter/);
+    assert.match(combinedOutput(matrix), /Edges: 3/);
+
+    const cycles = runCli(root, ['graph', 'cycles']);
+    assert.equal(cycles.status, 0, combinedOutput(cycles));
+    assert.match(combinedOutput(cycles), /Cycles: 1/);
+
+    const statementCycles = runCli(root, ['graph', 'cycles', '--where=statement']);
+    assert.equal(statementCycles.status, 0, combinedOutput(statementCycles));
+    assert.match(combinedOutput(statementCycles), /# Dependency Cycles \(statement edges only\)/);
+    assert.match(combinedOutput(statementCycles), /Cycles: 0/);
+
+    const isolated = runCli(root, ['graph', 'isolated']);
+    assert.equal(isolated.status, 0, combinedOutput(isolated));
+    assert.match(combinedOutput(isolated), /Isolated nodes: 0/);
+
+    const bridges = runCli(root, ['graph', 'bridges']);
+    assert.equal(bridges.status, 0, combinedOutput(bridges));
+    assert.match(combinedOutput(bridges), /# Bridge Candidates/);
+    assert.match(combinedOutput(bridges), /命题 1\.2 Statement Uses/);
 }
 
 async function testEquationFigureTableNumbering() {
