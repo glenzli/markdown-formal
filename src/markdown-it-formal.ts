@@ -282,6 +282,40 @@ function replaceFirstTextChild(inlineToken: any, from: string, to: string): bool
     return replaceInChildren(inlineToken.children);
 }
 
+function textChildrenInOrder(inlineToken: any): any[] {
+    const result: any[] = [];
+    const visit = (children: any[]) => {
+        for (const child of children || []) {
+            if (!child) continue;
+            if (child.type === 'text') result.push(child);
+            if (Array.isArray(child.children)) visit(child.children);
+        }
+    };
+    visit(inlineToken.children || []);
+    return result;
+}
+
+function replaceMarkerPrefix(inlineToken: any, marker: any, replacementText: string): boolean {
+    if (replaceFirstTextChild(inlineToken, marker.markerText, replacementText)) return true;
+    if (!marker.id) return false;
+
+    const markerId = `#${marker.id}`;
+    const children = textChildrenInOrder(inlineToken);
+    const idIndex = children.findIndex(child => String(child.content || '').includes(markerId));
+    if (idIndex < 0) return false;
+
+    for (let i = 0; i < idIndex; i++) {
+        children[i].content = '';
+    }
+
+    const child = children[idIndex];
+    const content = String(child.content || '');
+    const offset = content.indexOf(markerId);
+    child.content = `${replacementText}${content.slice(offset + markerId.length)}`;
+    inlineToken.content = String(inlineToken.content || '').replace(marker.markerText, replacementText);
+    return true;
+}
+
 interface MarkerApplyResult {
     parsed: boolean;
     replaced: boolean;
@@ -547,7 +581,7 @@ function applyLightweightMarker(tokens: any[], inlineIndex: number, labels: Reco
     const replacement = renderedMarkerPrefix(marker, labelData, config);
     const replacementText = replacement ? replacement : '';
 
-    const replaced = replaceFirstTextChild(inlineToken, marker.markerText, replacementText);
+    const replaced = replaceMarkerPrefix(inlineToken, marker, replacementText);
     setAttr(openToken, 'id', `formal-${marker.id}`);
     setAttr(openToken, 'dir', 'auto');
     setAttr(openToken, 'data-formal-title', labelData.title || marker.title || '');
