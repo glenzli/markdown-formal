@@ -376,11 +376,12 @@ async function testRecallBoundariesAndOptionalBlocks() {
     assert.equal(previewCache.entries['h-4444444444444444'].number, 2);
     assert.equal(previewCache.entries['h-6666666666666666'].title, '有效分量包含律');
     assert.equal(previewCache.entries['h-7777777777777777'].title, '加粗标题');
-    assert.equal(previewCache.entries['h-3333333333333333'].number, 1);
+    assert.equal(previewCache.entries['h-3333333333333333'].number, undefined);
     assert.equal(previewCache.entries['h-5555555555555555'].number, 1);
 
     const referenceMap = await read(root, '.markdown-formal/reference-map.md');
-    assert.match(referenceMap, /注 1\.1/);
+    assert.doesNotMatch(referenceMap, /注 1\.1/);
+    assert.ok(referenceMap.includes('| 注 | `h-3333333333333333` | Important | `book1/01-a.md:11` |'));
     assert.match(referenceMap, /例 1\.1/);
 }
 
@@ -925,7 +926,7 @@ async function testAuditReport() {
         '',
         '## Plain Heading',
         '',
-        '注 #h-2222222222222222（Unused）：This remark is indexed but never cited.',
+        '例 #h-2222222222222222（Unused）：This example is indexed but never cited.',
         ''
     ].join('\n'));
     await fs.writeFile(path.join(root, 'book1', '02-b.md'), [
@@ -945,11 +946,11 @@ async function testAuditReport() {
     assert.match(report, /Chapter references needing page refs: 1/);
     assert.match(report, /Section headings needing numbered markers: 1/);
     assert.match(report, /Bare number candidates: 1/);
-    assert.match(report, /Unused optional block hashes: 1/);
+    assert.match(report, /Unused optional example hashes: 1/);
     assert.match(report, /Theorem-like blocks without proof boundary: 1/);
     assert.match(report, /定理 1\.1 -> @h-1111111111111111/);
     assert.match(report, /bare-number-candidate|Bare Number Candidates/);
-    assert.match(report, /注 1\.1 `h-2222222222222222`/);
+    assert.match(report, /例 1\.1 `h-2222222222222222`/);
     assert.match(report, /第 2 章; suggested @chapter:book1\/02-b\.md/);
 }
 

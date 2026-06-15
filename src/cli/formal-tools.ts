@@ -1372,7 +1372,7 @@ function collectMissingProofBoundaries(content, file) {
 function collectUnusedOptionalBlocks(state, targetFileSet) {
     const referencedIds = new Set(state.references.map(ref => ref.id));
     return state.definitions
-        .filter(def => def.id && (def.type === 'remark' || def.type === 'example'))
+        .filter(def => def.id && def.type === 'example')
         .filter(def => targetFileSet.has(def.file))
         .filter(def => !referencedIds.has(def.id))
         .map(def => ({
@@ -1402,7 +1402,7 @@ function renderAuditReport(result) {
         `Chapter references needing page refs: ${result.chapterReferences.length}`,
         `Section headings needing numbered markers: ${result.sectionHeadings.length}`,
         `Bare number candidates: ${result.bareNumberCandidates.length}`,
-        `Unused optional block hashes: ${result.unusedOptionalBlocks.length}`,
+        `Unused optional example hashes: ${result.unusedOptionalBlocks.length}`,
         `Theorem-like blocks without proof boundary: ${result.missingProofBoundaries.length}`,
         ''
     ];
@@ -1474,8 +1474,8 @@ function renderAuditReport(result) {
     }
 
     if (result.unusedOptionalBlocks.length > 0) {
-        lines.push('## Unused Optional Block Hashes', '');
-        lines.push('Remarks and examples usually stay plain unless later text cites them.', '');
+        lines.push('## Unused Optional Example Hashes', '');
+        lines.push('Examples usually stay plain unless later text cites them. Anchored fact remarks may be intentionally unnumbered and are not reported here.', '');
         result.unusedOptionalBlocks.forEach(item => {
             lines.push(`- ${item.file}:${item.line}: ${item.display} \`${item.id}\`${item.title ? ` (${escapeAuditText(item.title)})` : ''}`);
         });

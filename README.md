@@ -29,9 +29,10 @@ Supported markers:
 - Separate counters per chapter or appendix: `公式 #h-...：`, `图 #h-...（Caption）：...`, `表 #h-...（Caption）：`
 - English numbered markers are also supported: `Proposition #h-...`, `Lemma #h-...`, `Theorem #h-...`, `Corollary #h-...`, `Equation #h-...`, `Figure #h-...`, `Table #h-...`
 - Definition lookup uses a tool-first, AI-exception workflow. Standard `定义（Term）：...` / `Definition (Term): ...` lines are scanned automatically with structural range heuristics; nonstandard prose definitions, aliases, bilingual lookup, or unreliable boundaries are indexed through `.markdown-formal/definitions.json`.
-- Optional indexed blocks: write plain `注（...）` / `例（...）` by default; only add `#h-...` later when a remark/example is explicitly cited.
+- Remarks have two modes: explanatory remarks stay plain as `注（...）` / `Remark (...)`, while non-mainline fact remarks that need a proof or later citation use `注 #h-...（...）` / `Remark #h-... (...)`. Anchored fact remarks hide the hash and do not render a remark number.
+- Examples stay plain by default; only add `#h-...` when an example is explicitly cited. Cited examples use their own example counter.
 
-Hover recall is generated for propositions, lemmas, theorems, corollaries, and explicitly cited remarks/examples. For theorem-like blocks, the preview captures the statement and stops before `证明` / `Proof`.
+Hover recall is generated for propositions, lemmas, theorems, corollaries, anchored fact remarks, and explicitly cited examples. For theorem-like blocks, the preview captures the statement and stops before `证明` / `Proof`.
 
 Equations, figures, and tables use the same stable-ID model without wrapping the surrounding content:
 
@@ -161,7 +162,7 @@ Set `debug.previewLog` to `true` temporarily when diagnosing blank previews or e
 `prepare` writes generated helper files under `.markdown-formal/`:
 
 - `agent-guide.md`: compact AI workflow card
-- `reference-map.md`: display number to hash ID map
+- `reference-map.md`: display number / unnumbered anchor to hash ID map
 - `preview-cache.json`: runtime preview/navigation/definition/symbol table cache
 - `dependency-graph.json`: canonical theorem-like dependency graph built from explicit `@h-...` references
 - `dependency-report.md`: human/AI-readable dependency summary with statement/proof edges, cross-scope edges, cycles, and isolated nodes
@@ -268,7 +269,7 @@ npm test
 
 `verify` is the strict generated/migrated-content gate. It fails on missing refs, missing page refs, duplicate IDs, remaining temporary IDs, non-hash IDs, disallowed cross-book refs, malformed equation/figure/table markers, and unresolved text-reference migration reports.
 
-`audit` is advisory and exits successfully. It writes `.markdown-formal/audit.md` with old typed references, handwritten chapter references, old Markdown links, plain section headings that may need stable markers, suspicious bare number references, unused remark/example hashes, and theorem-like blocks that do not have a visible `证明` / `Proof` boundary.
+`audit` is advisory and exits successfully. It writes `.markdown-formal/audit.md` with old typed references, handwritten chapter references, old Markdown links, plain section headings that may need stable markers, suspicious bare number references, unused optional example hashes, and theorem-like blocks that do not have a visible `证明` / `Proof` boundary.
 
 `graph` refreshes `.markdown-formal/dependency-graph.json` and `.markdown-formal/dependency-report.md`. `prepare`, `finish`, and `verify` also write these files, so `graph` is mainly for focused dependency inspection. The graph only treats `prop`/`lemma`/`theorem`/`cor` nodes as theorem dependencies; references outside theorem-like statement/proof blocks are reported as ambient diagnostics rather than dependency edges.
 

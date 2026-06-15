@@ -18,7 +18,7 @@ npm run formal -- prepare
 然后读取：
 
 - `.markdown-formal/agent-guide.md`：当前项目的极简操作卡。
-- `.markdown-formal/reference-map.md`：显示编号到 hash ID 的表，以及可复制的章/页引用路径。
+- `.markdown-formal/reference-map.md`：显示编号和无编号锚点到 hash ID 的表，以及可复制的章/页引用路径。
 - 目标 Markdown 原文。
 - 每次修改正文文件时，只检查这些文件内新增、删除、改写的定义和符号约定；不要全书重抽。
 
@@ -32,7 +32,7 @@ npm run formal -- finish path/to/chapter-or-dir
 
 ## 文件职责
 
-- `.markdown-formal/reference-map.md`：AI 复制已有 `@h-...` / `@h-....title` 的来源。
+- `.markdown-formal/reference-map.md`：AI 复制已有 `@h-...` / `@h-....title` 的来源，包括编号对象和无编号锚点。
 - `.markdown-formal/dependency-graph.json`：命题/引理/定理/推论之间显式 `@h-...` 依赖的权威 JSON。
 - `.markdown-formal/dependency-report.md`：依赖图的人类/AI 审阅报告，区分陈述依赖、证明依赖、跨章/跨卷边、循环和孤立节点。
 - `npm run formal -- graph impact|upstream|focus|matrix|bridges|isolated|cycles`：对权威依赖图做局部查询和结构分析；输出给人和 AI 读，不替代 JSON。
@@ -164,14 +164,20 @@ AI 只需要维护源位置、pattern、meaning。参数化展示、LaTeX 渲染
 
 ## 注和例
 
-`注`、`例` 默认写成普通段落，不加 hash。只有后文已经明确引用某个注或例时，才反向把那个条目改成：
+`注` 分两类处理：
+
+- 说明类注释只是补充解释，写成普通段落，不加 hash：`注（说明）：...`。
+- 非主线事实注释如果本身需要证明、可能被后文引用，或需要稳定锚点，才写 `注 #tmp-*（事实名）：...`。
+
+带 hash 的 `注` 只是锚点，不参与注释编号；预览会隐藏 hash，显示为 `注（事实名）：...`，并保留 recall。不要把它写成“注 x.x”，也不要为了普通说明提前加 hash。
+
+`例` 默认也写成普通段落，不加 hash。只有后文已经明确引用某个例时，才反向把那个条目改成：
 
 ```markdown
-注 #tmp-1（关键说明）：...
-例 #tmp-2（模型例）：...
+例 #tmp-1（模型例）：...
 ```
 
-运行 `finish` 后，它们会作为 indexed block 独立编号并生成 recall。不要因为“可能以后重要”就提前加 hash。
+运行 `finish` 后，被引用的例会作为独立编号块并生成 recall。不要因为“可能以后重要”就提前给普通例子加 hash。
 
 ## 目录结构
 
@@ -246,7 +252,7 @@ AI 应从拥有 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbol
 
 每次完成一个文件或目录的编辑后，按本次修改范围检查：
 
-1. 是否新增、删除或改写了小节、命题、引理、定理、推论、公式、图、表、被引用的注/例？如果有，运行 `npm run formal -- finish <file-or-dir>`；公式 marker 后必须跟 display math，图 marker 附近必须有图片，表 marker 后必须跟 Markdown table。
+1. 是否新增、删除或改写了小节、命题、引理、定理、推论、公式、图、表、带锚点的事实型注释或被引用的例？如果有，运行 `npm run formal -- finish <file-or-dir>`；公式 marker 后必须跟 display math，图 marker 附近必须有图片，表 marker 后必须跟 Markdown table。
 2. 是否新增、删除、移动或重命名了章节文件？如果有，检查正文里的 `@chapter:` / `@page:` 目标路径是否仍存在，并运行 `npm run formal -- finish <file-or-dir>` 规范化相对输入糖。
 3. 是否新增、删除或改写了可查询定义？标准定义交给工具扫描；如果是非标准定义、别名/中英互查或边界不可靠的例外条目，同步 `.markdown-formal/definitions.json` 中 `source` 指向这些文件的条目，并确保每个 AI 维护条目都有最新 `content`。
 4. 是否新增、删除或改写了项目特有符号约定？如果有，同步 `.markdown-formal/symbols.json` 中对应 `source`、`pattern`、`meaning`。
