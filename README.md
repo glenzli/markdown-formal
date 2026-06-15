@@ -29,7 +29,7 @@ Supported markers:
 - Separate counters per chapter or appendix: `公式 #h-...：`, `图 #h-...（Caption）：...`, `表 #h-...（Caption）：`
 - English numbered markers are also supported: `Proposition #h-...`, `Lemma #h-...`, `Theorem #h-...`, `Corollary #h-...`, `Equation #h-...`, `Figure #h-...`, `Table #h-...`
 - Definition lookup uses a tool-first, AI-exception workflow. Standard `定义（Term）：...` / `Definition (Term): ...` lines are scanned automatically with structural range heuristics; nonstandard prose definitions, aliases, bilingual lookup, or unreliable boundaries are indexed through `.markdown-formal/definitions.json`.
-- Remarks have two modes: explanatory remarks stay plain as `注（...）` / `Remark (...)`, while non-mainline fact remarks that need a proof or later citation use `注 #h-...（...）` / `Remark #h-... (...)`. Anchored fact remarks hide the hash and do not render a remark number.
+- Remarks have two modes: explanatory remarks stay plain as `注（...）` / `Remark (...)`, while non-mainline fact remarks that need a proof or later citation use `注 #h-...（...）` / `Remark #h-... (...)`. Anchored fact remarks may also be written inside standard blockquotes as `> 注 #h-...（...）`; they hide the hash, do not render a remark number, and do not enter the preview contents menu.
 - Examples stay plain by default; only add `#h-...` when an example is explicitly cited. Cited examples use their own example counter.
 
 Hover recall is generated for propositions, lemmas, theorems, corollaries, anchored fact remarks, and explicitly cited examples. For theorem-like blocks, the preview captures the statement and stops before `证明` / `Proof`.

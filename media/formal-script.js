@@ -105,6 +105,7 @@
     }
     function normalizeTargetId(hash) {
       const raw = decodePart(hash.replace(/^#/, ""));
+      if (document.getElementById(raw)) return raw;
       return raw.startsWith("formal-") ? raw : `formal-${raw}`;
     }
     function parseLocationPayload() {
@@ -1303,19 +1304,21 @@
     }
     function collectTocItems() {
       const items = [];
-      document.querySelectorAll(".formal-section, .formal-prop, .formal-lemma, .formal-theorem, .formal-cor, .formal-remark, .formal-example").forEach((el) => {
+      document.querySelectorAll(".formal-section, .formal-prop, .formal-lemma, .formal-theorem, .formal-cor, .formal-example").forEach((el) => {
         if (!el.id) return;
         const display = (el.getAttribute("data-formal-display") || "").trim();
         const dataTitle = (el.getAttribute("data-formal-title") || "").trim();
         if (el.classList.contains("formal-section")) {
           const fallback = el.innerText.trim();
           const title2 = dataTitle || (display ? fallback.replace(display, "").trim() : fallback) || fallback;
-          items.push({ id: el.id, display, title: title2, type: "section" });
+          const line2 = lineNumberForElement(el, "data-line");
+          items.push({ id: el.id, display, title: title2, type: "section", line: line2 === void 0 ? void 0 : line2 + 1 });
           return;
         }
         const strong = el.querySelector("strong");
         const title = dataTitle || strong?.textContent?.replace(/[：:]$/, "").trim() || el.innerText.split(/\n/)[0]?.trim() || el.id;
-        items.push({ id: el.id, display, title, type: "block" });
+        const line = lineNumberForElement(el, "data-line");
+        items.push({ id: el.id, display, title, type: "block", line: line === void 0 ? void 0 : line + 1 });
       });
       return items;
     }
@@ -1472,6 +1475,9 @@
         const link = document.createElement("a");
         link.className = `formal-toc-item ${item.type === "section" ? "formal-toc-section" : "formal-toc-block"}`;
         link.href = `#${item.id}`;
+        if (item.line !== void 0) {
+          link.setAttribute("data-line", String(item.line));
+        }
         if (item.display) {
           const display = document.createElement("span");
           display.className = "formal-toc-display";
@@ -1597,7 +1603,7 @@
         lastRenderSignature = renderSignature;
         const language = getLanguage(config);
         const uiSignature = JSON.stringify(config.ui?.[language] || {});
-        const signature = `${renderSignature}|${language}|${uiSignature}|${currentFilePath}|${tocItems.map((item) => `${item.id}:${item.display || ""}:${item.title}`).join("|")}|${chapters.map((item) => `${item.bookKey}:${item.volumeKey}:${item.unitKind}:${item.unitKey}:${item.filePath}:${item.title}`).join("|")}|${definitions.map((item) => `${item.filePath}:${item.line}:${item.title}`).join("|")}|${symbols.map((item) => `${item.pattern}:${item.scope}:${item.source || ""}`).join("|")}|${formulas.map((item) => item.latex).join("|")}|${readHistory().length}`;
+        const signature = `${renderSignature}|${language}|${uiSignature}|${currentFilePath}|${tocItems.map((item) => `${item.id}:${item.display || ""}:${item.title}:${item.line ?? ""}`).join("|")}|${chapters.map((item) => `${item.bookKey}:${item.volumeKey}:${item.unitKind}:${item.unitKey}:${item.filePath}:${item.title}`).join("|")}|${definitions.map((item) => `${item.filePath}:${item.line}:${item.title}`).join("|")}|${symbols.map((item) => `${item.pattern}:${item.scope}:${item.source || ""}`).join("|")}|${formulas.map((item) => item.latex).join("|")}|${readHistory().length}`;
         if (signature === lastNavSignature && document.getElementById("formal-nav-bar")) {
           normalizeFormalLinks(currentFilePath);
           return;
@@ -1662,7 +1668,10 @@
       if (!targetInfo.filePath || targetInfo.filePath === currentFilePath) {
         pushHistory(currentFilePath);
         if (targetInfo.targetId) {
-          scrollToTarget(targetInfo.targetId);
+          const fallbackLine = toc ? Number(toc.getAttribute("data-line")) : void 0;
+          if (!scrollToTarget(targetInfo.targetId)) {
+            scrollToSourceLine(Number.isFinite(fallbackLine) ? fallbackLine : void 0);
+          }
         } else {
           window.scrollTo({ top: 0, behavior: "smooth" });
         }

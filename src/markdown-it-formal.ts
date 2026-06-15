@@ -234,6 +234,7 @@ function getNumberPrefix(labelData: LabelData): string {
 }
 
 function formatLabelNumber(labelData: LabelData): string {
+    if (labelData.type === 'remark') return '';
     const prefix = getNumberPrefix(labelData);
     return prefix && labelData.number !== undefined ? `${prefix}.${labelData.number}` : '';
 }

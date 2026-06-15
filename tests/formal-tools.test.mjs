@@ -349,6 +349,10 @@ async function testRecallBoundariesAndOptionalBlocks() {
         'Remark #h-3333333333333333 (Important): This remark is explicitly indexed.',
         'It has a second line.',
         '',
+        '> 注 #h-8888888888888888（旁支事实）：这是放在引用块里的带锚点事实注释。',
+        '> 证明：',
+        '> 这行证明不应进入 recall 预览。',
+        '',
         'Theorem #h-4444444444444444 (After remark): The theorem counter should ignore remark numbering.',
         '',
         'Example #h-5555555555555555 (Model): A referenced example.',
@@ -372,6 +376,9 @@ async function testRecallBoundariesAndOptionalBlocks() {
     ].join('\n'));
     assert.doesNotMatch(previewCache.entries['h-2222222222222222'].content, /proof body/i);
     assert.match(previewCache.entries['h-3333333333333333'].content, /second line/);
+    assert.equal(previewCache.entries['h-8888888888888888'].title, '旁支事实');
+    assert.match(previewCache.entries['h-8888888888888888'].content, /^> 注/);
+    assert.doesNotMatch(previewCache.entries['h-8888888888888888'].content, /不应进入 recall/);
     assert.equal(previewCache.entries['h-2222222222222222'].number, 1);
     assert.equal(previewCache.entries['h-4444444444444444'].number, 2);
     assert.equal(previewCache.entries['h-6666666666666666'].title, '有效分量包含律');
@@ -382,6 +389,7 @@ async function testRecallBoundariesAndOptionalBlocks() {
     const referenceMap = await read(root, '.markdown-formal/reference-map.md');
     assert.doesNotMatch(referenceMap, /注 1\.1/);
     assert.ok(referenceMap.includes('| 注 | `h-3333333333333333` | Important | `book1/01-a.md:11` |'));
+    assert.ok(referenceMap.includes('| 注 | `h-8888888888888888` | 旁支事实 | `book1/01-a.md:14` |'));
     assert.match(referenceMap, /例 1\.1/);
 }
 

@@ -113,6 +113,39 @@ body {
     margin: 0.5em 0 !important;
 }
 
+.formal-block.formal-remark {
+    margin: 0.65em 0 !important;
+    padding: 0 !important;
+    border-left: none !important;
+    border-radius: 0 !important;
+    background-color: transparent !important;
+    background-image: radial-gradient(
+        circle,
+        currentColor,
+        currentColor 52%,
+        transparent 56%
+    ) !important;
+    background-repeat: no-repeat !important;
+    background-size: 0.34em 0.34em !important;
+    background-position: 0.33em 1.32em !important;
+}
+
+blockquote:has(.formal-block.formal-remark) {
+    background: transparent !important;
+}
+
+blockquote:has(.formal-block.formal-remark):hover {
+    background: transparent !important;
+}
+
+blockquote:has(.formal-block.formal-remark) .formal-block.formal-remark {
+    margin: 0 !important;
+    padding: 0 !important;
+    border-left: none !important;
+    border-radius: 0 !important;
+    background-color: transparent !important;
+}
+
 .formal-definition {
     scroll-margin-top: 72px !important;
 }

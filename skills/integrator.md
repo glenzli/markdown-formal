@@ -41,7 +41,7 @@
 定义不加 hash、不参与 ref。定义查询采用“工具先抽，AI 只补”的最小工作流：工具自动扫描标准 `定义（术语）：...` / `Definition (Term): ...` 并用结构启发式收集跨行范围；修改某个文件后，AI 只检查该文件内新增、删除、改写的定义。常规标准定义不用重复写入 .markdown-formal/definitions.json；非标准句式如“称为 X”“所谓 X”“定义其 X”“记作 X”“called X”、需要 aliases/中英互查、需要稳定多段预览、或 AI 判断自动边界不可靠的定义，才写入 .markdown-formal/definitions.json，并记录 term、可选 aliases、source 和 Markdown content。不要为了工具机械改写项目文风，也不要每次全书重抽。
 
 只把项目明确约定的特殊 LaTeX 记号写入 .markdown-formal/symbols.json，维护 source、pattern、meaning；pattern 必须是记号本身或完整记号族，括号/方括号要闭合，不要记录通用数学符号、整条推导公式或缺右边界的公式片段。预览端不把公式内部符号做成可点击 ref；导航栏符号表只展示当前预览文件公式中实际匹配到的符号，搜索框只过滤定义。
-注释分两类：说明类注释默认不加 hash，写 `注（...）：...`；非主线事实注释如果需要证明、后文引用或稳定锚点，才写 `注 #tmp-*（...）：...`。这种带 hash 的注只隐藏 hash，不显示“注 x.x”，但保留 recall。例默认不加 hash；只有后文已经明确引用某个例时，才反向改成 `例 #tmp-*`，并作为独立编号例子处理。
+注释分两类：说明类注释默认不加 hash，写 `注（...）：...`；非主线事实注释如果需要证明、后文引用或稳定锚点，才写 `注 #tmp-*（...）：...`，也可以用标准引用块 `> 注 #tmp-*（...）：...` 进一步和主线视觉区分。这种带 hash 的注只隐藏 hash，不显示“注 x.x”，不进入预览目录，但保留 recall。例默认不加 hash；只有后文已经明确引用某个例时，才反向改成 `例 #tmp-*`，并作为独立编号例子处理。
 命题依赖图由工具从显式 @h-... 生成，权威数据是 .markdown-formal/dependency-graph.json，审阅报告是 .markdown-formal/dependency-report.md。它只把命题/引理/定理/推论之间的引用作为依赖边，并标记 statement/proof/body；AI 或 Lean 推测出的边必须另存为 suggested 数据，不能混入 explicit_ref 图。修改已有命题前，优先运行 `npm run formal -- graph impact <h-id>` 和 `npm run formal -- graph focus <h-id> --depth 2` 看影响闭包和局部上下游；修改后用 `graph summary`、`graph cycles`、`graph matrix chapter|volume|book` 做结构审阅。`--where statement|proof|body` 可只看陈述依赖或证明依赖。
 
 完成编辑后按本次修改范围检查编号对象、章/页引用、定义索引例外、符号索引、跨 book 查询配置、tmp ID 和迁移报告；不要只运行编号工具就结束。

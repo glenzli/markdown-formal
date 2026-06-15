@@ -1015,7 +1015,7 @@ function extractMarkerTitle(type: string, rest: string): string {
 }
 
 function normalizeLeadingMarkerEmphasis(text: string): string {
-    const trimmed = text.trim();
+    const trimmed = text.trim().replace(/^(?:>\s*)+/, '').trim();
     return unwrapLeadingStrong(trimmed) || trimmed;
 }
 
@@ -1983,6 +1983,7 @@ function compareDefinitionRecords(a: FormalDefinition, b: FormalDefinition): num
 }
 
 export function formatLabelNumber(label: LabelData): string {
+    if (label.type === 'remark') return '';
     const prefix = label.unitLabel || (label.chapter !== undefined ? String(label.chapter) : label.appendix || '');
     return prefix && label.number !== undefined ? `${prefix}.${label.number}` : '';
 }
@@ -2825,7 +2826,7 @@ export function renderAgentGuide(state: any): string {
         '- Theorem-like recall captures the statement before `证明` / `Proof`; keep proofs after an explicit proof marker.',
         '- Dependency graph: `.markdown-formal/dependency-graph.json` is the canonical explicit theorem-like dependency graph. It uses only `@h-...` references between propositions/lemmas/theorems/corollaries and marks edges as `statement`, `proof`, or `body`; `.markdown-formal/dependency-report.md` is the review view. Use `npm run formal -- graph summary`, `graph impact <h-id>`, `graph upstream <h-id>`, `graph focus <h-id> --depth 2`, `graph bridges`, `graph isolated`, `graph cycles`, or `graph matrix chapter|volume|book` for Markdown analysis. Add `--where statement|proof|body` to filter edge placement. These are structural graph tools, not domain interpretation.',
         '- Definitions: lookup is a tool-first, AI-exception workflow. The tool scans standard `定义（Term）：...` / `Definition (Term): ...` definitions with structural range heuristics. When editing a file, AI only updates `.markdown-formal/definitions.json` for nonstandard phrases, aliases/bilingual lookup, stable multi-paragraph previews, or boundaries the heuristic may get wrong; include Markdown `content` for those entries.',
-        '- Explanatory remarks stay plain: `注（Title）：...` / `Remark (Title): ...`, without hash. Non-mainline fact remarks that need a proof or later citation use `注 #tmp-*（Title）：...`; the hash is only an anchor, renders without a remark number, and still supports recall. Examples stay plain by default; only explicitly cited examples use `例 #tmp-*` / `Example #tmp-*` and remain numbered.',
+        '- Explanatory remarks stay plain: `注（Title）：...` / `Remark (Title): ...`, without hash. Non-mainline fact remarks that need a proof or later citation use `注 #tmp-*（Title）：...`; `> 注 #tmp-*（Title）：...` is also recognized inside standard blockquotes. The hash is only an anchor, renders without a remark number, and still supports recall. Examples stay plain by default; only explicitly cited examples use `例 #tmp-*` / `Example #tmp-*` and remain numbered.',
         '- Symbols: maintain only project-specific `source`, `pattern`, and `meaning` entries in `.markdown-formal/symbols.json`; patterns describe the notation itself with balanced delimiters, not whole equations or open-ended formula fragments. The navigation symbol table lists symbols matched in the current preview file. Symbols are not inline formula refs and are not searched through the definition search box.',
         '- Appendices use the appendix file prefix, so markers in `appendix-a-*.md` render as `A.1`, `A.2`, etc. `00-introduction.md`, `intro.md`, and `introduction.md` are intro pages, not chapter 0.',
         '',
