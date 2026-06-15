@@ -44,6 +44,7 @@ async function copyDir(src: string, dest: string): Promise<void> {
 async function copySelectedOutFiles(destOut: string): Promise<void> {
     await copyFile(path.join(ROOT, 'out', 'extension.js'), path.join(destOut, 'extension.js'));
     await copyFile(path.join(ROOT, 'out', 'markdown-it-formal.js'), path.join(destOut, 'markdown-it-formal.js'));
+    await copyFile(path.join(ROOT, 'out', 'core', 'debug-log.js'), path.join(destOut, 'core', 'debug-log.js'));
     await copyFile(path.join(ROOT, 'out', 'core', 'formal-core.js'), path.join(destOut, 'core', 'formal-core.js'));
 }
 
@@ -131,6 +132,7 @@ async function main(): Promise<void> {
 
     await requiredPath(path.join(ROOT, 'out', 'extension.js'));
     await requiredPath(path.join(ROOT, 'out', 'markdown-it-formal.js'));
+    await requiredPath(path.join(ROOT, 'out', 'core', 'debug-log.js'));
     await requiredPath(path.join(ROOT, 'out', 'core', 'formal-core.js'));
     await requiredPath(path.join(ROOT, 'out', 'cli', 'formal-tools.js'));
     await requiredPath(path.join(ROOT, 'media', 'formal-script.js'));
