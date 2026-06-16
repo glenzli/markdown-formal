@@ -156,12 +156,15 @@
     type FormalWindow = Window & {
         __markdownFormalInstalled?: boolean;
         __markdownFormalRebuildTimer?: number;
+        __markdownFormalRenderWaitTimer?: number;
     };
 
     const formalWindow = window as FormalWindow;
     const HISTORY_KEY = 'markdown-formal-history';
     const NAV_HASH_PREFIX = 'formal-nav-';
     const WINDOW_NAV_PREFIX = 'markdown-formal-nav:';
+    const RENDER_WAIT_INTERVAL_MS = 75;
+    const RENDER_WAIT_TIMEOUT_MS = 5000;
     const ROOT_BOOK_KEY = '__workspace__';
     const ROOT_VOLUME_KEY = '__root__';
     const DEFAULT_CONFIG: FormalConfig = {
@@ -223,6 +226,9 @@
     let retryStateSignature = '';
     let appliedNavigationHash = '';
     let suppressedSelectionText = '';
+    let renderWaitStartedAt = 0;
+    let renderWaitTargetFilePath = '';
+    let renderWaitPreviousSignature = '';
 
     function readJson<T>(key: string, fallback: T): T {
         try {
@@ -332,8 +338,19 @@
         }
     }
 
+    function clearRenderDataWait() {
+        if (formalWindow.__markdownFormalRenderWaitTimer !== undefined) {
+            window.clearTimeout(formalWindow.__markdownFormalRenderWaitTimer);
+            formalWindow.__markdownFormalRenderWaitTimer = undefined;
+        }
+        renderWaitStartedAt = 0;
+        renderWaitTargetFilePath = '';
+        renderWaitPreviousSignature = '';
+    }
+
     function cleanupFormalPreviewUi() {
         clearScheduledRebuild();
+        clearRenderDataWait();
         document.getElementById('formal-nav-bar')?.remove();
         removeDefinitionPopover();
         removeDefinitionSelectionAction();
@@ -342,6 +359,50 @@
         retryCount = 0;
         retryStateSignature = '';
         navRebuildQueued = false;
+    }
+
+    function scheduleRenderDataWait(options: { targetFilePath?: string; previousSignature?: string; delay?: number } = {}) {
+        if (options.targetFilePath) {
+            renderWaitTargetFilePath = normalizePath(options.targetFilePath);
+        }
+        if (options.previousSignature !== undefined) {
+            renderWaitPreviousSignature = options.previousSignature;
+        }
+        if (!renderWaitStartedAt) {
+            renderWaitStartedAt = Date.now();
+        }
+        if (formalWindow.__markdownFormalRenderWaitTimer !== undefined) return;
+
+        const delay = options.delay ?? RENDER_WAIT_INTERVAL_MS;
+        formalWindow.__markdownFormalRenderWaitTimer = window.setTimeout(() => {
+            formalWindow.__markdownFormalRenderWaitTimer = undefined;
+
+            const hasData = hasFormalRenderData();
+            const currentFilePath = readInjectedCurrentFilePath();
+            const currentSignature = readRenderSignature();
+            const targetSatisfied = !renderWaitTargetFilePath || currentFilePath === renderWaitTargetFilePath;
+            const signatureChanged = !renderWaitPreviousSignature || currentSignature !== renderWaitPreviousSignature;
+            const readyToRebuild = renderWaitTargetFilePath ? targetSatisfied : signatureChanged;
+
+            if (hasData && targetSatisfied && readyToRebuild) {
+                clearRenderDataWait();
+                scheduleRebuild(0);
+                return;
+            }
+
+            if (Date.now() - renderWaitStartedAt < RENDER_WAIT_TIMEOUT_MS) {
+                scheduleRenderDataWait();
+                return;
+            }
+
+            const shouldCleanup = !hasData;
+            clearRenderDataWait();
+            if (shouldCleanup) {
+                cleanupFormalPreviewUi();
+            } else {
+                scheduleRebuild(0);
+            }
+        }, delay);
     }
 
     function readPages(): PageData[] {
@@ -1591,7 +1652,8 @@
 
     function refreshDefinitionSelectionAction() {
         if (!hasFormalRenderData()) {
-            cleanupFormalPreviewUi();
+            removeDefinitionSelectionAction();
+            scheduleRenderDataWait();
             return;
         }
 
@@ -1638,7 +1700,10 @@
     }
 
     function scheduleDefinitionSelectionAction() {
-        if (!hasFormalRenderData()) return;
+        if (!hasFormalRenderData()) {
+            scheduleRenderDataWait();
+            return;
+        }
         window.setTimeout(refreshDefinitionSelectionAction, 0);
     }
 
@@ -1730,6 +1795,7 @@
     }
 
     function navigateToFile(filePath: string, payload: NavPayload = {}) {
+        const previousSignature = readRenderSignature();
         window.name = `${WINDOW_NAV_PREFIX}${encodePayload(payload)}`;
         const href = `${filePath}${makeNavHash(payload)}`;
         const anchor = document.createElement('a');
@@ -1738,6 +1804,7 @@
         document.body.appendChild(anchor);
         anchor.click();
         anchor.remove();
+        scheduleRenderDataWait({ targetFilePath: filePath, previousSignature, delay: RENDER_WAIT_INTERVAL_MS });
     }
 
     function applyIncomingNavigation() {
@@ -2086,7 +2153,7 @@
     function rebuildNav() {
         clearScheduledRebuild();
         if (!hasFormalRenderData()) {
-            cleanupFormalPreviewUi();
+            scheduleRenderDataWait();
             return;
         }
 
@@ -2155,7 +2222,7 @@
 
     function scheduleRebuild(delay = 200) {
         if (!hasFormalRenderData()) {
-            cleanupFormalPreviewUi();
+            scheduleRenderDataWait();
             return;
         }
         if (formalWindow.__markdownFormalRebuildTimer !== undefined) return;
@@ -2165,7 +2232,7 @@
 
     function refreshNavIfStale(): boolean {
         if (!hasFormalRenderData()) {
-            cleanupFormalPreviewUi();
+            scheduleRenderDataWait();
             return false;
         }
 
@@ -2177,7 +2244,7 @@
 
     function handleFormalClick(event: MouseEvent) {
         if (!hasFormalRenderData()) {
-            cleanupFormalPreviewUi();
+            scheduleRenderDataWait();
             return;
         }
 
@@ -2242,7 +2309,7 @@
 
     function handleDefinitionContextMenu(event: MouseEvent) {
         if (!hasFormalRenderData()) {
-            cleanupFormalPreviewUi();
+            scheduleRenderDataWait();
             return;
         }
 
@@ -2313,7 +2380,7 @@
 
     function installOnce() {
         if (!hasFormalRenderData()) {
-            cleanupFormalPreviewUi();
+            scheduleRenderDataWait();
             return;
         }
 

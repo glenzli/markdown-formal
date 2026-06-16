@@ -5,6 +5,8 @@
     const HISTORY_KEY = "markdown-formal-history";
     const NAV_HASH_PREFIX = "formal-nav-";
     const WINDOW_NAV_PREFIX = "markdown-formal-nav:";
+    const RENDER_WAIT_INTERVAL_MS = 75;
+    const RENDER_WAIT_TIMEOUT_MS = 5e3;
     const ROOT_BOOK_KEY = "__workspace__";
     const ROOT_VOLUME_KEY = "__root__";
     const DEFAULT_CONFIG = {
@@ -66,6 +68,9 @@
     let retryStateSignature = "";
     let appliedNavigationHash = "";
     let suppressedSelectionText = "";
+    let renderWaitStartedAt = 0;
+    let renderWaitTargetFilePath = "";
+    let renderWaitPreviousSignature = "";
     function readJson(key, fallback) {
       try {
         const value = localStorage.getItem(key);
@@ -156,8 +161,18 @@
         formalWindow.__markdownFormalRebuildTimer = void 0;
       }
     }
+    function clearRenderDataWait() {
+      if (formalWindow.__markdownFormalRenderWaitTimer !== void 0) {
+        window.clearTimeout(formalWindow.__markdownFormalRenderWaitTimer);
+        formalWindow.__markdownFormalRenderWaitTimer = void 0;
+      }
+      renderWaitStartedAt = 0;
+      renderWaitTargetFilePath = "";
+      renderWaitPreviousSignature = "";
+    }
     function cleanupFormalPreviewUi() {
       clearScheduledRebuild();
+      clearRenderDataWait();
       document.getElementById("formal-nav-bar")?.remove();
       removeDefinitionPopover();
       removeDefinitionSelectionAction();
@@ -166,6 +181,44 @@
       retryCount = 0;
       retryStateSignature = "";
       navRebuildQueued = false;
+    }
+    function scheduleRenderDataWait(options = {}) {
+      if (options.targetFilePath) {
+        renderWaitTargetFilePath = normalizePath(options.targetFilePath);
+      }
+      if (options.previousSignature !== void 0) {
+        renderWaitPreviousSignature = options.previousSignature;
+      }
+      if (!renderWaitStartedAt) {
+        renderWaitStartedAt = Date.now();
+      }
+      if (formalWindow.__markdownFormalRenderWaitTimer !== void 0) return;
+      const delay = options.delay ?? RENDER_WAIT_INTERVAL_MS;
+      formalWindow.__markdownFormalRenderWaitTimer = window.setTimeout(() => {
+        formalWindow.__markdownFormalRenderWaitTimer = void 0;
+        const hasData = hasFormalRenderData();
+        const currentFilePath = readInjectedCurrentFilePath();
+        const currentSignature = readRenderSignature();
+        const targetSatisfied = !renderWaitTargetFilePath || currentFilePath === renderWaitTargetFilePath;
+        const signatureChanged = !renderWaitPreviousSignature || currentSignature !== renderWaitPreviousSignature;
+        const readyToRebuild = renderWaitTargetFilePath ? targetSatisfied : signatureChanged;
+        if (hasData && targetSatisfied && readyToRebuild) {
+          clearRenderDataWait();
+          scheduleRebuild(0);
+          return;
+        }
+        if (Date.now() - renderWaitStartedAt < RENDER_WAIT_TIMEOUT_MS) {
+          scheduleRenderDataWait();
+          return;
+        }
+        const shouldCleanup = !hasData;
+        clearRenderDataWait();
+        if (shouldCleanup) {
+          cleanupFormalPreviewUi();
+        } else {
+          scheduleRebuild(0);
+        }
+      }, delay);
     }
     function readPages() {
       const dataDiv = document.getElementById("formal-pages-data");
@@ -1154,7 +1207,8 @@
     }
     function refreshDefinitionSelectionAction() {
       if (!hasFormalRenderData()) {
-        cleanupFormalPreviewUi();
+        removeDefinitionSelectionAction();
+        scheduleRenderDataWait();
         return;
       }
       if (refreshNavIfStale()) {
@@ -1194,7 +1248,10 @@
       showDefinitionSelectionAction(selectedText, results, rect, config);
     }
     function scheduleDefinitionSelectionAction() {
-      if (!hasFormalRenderData()) return;
+      if (!hasFormalRenderData()) {
+        scheduleRenderDataWait();
+        return;
+      }
       window.setTimeout(refreshDefinitionSelectionAction, 0);
     }
     function setImportantStyle(element, property, value) {
@@ -1269,6 +1326,7 @@
       return `#${NAV_HASH_PREFIX}${encodePayload(payload)}`;
     }
     function navigateToFile(filePath, payload = {}) {
+      const previousSignature = readRenderSignature();
       window.name = `${WINDOW_NAV_PREFIX}${encodePayload(payload)}`;
       const href = `${filePath}${makeNavHash(payload)}`;
       const anchor = document.createElement("a");
@@ -1277,6 +1335,7 @@
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
+      scheduleRenderDataWait({ targetFilePath: filePath, previousSignature, delay: RENDER_WAIT_INTERVAL_MS });
     }
     function applyIncomingNavigation() {
       const incomingKey = window.name.startsWith(WINDOW_NAV_PREFIX) ? window.name : getLocationNavHash();
@@ -1567,7 +1626,7 @@
     function rebuildNav() {
       clearScheduledRebuild();
       if (!hasFormalRenderData()) {
-        cleanupFormalPreviewUi();
+        scheduleRenderDataWait();
         return;
       }
       if (navRebuildInProgress) {
@@ -1621,7 +1680,7 @@
     }
     function scheduleRebuild(delay = 200) {
       if (!hasFormalRenderData()) {
-        cleanupFormalPreviewUi();
+        scheduleRenderDataWait();
         return;
       }
       if (formalWindow.__markdownFormalRebuildTimer !== void 0) return;
@@ -1629,7 +1688,7 @@
     }
     function refreshNavIfStale() {
       if (!hasFormalRenderData()) {
-        cleanupFormalPreviewUi();
+        scheduleRenderDataWait();
         return false;
       }
       const renderSignature = readRenderSignature();
@@ -1639,7 +1698,7 @@
     }
     function handleFormalClick(event) {
       if (!hasFormalRenderData()) {
-        cleanupFormalPreviewUi();
+        scheduleRenderDataWait();
         return;
       }
       const target = event.target;
@@ -1689,7 +1748,7 @@
     }
     function handleDefinitionContextMenu(event) {
       if (!hasFormalRenderData()) {
-        cleanupFormalPreviewUi();
+        scheduleRenderDataWait();
         return;
       }
       const target = event.target;
@@ -1746,7 +1805,7 @@
     }
     function installOnce() {
       if (!hasFormalRenderData()) {
-        cleanupFormalPreviewUi();
+        scheduleRenderDataWait();
         return;
       }
       if (formalWindow.__markdownFormalInstalled) {
