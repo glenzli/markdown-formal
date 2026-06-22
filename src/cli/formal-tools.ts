@@ -485,7 +485,7 @@ function rewriteInlineRefsOutsideCode(line, mapping) {
         if (part.startsWith('`') && part.endsWith('`')) return part;
         let updated = part;
         for (const [oldId, newId] of mapping) {
-            const re = new RegExp(`@${escapeRegExp(oldId)}(?=(?:\\.title)?\\b)`, 'g');
+            const re = new RegExp(`@${escapeRegExp(oldId)}(?=(?:\\.(?:title|full))?\\b)`, 'g');
             updated = updated.replace(re, `@${newId}`);
         }
         return updated;
@@ -1272,7 +1272,12 @@ function describeChapterReference(text, file, pages) {
     ));
 
     if (candidates.length === 1) {
-        return { status: 'resolved', target: candidates[0].filePath };
+        const target = candidates[0];
+        return {
+            status: 'resolved',
+            target: target.filePath,
+            ref: target.id ? `@${target.id}` : `@chapter:${target.filePath}`
+        };
     }
     return { status: candidates.length > 1 ? 'ambiguous' : 'unresolved' };
 }
@@ -1446,10 +1451,10 @@ function renderAuditReport(result) {
 
     if (result.chapterReferences.length > 0) {
         lines.push('## Chapter References Needing Page Refs', '');
-        lines.push('Use `@chapter:<formal-root-relative-path>` instead of handwritten chapter numbers.', '');
+        lines.push('Use a page hash such as `@h-...` when available; otherwise use compatibility `@chapter:<formal-root-relative-path>` instead of handwritten chapter numbers.', '');
         result.chapterReferences.forEach(item => {
-            const suffix = item.target
-                ? `; suggested @chapter:${item.target}`
+            const suffix = item.ref
+                ? `; suggested ${item.ref}`
                 : `; ${item.status}`;
             lines.push(`- ${item.file}:${item.line}: ${item.text}${suffix}`);
         });
@@ -1740,7 +1745,7 @@ Migrations are dry-run by default. Pass --apply to edit files.
 Agent workflow:
   1. Run prepare.
   2. Read .markdown-formal/agent-guide.md and .markdown-formal/reference-map.md.
-  3. Use tmp-* for new objects, then run finish on the edited file or directory.
+  3. Use tmp-* for new objects and page anchors, then run finish on the edited file or directory.
   4. For old numbered prose, migrate-text-refs <scope> updates target files plus incoming references by default.
   5. If you use finalize directly, run verify before treating generated or migrated content as complete.
 
@@ -1776,7 +1781,7 @@ Migrations are dry-run by default. Pass --apply to edit files.
 Agent workflow:
   1. Run prepare.
   2. Read .markdown-formal/agent-guide.md and .markdown-formal/reference-map.md.
-  3. Use tmp-* for new objects, then run finish on the edited file or directory.
+  3. Use tmp-* for new objects and page anchors, then run finish on the edited file or directory.
   4. For old numbered prose, migrate-text-refs <scope> updates target files plus incoming references by default.
   5. If you use finalize directly, run verify before treating generated or migrated content as complete.`);
 }

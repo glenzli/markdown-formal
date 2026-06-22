@@ -23,6 +23,7 @@ export interface LabelData {
 }
 
 export interface PageData {
+    id?: string;
     kind: string;
     filePath: string;
     title: string;
@@ -39,6 +40,8 @@ export interface PageData {
     unitOrder?: number;
     chapter?: number;
     appendix?: string;
+    line?: number;
+    level?: number;
 }
 
 export interface FormalIssue {
@@ -229,6 +232,14 @@ interface UnitFile {
     book: BookInfo;
     volume?: VolumeInfo;
     unit: NumberingUnit;
+    pageAnchor?: PageTitleHeading;
+}
+
+interface PageTitleHeading {
+    id?: string;
+    title: string;
+    line: number;
+    level: number;
 }
 
 export interface FormalMarker {
@@ -244,6 +255,7 @@ export const FORMAL_TYPES = ['prop', 'lemma', 'theorem', 'cor', 'def', 'remark',
 export const THEOREM_COUNTER_TYPES = new Set(['prop', 'lemma', 'theorem', 'cor']);
 export const RECALL_TYPES = new Set(['prop', 'lemma', 'theorem', 'cor', 'remark', 'example']);
 export const SECTION_TYPES = new Set(['section']);
+const PAGE_LABEL_TYPES = new Set(['chapter', 'intro', 'summary', 'appendix']);
 export const HASH_ID_RE = /^h-[a-f0-9]{16,32}$/;
 export const TMP_ID_RE = /^tmp-[A-Za-z0-9_-]+$/;
 const SYMBOL_PLACEHOLDER_RE = /\$\{([A-Za-z][A-Za-z0-9_]*)\}/g;
@@ -321,7 +333,8 @@ export const DEFAULT_CONFIG = {
         ignoreHover: []
     },
     debug: {
-        previewLog: false
+        previewLog: false,
+        markerTraceIds: []
     }
 };
 
@@ -375,7 +388,10 @@ export function mergeConfig(config: any): any {
         debug: {
             ...DEFAULT_CONFIG.debug,
             ...(existing.debug || {}),
-            previewLog: existing.debug?.previewLog === true
+            previewLog: existing.debug?.previewLog === true,
+            markerTraceIds: unique(Array.isArray(existing.debug?.markerTraceIds)
+                ? existing.debug.markerTraceIds.filter((item: unknown) => typeof item === 'string')
+                : [])
         }
     };
 }
@@ -981,7 +997,7 @@ function cleanMarkerTitle(title: string): string {
 }
 
 function unwrapLeadingStrong(text: string): string | undefined {
-    const strong = text.match(/^(\*\*|__)\s*([\s\S]+?)\s*\1(.*)$/);
+    const strong = text.match(/^(\*\*|__)\s*([\s\S]+?)\s*\1([\s\S]*)$/);
     if (!strong) return undefined;
     return `${strong[2].trim()}${strong[3] || ''}`.trim();
 }
@@ -1020,7 +1036,7 @@ function normalizeLeadingMarkerEmphasis(text: string): string {
 }
 
 export function parseFormalMarkerLine(line: string): FormalMarker | undefined {
-    const heading = line.match(/^(#{2,6})\s+#([A-Za-z0-9_-]+)\s+(.+?)\s*$/);
+    const heading = line.match(/^(#{1,6})\s+#([A-Za-z0-9_-]+)\s+(.+?)\s*$/);
     if (heading) {
         return {
             type: 'section',
@@ -1034,7 +1050,7 @@ export function parseFormalMarkerLine(line: string): FormalMarker | undefined {
 
     const text = normalizeLeadingMarkerEmphasis(line);
     const typePattern = '定理|引理|命题|推论|定义|注|例|公式|方程|图示|图|表格|表|Theorem|Thm\\.?|Lemma|Lem\\.?|Proposition|Prop\\.?|Corollary|Cor\\.?|Definition|Def\\.?|Remark|Rem\\.?|Example|Ex\\.?|Equation|Eq\\.?|Formula|Figure|Fig\\.?|Table|Tab\\.?';
-    const typed = text.match(new RegExp(`^(${typePattern})\\s*(.*)$`, 'i'));
+    const typed = text.match(new RegExp(`^(${typePattern})\\s*([\\s\\S]*)$`, 'i'));
     if (!typed) return undefined;
 
     const type = normalizeMarkerType(typed[1].replace(/\.$/, ''));
@@ -1053,7 +1069,7 @@ export function parseFormalMarkerLine(line: string): FormalMarker | undefined {
         };
     }
 
-    const match = text.match(new RegExp(`^(${typePattern})\\s+#([A-Za-z0-9_-]+)\\b\\s*(.*)$`, 'i'));
+    const match = text.match(new RegExp(`^(${typePattern})\\s+#([A-Za-z0-9_-]+)\\b\\s*([\\s\\S]*)$`, 'i'));
     if (!match) return undefined;
 
     const rest = match[3] || '';
@@ -1153,36 +1169,58 @@ function parseSpecialPageKind(basename: string): string | undefined {
     return undefined;
 }
 
-function getMarkdownTitle(content: string, fallback: string): string {
-    const headings: Array<{ level: number; title: string; formalMarker: boolean }> = [];
+function parseMarkdownHeadingLine(line: string): { level: number; id?: string; title: string } | undefined {
+    const match = line.match(/^[ \t]{0,3}(#{1,6})[ \t]+(.+?)\s*$/);
+    if (!match) return undefined;
+
+    let title = match[2].replace(/[ \t]+#+[ \t]*$/, '').trim();
+    if (!title) return undefined;
+
+    const idMatch = title.match(/^#([A-Za-z0-9_-]+)\b\s*(.*)$/);
+    if (idMatch) {
+        title = idMatch[2].trim();
+        if (!title) return undefined;
+        return {
+            level: match[1].length,
+            id: idMatch[1],
+            title
+        };
+    }
+
+    return {
+        level: match[1].length,
+        title
+    };
+}
+
+function getPageTitleHeading(content: string, fallback: string): PageTitleHeading {
+    const headings: PageTitleHeading[] = [];
     let inFence = false;
+    let lineNumber = 0;
 
     for (const line of String(content || '').split(/\r?\n/)) {
+        lineNumber++;
         if (/^\s*(```|~~~)/.test(line)) {
             inFence = !inFence;
             continue;
         }
         if (inFence) continue;
 
-        const match = line.match(/^[ \t]{0,3}(#{1,6})[ \t]+(.+?)\s*$/);
-        if (!match) continue;
-
-        const title = match[2].replace(/[ \t]+#+[ \t]*$/, '').trim();
-        if (!title) continue;
-
-        headings.push({
-            level: match[1].length,
-            title,
-            formalMarker: /^#[A-Za-z0-9_-]+\b/.test(title)
-        });
+        const heading = parseMarkdownHeadingLine(line);
+        if (!heading) continue;
+        headings.push({ ...heading, line: lineNumber });
     }
 
-    if (headings.length === 0) return fallback;
+    if (headings.length === 0) {
+        return { title: fallback, line: 1, level: 1 };
+    }
 
     const topLevel = Math.min(...headings.map(heading => heading.level));
     const topHeadings = headings.filter(heading => heading.level === topLevel);
-    if (topHeadings.length !== 1 || topHeadings[0].formalMarker) return fallback;
-    return topHeadings[0].title;
+    if (topHeadings.length !== 1) {
+        return { title: fallback, line: 1, level: topLevel };
+    }
+    return topHeadings[0];
 }
 
 function fallbackPageTitle(filePath: string): string {
@@ -1437,6 +1475,30 @@ function makeDefinitionLabelData(marker: FormalMarker, document: FormalDocument,
     return label;
 }
 
+function makePageLabelData(page: PageData): LabelData {
+    const label: LabelData = {
+        type: page.kind,
+        title: page.title,
+        filePath: page.filePath,
+        bookKey: page.bookKey,
+        bookTitle: page.bookTitle,
+        bookOrder: page.bookOrder,
+        volumeKey: page.volumeKey,
+        volumeTitle: page.volumeTitle,
+        volumeOrder: page.volumeOrder,
+        unitKind: page.unitKind,
+        unitKey: page.unitKey,
+        unitLabel: page.unitLabel,
+        unitOrder: page.unitOrder,
+        chapter: page.chapter,
+        appendix: page.appendix,
+        startLine: page.line !== undefined ? page.line - 1 : undefined,
+        endLine: page.line !== undefined ? page.line - 1 : undefined
+    };
+
+    return label;
+}
+
 function previousNonBlankLineIndex(lines: string[], startIndex: number): number {
     for (let i = startIndex; i >= 0; i--) {
         if (lines[i].trim()) return i;
@@ -1544,17 +1606,23 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
         const volume = inferVolumeInfo(filePath, config);
         const unit = parseNumberingUnit(basename);
         const specialKind = parseSpecialPageKind(basename);
+        const pageAnchor = unit || specialKind
+            ? getPageTitleHeading(content, fallbackPageTitle(filePath))
+            : undefined;
 
         if (unit || specialKind) {
             const kind = unit ? unit.kind : specialKind as string;
             const page: PageData = {
+                id: pageAnchor?.id,
                 kind,
                 filePath,
-                title: getMarkdownTitle(content, fallbackPageTitle(filePath)),
+                title: pageAnchor?.title || fallbackPageTitle(filePath),
                 order: getPageOrder(kind, unit),
                 bookKey: book.key,
                 bookTitle: book.title,
-                bookOrder: book.order
+                bookOrder: book.order,
+                line: pageAnchor?.line,
+                level: pageAnchor?.level
             };
             if (volume) {
                 page.volumeKey = volume.key;
@@ -1570,10 +1638,24 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
                 if (unit.appendix !== undefined) page.appendix = unit.appendix;
             }
             pages.push(page);
+
+            if (page.id) {
+                const label = makePageLabelData(page);
+                labels[page.id] = label;
+                definitions.push({
+                    id: page.id,
+                    type: page.kind,
+                    title: page.title,
+                    file: filePath,
+                    line: page.line || 1,
+                    label
+                });
+            }
         }
 
         collectReferences(content, filePath, references, pageReferences);
-        const markerStarts = collectMarkerStarts(content, filePath);
+        const markerStarts = collectMarkerStarts(content, filePath)
+            .filter(marker => !isPageAnchorMarker(marker, pageAnchor));
         if (markerStarts.some(marker => marker.type !== 'def') && !unit) {
             issues.push({
                 severity: 'warn',
@@ -1610,7 +1692,7 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
         const volumeKey = volume?.key || '__root__';
         const scopeKey = unit.kind === 'appendix' ? `${book.key}:${volumeKey}:${unit.key}` : `${book.key}:${unit.key}`;
         if (!unitFiles.has(scopeKey)) unitFiles.set(scopeKey, []);
-        unitFiles.get(scopeKey)!.push({ filePath, content, book, volume, unit });
+        unitFiles.get(scopeKey)!.push({ filePath, content, book, volume, unit, pageAnchor });
     }
 
     for (const groupFiles of unitFiles.values()) {
@@ -1635,6 +1717,7 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
                 if (inFence) continue;
                 const marker = parseFormalMarkerLine(line);
                 if (!marker) continue;
+                if (isPageAnchorMarker({ ...marker, line: lineIndex + 1 }, unitFile.pageAnchor)) continue;
                 if (marker.type === 'def') continue;
                 issues.push(...lintStructuredNumberedMarker(marker, lines, lineIndex, unitFile.filePath));
 
@@ -1713,6 +1796,15 @@ function collectMarkerStarts(content: string, filePath: string): any[] {
     return starts;
 }
 
+function isPageAnchorMarker(marker: any, pageAnchor?: PageTitleHeading): boolean {
+    return Boolean(
+        pageAnchor?.id
+        && marker?.id === pageAnchor.id
+        && marker?.line === pageAnchor.line
+        && marker?.type === 'section'
+    );
+}
+
 function collectReferences(content: string, filePath: string, references: FormalReference[], pageReferences: FormalPageReference[]): void {
     const stripped = stripIgnoredMarkdown(content);
     const lineStarts = [0];
@@ -1735,7 +1827,7 @@ function collectReferences(content: string, filePath: string, references: Formal
         });
     }
 
-    const refRe = /(^|[^A-Za-z0-9_])@([A-Za-z0-9_-]+)(?:\.title)?\b(?!:)/g;
+    const refRe = /(^|[^A-Za-z0-9_])@([A-Za-z0-9_-]+)(?:\.(?:title|full))?\b(?!:)/g;
     let match;
     while ((match = refRe.exec(stripped))) {
         const offset = match.index + match[1].length;
@@ -1983,7 +2075,7 @@ function compareDefinitionRecords(a: FormalDefinition, b: FormalDefinition): num
 }
 
 export function formatLabelNumber(label: LabelData): string {
-    if (label.type === 'remark') return '';
+    if (label.type === 'remark' || PAGE_LABEL_TYPES.has(label.type)) return '';
     const prefix = label.unitLabel || (label.chapter !== undefined ? String(label.chapter) : label.appendix || '');
     return prefix && label.number !== undefined ? `${prefix}.${label.number}` : '';
 }
@@ -2018,12 +2110,13 @@ export function renderReferenceMap(definitions: FormalDefinition[], config: any,
 
     if (pages.length > 0) {
         lines.push('## Pages', '');
-        lines.push('| Display | Ref | Title | Location |');
-        lines.push('| --- | --- | --- | --- |');
+        lines.push('| Display | Ref | Path Ref | Title | Location |');
+        lines.push('| --- | --- | --- | --- | --- |');
         for (const page of [...pages].sort(comparePages)) {
             const prefix = page.kind === 'chapter' ? 'chapter' : 'page';
-            const ref = `@${prefix}:${page.filePath}`;
-            lines.push(`| ${escapeTable(formatPageReference(page, config))} | \`${ref}\` | ${escapeTable(page.title || '')} | \`${page.filePath}\` |`);
+            const pathRef = `@${prefix}:${page.filePath}`;
+            const ref = page.id ? `@${page.id}` : pathRef;
+            lines.push(`| ${escapeTable(formatPageReference(page, config))} | \`${ref}\` | \`${pathRef}\` | ${escapeTable(page.title || '')} | \`${page.filePath}\` |`);
         }
         lines.push('');
     }
@@ -2808,9 +2901,9 @@ export function renderAgentGuide(state: any): string {
         '## Normal Writing',
         '',
         '1. Read the target Markdown file.',
-        '2. Read `.markdown-formal/reference-map.md` to map display numbers, unnumbered anchors, and page paths to stable references.',
-        '3. Put stable IDs directly where numbers used to appear: `## #tmp-1 Section`, `定理 #tmp-2（Title）：...`, `公式 #tmp-3：`, `图 #tmp-4（Caption）：...`, or `表 #tmp-5（Caption）：`. Definitions are not numbered objects and never get hash IDs or refs.',
-        '4. Reference numbered objects with `@h-...`; reference chapters with `@chapter:path/to/file.md`; never handwrite display numbers as references. `#h-...` / `#tmp-*` is declaration syntax only; do not write `命题 #h-...` or `Theorem #h-...` in prose references.',
+        '2. Read `.markdown-formal/reference-map.md` to map display numbers, unnumbered anchors, and page anchors to stable references.',
+        '3. Put stable IDs directly where numbers used to appear: `## #tmp-1 Section`, `定理 #tmp-2（Title）：...`, `公式 #tmp-3：`, `图 #tmp-4（Caption）：...`, or `表 #tmp-5（Caption）：`. If a chapter/page itself needs stable references, put `#tmp-*` on its unique highest-level heading, such as `# #tmp-ch Chapter Title`. Definitions are not numbered objects and never get hash IDs or refs.',
+        '4. Reference numbered objects and chapter/page anchors with `@h-...`, `@h-....title`, or `@h-....full`; never handwrite display numbers as references. `#h-...` / `#tmp-*` is declaration syntax only; do not write `命题 #h-...` or `Theorem #h-...` in prose references.',
         '5. Keep Markdown and LaTeX unescaped.',
         '6. Run `npm run formal -- finish <file-or-dir>` after editing; it finalizes temporary IDs and verifies the workspace.',
         '7. Run `npm run formal -- audit <file-or-dir>` when you want an advisory cleanup list for old prose refs, bare number candidates, optional examples, and proof-boundary hints.',
@@ -2822,17 +2915,18 @@ export function renderAgentGuide(state: any): string {
         '- Sections: `## #h-... Title` renders as the current section number plus title, and links jump to the section without hover recall.',
         '- Numbered objects: `命题 #h-...（Title）：...`, `引理 #h-...`, `定理 #h-...`, `推论 #h-...` share the theorem counter per chapter or appendix.',
         '- Equations, figures, and tables: `公式 #h-...：` binds the next display formula as a numbered equation, `图 #h-...（Title）：...` captions a nearby image, and `表 #h-...（Title）：` captions the following table. They have separate counters per chapter or appendix; equations render as `(1.1)`, appendices as `(A.1)`.',
-        '- Chapter/page refs: use `@chapter:book1/02-main.md`, `@chapter:book1/02-main.md.title`, or `@chapter:book1/02-main.md.full`; paths are relative to the formal root that owns `.markdown-formal/`. `@page:path.md` is for intro, summary, and appendix pages. `finish` normalizes `./` and `../` input sugar to root-relative paths.',
+        '- Chapter/page anchors: put `#h-...` / `#tmp-*` on the file\'s unique highest-level heading when the page needs stable refs. The hash is hidden in preview and does not create a section number. Use `@h-...`, `@h-....title`, or `@h-....full` from `reference-map.md` to reference the page.',
+        '- Compatibility chapter/page refs: `@chapter:book1/02-main.md`, `@chapter:book1/02-main.md.title`, or `@chapter:book1/02-main.md.full` still work; paths are relative to the formal root that owns `.markdown-formal/`. `@page:path.md` is for intro, summary, and appendix pages. Prefer page hashes when available. `finish` normalizes `./` and `../` input sugar to root-relative paths.',
         '- Theorem-like recall captures the statement before `证明` / `Proof`; keep proofs after an explicit proof marker.',
         '- Dependency graph: `.markdown-formal/dependency-graph.json` is the canonical explicit theorem-like dependency graph. It uses only `@h-...` references between propositions/lemmas/theorems/corollaries and marks edges as `statement`, `proof`, or `body`; `.markdown-formal/dependency-report.md` is the review view. Use `npm run formal -- graph summary`, `graph impact <h-id>`, `graph upstream <h-id>`, `graph focus <h-id> --depth 2`, `graph bridges`, `graph isolated`, `graph cycles`, or `graph matrix chapter|volume|book` for Markdown analysis. Add `--where statement|proof|body` to filter edge placement. These are structural graph tools, not domain interpretation.',
-        '- Definitions: lookup is a tool-first, AI-exception workflow. The tool scans standard `定义（Term）：...` / `Definition (Term): ...` definitions with structural range heuristics. When editing a file, AI only updates `.markdown-formal/definitions.json` for nonstandard phrases, aliases/bilingual lookup, stable multi-paragraph previews, or boundaries the heuristic may get wrong; include Markdown `content` for those entries.',
+        '- Definitions: lookup is a tool-first, AI-exception workflow. The tool scans standard `定义（Term）：...` / `Definition (Term): ...` definitions with structural range heuristics. When editing a file, AI only updates `.markdown-formal/definitions.json` for nonstandard phrases, aliases/bilingual lookup, stable multi-paragraph previews, or boundaries the heuristic may get wrong; include Markdown `content` for those entries. Full rendered lookup previews are only guaranteed for definitions in the currently previewed file; cross-file search is primarily for locating and jumping.',
         '- Explanatory remarks stay plain: `注（Title）：...` / `Remark (Title): ...`, without hash. Non-mainline fact remarks that need a proof or later citation use `注 #tmp-*（Title）：...`; `> 注 #tmp-*（Title）：...` is also recognized inside standard blockquotes. The hash is only an anchor, renders without a remark number, and still supports recall. Examples stay plain by default; only explicitly cited examples use `例 #tmp-*` / `Example #tmp-*` and remain numbered.',
         '- Symbols: maintain only project-specific `source`, `pattern`, and `meaning` entries in `.markdown-formal/symbols.json`; patterns describe the notation itself with balanced delimiters, not whole equations or open-ended formula fragments. The navigation symbol table lists symbols matched in the current preview file. Symbols are not inline formula refs and are not searched through the definition search box.',
         '- Appendices use the appendix file prefix, so markers in `appendix-a-*.md` render as `A.1`, `A.2`, etc. `00-introduction.md`, `intro.md`, and `introduction.md` are intro pages, not chapter 0.',
         '',
         '## Generated Files',
         '',
-        '- `.markdown-formal/reference-map.md`: compact display-number and unnumbered-anchor to hash-ID table.',
+        '- `.markdown-formal/reference-map.md`: compact display-number, page-anchor, and unnumbered-anchor to hash-ID table.',
         '- `.markdown-formal/preview-cache.json`: runtime preview/navigation/definition/symbol table cache.',
         '- `.markdown-formal/dependency-graph.json`: canonical theorem-like dependency graph from explicit `@h-...` references.',
         '- `.markdown-formal/dependency-report.md`: human/AI dependency graph review report.',
@@ -2845,7 +2939,7 @@ export function renderAgentGuide(state: any): string {
         '## Migration',
         '',
         '- Use `npm run formal -- migrate-text-refs <file-or-dir>` before applying old numbered prose migration; migration commands are dry-run by default.',
-        '- `migrate-text-refs` rewrites typed old references such as `定理 2.1`, `命题2.2`, `Theorem 2.1`, `公式 (2.1)`, `Figure 2.1`, `表 2.1`, `§2.1`, or `第 2.1 节`. It intentionally does not rewrite bare `2.1`, bare `(2.1)`, or handwritten chapter refs such as `第 2 章`; decide those by reading context and convert chapter refs to `@chapter:path.md`. Matching is bounded so `2.1` is not replaced inside `2.12`, `2.1.3`, or `22.1`.',
+        '- `migrate-text-refs` rewrites typed old references such as `定理 2.1`, `命题2.2`, `Theorem 2.1`, `公式 (2.1)`, `Figure 2.1`, `表 2.1`, `§2.1`, or `第 2.1 节`. It intentionally does not rewrite bare `2.1`, bare `(2.1)`, or handwritten chapter refs such as `第 2 章`; decide those by reading context and convert chapter refs to page hashes `@h-...` when available, otherwise to compatibility `@chapter:path.md`. Matching is bounded so `2.1` is not replaced inside `2.12`, `2.1.3`, or `22.1`.',
         '- Scoped migrations update target files plus incoming references by default. Use `--target-only` only when intentionally restricting rewrites to the target files.',
         ''
     ];

@@ -37,6 +37,7 @@ interface LabelData {
 }
 
 interface PageData {
+    id?: string;
     kind: string;
     filePath: string;
     title: string;
@@ -53,6 +54,8 @@ interface PageData {
     unitOrder?: number;
     chapter?: number;
     appendix?: string;
+    line?: number;
+    level?: number;
 }
 
 interface FormulaData {
@@ -60,10 +63,33 @@ interface FormulaData {
     display: boolean;
 }
 
+interface SymbolFormulaMatch {
+    index: number;
+    formulaIndex: number;
+}
+
+type FormalInlineMode = 'default' | 'title' | 'full';
+
+interface CompiledSymbolMatcher {
+    index: number;
+    symbol: RuntimeSymbolData;
+    regex?: RegExp;
+    pattern: string;
+    display: string;
+}
+
 interface TooltipRenderStats {
     refCount: number;
     referencedIdCount: number;
     contentChars: number;
+}
+
+interface TooltipRuntimeStats {
+    generatedCount: number;
+    cacheHits: number;
+    renderMs: number;
+    contentChars: number;
+    htmlChars: number;
 }
 
 function uniqueValues(values: string[]): string[] {
@@ -132,18 +158,18 @@ function definitionTargetId(index: number): string {
 }
 
 function referencedFormalIds(src: string): string[] {
-    return uniqueValues(Array.from(src.matchAll(/@([a-zA-Z0-9_-]+)(?:\.title)?\b(?!:)/g), match => match[1]));
+    return uniqueValues(Array.from(src.matchAll(/@([a-zA-Z0-9_-]+)(?:\.(?:title|full))?\b(?!:)/g), match => match[1]));
 }
 
 function countFormalRefs(src: string): number {
-    return Array.from(src.matchAll(/@([a-zA-Z0-9_-]+)(?:\.title)?\b(?!:)/g)).length;
+    return Array.from(src.matchAll(/@([a-zA-Z0-9_-]+)(?:\.(?:title|full))?\b(?!:)/g)).length;
 }
 
 function tooltipRenderStats(src: string, labels: Record<string, LabelData>): TooltipRenderStats {
     const refCount = countFormalRefs(src);
     const contentChars = referencedFormalIds(src).reduce((sum, id) => {
         const label = labels[id];
-        if (!label || label.type === 'section') return sum;
+        if (!label || label.type === 'section' || isPageLabelData(label)) return sum;
         return sum + String(label.content || '').length;
     }, 0);
     return {
@@ -151,6 +177,17 @@ function tooltipRenderStats(src: string, labels: Record<string, LabelData>): Too
         referencedIdCount: referencedFormalIds(src).length,
         contentChars
     };
+}
+
+function getRuntimeTooltipStats(env: any): TooltipRuntimeStats {
+    env.formalTooltipStats = env.formalTooltipStats || {
+        generatedCount: 0,
+        cacheHits: 0,
+        renderMs: 0,
+        contentChars: 0,
+        htmlChars: 0
+    };
+    return env.formalTooltipStats;
 }
 
 function hasFormalPreviewConfig(rootPath: string): boolean {
@@ -234,9 +271,35 @@ function getNumberPrefix(labelData: LabelData): string {
 }
 
 function formatLabelNumber(labelData: LabelData): string {
-    if (labelData.type === 'remark') return '';
+    if (labelData.type === 'remark' || ['chapter', 'intro', 'summary', 'appendix'].includes(labelData.type)) return '';
     const prefix = getNumberPrefix(labelData);
     return prefix && labelData.number !== undefined ? `${prefix}.${labelData.number}` : '';
+}
+
+function isPageLabelData(labelData: LabelData | undefined): boolean {
+    return !!labelData && ['chapter', 'intro', 'summary', 'appendix'].includes(labelData.type);
+}
+
+function pageDataFromLabel(labelData: LabelData): PageData {
+    return {
+        kind: labelData.type,
+        filePath: labelData.filePath,
+        title: labelData.title,
+        order: typeof labelData.unitOrder === 'number' ? labelData.unitOrder : 0,
+        bookKey: labelData.bookKey,
+        bookTitle: labelData.bookTitle,
+        bookOrder: labelData.bookOrder,
+        volumeKey: labelData.volumeKey,
+        volumeTitle: labelData.volumeTitle,
+        volumeOrder: labelData.volumeOrder,
+        unitKind: labelData.unitKind,
+        unitKey: labelData.unitKey,
+        unitLabel: labelData.unitLabel,
+        unitOrder: labelData.unitOrder,
+        chapter: labelData.chapter,
+        appendix: labelData.appendix,
+        line: labelData.startLine !== undefined ? labelData.startLine + 1 : undefined
+    };
 }
 
 function setAttr(token: any, name: string, value: string) {
@@ -296,6 +359,14 @@ function textChildrenInOrder(inlineToken: any): any[] {
     return result;
 }
 
+function inlineChildrenSnapshot(inlineToken: any): Array<{ type: string; tag?: string; content?: string }> {
+    return (inlineToken.children || []).map((child: any) => ({
+        type: String(child?.type || ''),
+        tag: child?.tag ? String(child.tag) : undefined,
+        content: child?.content === undefined ? undefined : String(child.content)
+    }));
+}
+
 function replaceMarkerPrefix(inlineToken: any, marker: any, replacementText: string): boolean {
     if (replaceFirstTextChild(inlineToken, marker.markerText, replacementText)) return true;
     if (!marker.id) return false;
@@ -315,6 +386,17 @@ function replaceMarkerPrefix(inlineToken: any, marker: any, replacementText: str
     child.content = `${replacementText}${content.slice(offset + markerId.length)}`;
     inlineToken.content = String(inlineToken.content || '').replace(marker.markerText, replacementText);
     return true;
+}
+
+function trimLeadingInlineText(inlineToken: any): void {
+    inlineToken.content = String(inlineToken.content || '').replace(/^\s+/, '');
+    const children = textChildrenInOrder(inlineToken);
+    for (const child of children) {
+        const original = String(child.content || '');
+        const trimmed = original.replace(/^\s+/, '');
+        child.content = trimmed;
+        if (trimmed.length > 0 || original.length === trimmed.length) break;
+    }
 }
 
 interface MarkerApplyResult {
@@ -337,6 +419,10 @@ function usesSpacedDisplayNumber(typeName: string, type: string): boolean {
 }
 
 function renderedMarkerPrefix(marker: any, labelData: LabelData, config: any): string {
+    if (isPageLabelData(labelData)) {
+        return '';
+    }
+
     if (marker.type === 'section') {
         return formatLabelNumber(labelData);
     }
@@ -380,8 +466,23 @@ function clientDefinitions(definitions: RuntimeDefinitionData[], currentFilePath
     });
 }
 
-function renderDefinitionTemplates(md: any, definitions: RuntimeDefinitionData[], env: any): string {
+function definitionTemplateIndexesForFile(definitions: RuntimeDefinitionData[], currentFilePath: string): Set<number> {
+    const normalizedCurrent = normalizePreviewFilePath(currentFilePath);
+    const indexes = new Set<number>();
+    if (!normalizedCurrent) return indexes;
+
+    definitions.forEach((definition, index) => {
+        if (normalizePreviewFilePath(definition.filePath) === normalizedCurrent) {
+            indexes.add(index);
+        }
+    });
+
+    return indexes;
+}
+
+function renderDefinitionTemplates(md: any, definitions: RuntimeDefinitionData[], env: any, includeIndexes?: Set<number>): string {
     return definitions.map((def, index) => ({ def, index }))
+        .filter(({ index }) => !includeIndexes || includeIndexes.has(index))
         .map(({ def, index }) => {
             const renderedContent = def.content
                 ? md.render(def.content, {
@@ -432,31 +533,48 @@ function makeUnanchoredSymbolRegex(symbol: RuntimeSymbolData): RegExp | undefine
     }
 }
 
-function symbolMatchesFormula(symbol: RuntimeSymbolData, formula: FormulaData): boolean {
-    const latex = normalizeLatexSymbolForMatch(formula.latex);
-    if (!latex) return false;
-
-    const regex = makeUnanchoredSymbolRegex(symbol);
-    if (regex && regex.test(latex)) return true;
-
-    const pattern = normalizeLatexSymbolForMatch(symbol.pattern);
-    if (pattern && !pattern.includes('${') && latex.includes(pattern)) return true;
-
-    const display = normalizeLatexSymbolForMatch(symbol.display);
-    return Boolean(display && latex.includes(display));
+function compileSymbolMatcher(symbol: RuntimeSymbolData, index: number): CompiledSymbolMatcher {
+    return {
+        index,
+        symbol,
+        regex: makeUnanchoredSymbolRegex(symbol),
+        pattern: normalizeLatexSymbolForMatch(symbol.pattern),
+        display: normalizeLatexSymbolForMatch(symbol.display)
+    };
 }
 
-function symbolTemplateIndexesForFormulas(symbols: RuntimeSymbolData[], formulas: FormulaData[]): Set<number> {
-    const indexes = new Set<number>();
-    if (formulas.length === 0) return indexes;
+function symbolMatcherMatchesLatex(matcher: CompiledSymbolMatcher, latex: string): boolean {
+    if (!latex) return false;
+    if (matcher.regex && matcher.regex.test(latex)) return true;
+    if (matcher.pattern && !matcher.pattern.includes('${') && latex.includes(matcher.pattern)) return true;
+    return Boolean(matcher.display && latex.includes(matcher.display));
+}
 
-    symbols.forEach((symbol, index) => {
-        if (formulas.some(formula => symbolMatchesFormula(symbol, formula))) {
-            indexes.add(index);
-        }
-    });
+function symbolTemplateIndexesForFormulas(symbols: RuntimeSymbolData[], formulas: FormulaData[]): number[] {
+    const normalizedFormulas = formulas
+        .map(formula => normalizeLatexSymbolForMatch(formula.latex))
+        .filter(Boolean);
+    if (normalizedFormulas.length === 0) return [];
 
-    return indexes;
+    const matches: SymbolFormulaMatch[] = [];
+    symbols.map((symbol, index) => compileSymbolMatcher(symbol, index))
+        .forEach(matcher => {
+            const formulaIndex = normalizedFormulas.findIndex(latex => symbolMatcherMatchesLatex(matcher, latex));
+            if (formulaIndex >= 0) {
+                matches.push({ index: matcher.index, formulaIndex });
+            }
+        });
+
+    return matches
+        .sort((a, b) => {
+            if (a.formulaIndex !== b.formulaIndex) return a.formulaIndex - b.formulaIndex;
+            const aSymbol = symbols[a.index];
+            const bSymbol = symbols[b.index];
+            const location = `${aSymbol?.sourceFilePath || ''}:${aSymbol?.sourceLine || 0}`
+                .localeCompare(`${bSymbol?.sourceFilePath || ''}:${bSymbol?.sourceLine || 0}`);
+            return location || String(aSymbol?.pattern || '').localeCompare(String(bSymbol?.pattern || ''));
+        })
+        .map(match => match.index);
 }
 
 function isEscaped(src: string, index: number): boolean {
@@ -549,7 +667,7 @@ function applyLightweightMarker(tokens: any[], inlineIndex: number, labels: Reco
     const openToken = tokens[inlineIndex - 1];
     if (!inlineToken || !openToken) return emptyMarkerResult();
 
-    const isHeading = /^h[2-6]$/.test(openToken.tag || '');
+    const isHeading = /^h[1-6]$/.test(openToken.tag || '');
     const line = isHeading
         ? `${'#'.repeat(Number(openToken.tag.slice(1)))} ${inlineToken.content || ''}`
         : String(inlineToken.content || '');
@@ -583,6 +701,9 @@ function applyLightweightMarker(tokens: any[], inlineIndex: number, labels: Reco
     const replacementText = replacement ? replacement : '';
 
     const replaced = replaceMarkerPrefix(inlineToken, marker, replacementText);
+    if (isPageLabelData(labelData)) {
+        trimLeadingInlineText(inlineToken);
+    }
     setAttr(openToken, 'id', `formal-${marker.id}`);
     setAttr(openToken, 'dir', 'auto');
     setAttr(openToken, 'data-formal-title', labelData.title || marker.title || '');
@@ -590,7 +711,9 @@ function applyLightweightMarker(tokens: any[], inlineIndex: number, labels: Reco
     setAttr(openToken, 'data-formal-display', replacementText);
     if (openToken.map) setAttr(openToken, 'data-line', String(openToken.map[0]));
 
-    if (marker.type === 'section') {
+    if (isPageLabelData(labelData)) {
+        addTokenClass(openToken, 'formal-page-anchor');
+    } else if (marker.type === 'section') {
         addTokenClass(openToken, 'formal-section');
     } else {
         addTokenClass(openToken, `formal-block formal-${escapeHtml(marker.type)}`);
@@ -834,6 +957,7 @@ export = function formalPlugin(md: any, options: any) {
                 state.env.definitions = cachedDefinitions;
                 state.env.symbols = cachedSymbols;
                 state.env.formalCurrentFilePath = currentFilePath;
+                state.env.ignoreFormalTooltips = !shouldEagerRenderTooltips(currentFilePath, cachedConfig);
                 enableFormalPreview(state.env);
                 appendPreviewDebugLog(rootPath, cachedConfig, 'render:cache-loaded', {
                     filePath: currentFilePath || '(unknown)',
@@ -843,6 +967,7 @@ export = function formalPlugin(md: any, options: any) {
                     pages: cachedPages.length,
                     definitions: cachedDefinitions.length,
                     symbols: cachedSymbols.length,
+                    hoverIgnored: state.env.ignoreFormalTooltips,
                     elapsedMs: elapsedMs(readStartedAt)
                 });
             } else {
@@ -893,21 +1018,30 @@ export = function formalPlugin(md: any, options: any) {
                 tokenCount: Array.isArray(state.tokens) ? state.tokens.length : undefined
             });
 
+            const dataStartedAt = Date.now();
             const token = new state.Token('html_block', '', 0);
             const clientLabelData = clientLabels(cachedLabels || {});
             const clientDefinitionData = clientDefinitions(cachedDefinitions || [], rawCurrentFilePath);
+            const formulasStartedAt = Date.now();
             const formulas = extractLatexFormulas(state.src || '');
+            const formulasElapsedMs = elapsedMs(formulasStartedAt);
+            const symbolMatchStartedAt = Date.now();
             const currentSymbolTemplateIndexes = symbolTemplateIndexesForFormulas(cachedSymbols || [], formulas);
+            const currentSymbolTemplateIndexSet = new Set(currentSymbolTemplateIndexes);
+            const symbolMatchElapsedMs = elapsedMs(symbolMatchStartedAt);
+            const serializeStartedAt = Date.now();
             const dataStr = escapeHtml(JSON.stringify(clientLabelData));
             const pagesStr = escapeHtml(JSON.stringify(cachedPages || []));
             const definitionsStr = escapeHtml(JSON.stringify(clientDefinitionData));
             const symbolsStr = escapeHtml(JSON.stringify(cachedSymbols || []));
-            const formulasStr = escapeHtml(JSON.stringify(formulas));
+            const currentSymbolIndexesStr = escapeHtml(JSON.stringify(currentSymbolTemplateIndexes));
             const configStr = escapeHtml(JSON.stringify(cachedConfig || mergeConfig(DEFAULT_CONFIG)));
+            const serializeElapsedMs = elapsedMs(serializeStartedAt);
             const currentFilePath = escapeHtml(rawCurrentFilePath);
             const source = String(state.src || '');
             const renderSignature = escapeHtml(`${source.length}:${cheapHash(source)}`);
             const tooltipStats = tooltipRenderStats(state.src || '', cachedLabels || {});
+            const runtimeTooltipStats = getRuntimeTooltipStats(state.env);
             const hoverIgnoredByConfig = shouldIgnorePreviewHover(rawCurrentFilePath, cachedConfig);
             state.env.ignoreFormalTooltips = !shouldEagerRenderTooltips(rawCurrentFilePath, cachedConfig);
             const ignoreReason = hoverIgnoredByConfig ? 'config' : 'none';
@@ -922,8 +1056,17 @@ export = function formalPlugin(md: any, options: any) {
                 clientDefinitionsChars: objectChars(clientDefinitionData),
                 symbolsChars: objectChars(cachedSymbols || []),
                 formulasChars: objectChars(formulas),
+                currentSymbolIndexesChars: objectChars(currentSymbolTemplateIndexes),
                 hoverIgnored: state.env.ignoreFormalTooltips,
                 ignoreReason,
+                formulasElapsedMs,
+                symbolMatchElapsedMs,
+                serializeElapsedMs,
+                elapsedMs: elapsedMs(dataStartedAt),
+                tooltipGeneratedCount: runtimeTooltipStats.generatedCount,
+                tooltipCacheHits: runtimeTooltipStats.cacheHits,
+                tooltipRenderMs: runtimeTooltipStats.renderMs,
+                tooltipHtmlChars: runtimeTooltipStats.htmlChars,
                 ...tooltipStats
             });
             if (state.env.ignoreFormalTooltips) {
@@ -935,17 +1078,19 @@ export = function formalPlugin(md: any, options: any) {
             }
 
             const templatesStartedAt = Date.now();
-            const definitionTemplates = renderDefinitionTemplates(md, cachedDefinitions || [], state.env || {});
-            const symbolTemplates = renderSymbolTemplates(md, cachedSymbols || [], state.env || {}, currentSymbolTemplateIndexes);
+            const currentDefinitionTemplateIndexes = definitionTemplateIndexesForFile(cachedDefinitions || [], rawCurrentFilePath);
+            const definitionTemplates = renderDefinitionTemplates(md, cachedDefinitions || [], state.env || {}, currentDefinitionTemplateIndexes);
+            const symbolTemplates = renderSymbolTemplates(md, cachedSymbols || [], state.env || {}, currentSymbolTemplateIndexSet);
             appendPreviewDebugLog(rootPath, cachedConfig, 'render:inject:templates', {
                 filePath: rawCurrentFilePath || '(unknown)',
                 definitionTemplateChars: definitionTemplates.length,
+                definitionTemplateCount: currentDefinitionTemplateIndexes.size,
                 symbolTemplateChars: symbolTemplates.length,
-                symbolTemplateCount: currentSymbolTemplateIndexes.size,
+                symbolTemplateCount: currentSymbolTemplateIndexes.length,
                 elapsedMs: elapsedMs(templatesStartedAt)
             });
 
-            token.content = `<div id="formal-render-data" style="display:none;" data-render-signature="${renderSignature}"></div>\n<div id="formal-labels-data" style="display:none;" data-labels="${dataStr}"></div>\n<div id="formal-pages-data" style="display:none;" data-pages="${pagesStr}" data-current-file="${currentFilePath}"></div>\n<div id="formal-definitions-data" style="display:none;" data-definitions="${definitionsStr}"></div>\n<div id="formal-symbols-data" style="display:none;" data-symbols="${symbolsStr}"></div>\n<div id="formal-formulas-data" style="display:none;" data-formulas="${formulasStr}"></div>\n<div id="formal-definition-templates" style="display:none;">${definitionTemplates}</div>\n<div id="formal-symbol-templates" style="display:none;">${symbolTemplates}</div>\n<div id="formal-config-data" style="display:none;" data-config="${configStr}"></div>\n`;
+            token.content = `<div id="formal-render-data" style="display:none;" data-render-signature="${renderSignature}"></div>\n<div id="formal-labels-data" style="display:none;" data-labels="${dataStr}"></div>\n<div id="formal-pages-data" style="display:none;" data-pages="${pagesStr}" data-current-file="${currentFilePath}"></div>\n<div id="formal-definitions-data" style="display:none;" data-definitions="${definitionsStr}"></div>\n<div id="formal-symbols-data" style="display:none;" data-symbols="${symbolsStr}" data-current-symbol-indexes="${currentSymbolIndexesStr}"></div>\n<div id="formal-definition-templates" style="display:none;">${definitionTemplates}</div>\n<div id="formal-symbol-templates" style="display:none;">${symbolTemplates}</div>\n<div id="formal-config-data" style="display:none;" data-config="${configStr}"></div>\n`;
             state.tokens.push(token);
             appendPreviewDebugLog(rootPath, cachedConfig, 'render:inject:end', {
                 filePath: rawCurrentFilePath || '(unknown)',
@@ -971,6 +1116,8 @@ export = function formalPlugin(md: any, options: any) {
         let parsedMarkerCount = 0;
         let replacedMarkerCount = 0;
         const missingMarkerLabels: string[] = [];
+        const markerTraceIds = new Set<string>((Array.isArray(cachedConfig?.debug?.markerTraceIds) ? cachedConfig.debug.markerTraceIds : [])
+            .filter((item: unknown): item is string => typeof item === 'string'));
         try {
             appendPreviewDebugLog(rootPath, cachedConfig, 'render:markers:start', {
                 filePath: currentFilePath || '(unknown)',
@@ -980,10 +1127,27 @@ export = function formalPlugin(md: any, options: any) {
             for (let i = 0; i < state.tokens.length; i++) {
                 if (state.tokens[i].type === 'inline') {
                     inlineCount++;
+                    const beforeContent = String(state.tokens[i].content || '');
+                    const beforeChildren = inlineChildrenSnapshot(state.tokens[i]);
                     const result = applyLightweightMarker(state.tokens, i, cachedLabels || {}, cachedDefinitions || [], currentFilePath, cachedConfig);
                     if (result.parsed) parsedMarkerCount++;
                     if (result.replaced) replacedMarkerCount++;
                     if (result.missingLabel) missingMarkerLabels.push(result.missingLabel);
+                    const tracedId = [...markerTraceIds].find(id => beforeContent.includes(id));
+                    if (tracedId) {
+                        appendPreviewDebugLog(rootPath, cachedConfig, 'render:marker:trace', {
+                            filePath: currentFilePath || '(unknown)',
+                            id: tracedId,
+                            tokenIndex: i,
+                            parsed: result.parsed,
+                            replaced: result.replaced,
+                            missingLabel: result.missingLabel,
+                            beforeContent,
+                            afterContent: String(state.tokens[i].content || ''),
+                            beforeChildren,
+                            afterChildren: inlineChildrenSnapshot(state.tokens[i])
+                        });
+                    }
                 }
             }
             appendPreviewDebugLog(rootPath, cachedConfig, 'render:markers:end', {
@@ -1031,7 +1195,7 @@ export = function formalPlugin(md: any, options: any) {
             return true;
         }
 
-        const match = state.src.slice(start).match(/^@([a-zA-Z0-9_-]+)(\.title)?/);
+        const match = state.src.slice(start).match(/^@([a-zA-Z0-9_-]+)(?:\.(title|full))?/);
         if (!match) return false;
         if (state.src[start + match[0].length] === ':') return false;
         
@@ -1040,11 +1204,11 @@ export = function formalPlugin(md: any, options: any) {
         if (silent) return false;
         
         const id = match[1];
-        const isTitle = !!match[2];
+        const mode = (match[2] || 'default') as FormalInlineMode;
         if (state.env) state.env.formalInlineMatches = (state.env.formalInlineMatches || 0) + 1;
         
         const token = state.push('formal_inline', '', 0);
-        token.meta = { id, isTitle };
+        token.meta = { id, mode };
         
         state.pos += match[0].length;
         return true;
@@ -1100,9 +1264,10 @@ export = function formalPlugin(md: any, options: any) {
     // Renderer for formal_inline
     md.renderer.rules.formal_inline = (tokens: any, idx: number, options: any, env: any, self: any) => {
         const token = tokens[idx];
-        const { id, isTitle } = token.meta;
+        const { id } = token.meta;
+        const mode = (token.meta?.mode || 'default') as FormalInlineMode;
         if (!canUseFormalPreview(env)) {
-            return `@${escapeHtml(id)}${isTitle ? '.title' : ''}`;
+            return `@${escapeHtml(id)}${mode !== 'default' ? `.${escapeHtml(mode)}` : ''}`;
         }
         const labels = cachedLabels || {};
         env.formalInlineRenderCalls = (env.formalInlineRenderCalls || 0) + 1;
@@ -1111,7 +1276,7 @@ export = function formalPlugin(md: any, options: any) {
                 filePath: getCurrentFilePath(rootPath, env, '', cachedPages || []) || '(unknown)',
                 calls: env.formalInlineRenderCalls,
                 id,
-                isTitle
+                mode
             });
         }
         const labelData = labels[id];
@@ -1119,14 +1284,34 @@ export = function formalPlugin(md: any, options: any) {
         if (!labelData) {
             return `<span style="color:red; font-weight:bold">@${escapeHtml(id)}</span>`;
         }
+
+        if (isPageLabelData(labelData)) {
+            const page = pageDataFromLabel(labelData);
+            const displayMode = mode === 'title' || mode === 'full' ? mode : 'default';
+            const text = formatPageReference(page, cachedConfig, displayMode);
+            const titleAttr = formatPageReference(page, cachedConfig, 'full');
+            const uri = normalizeFileHref(rootPath, labelData.filePath || '', id);
+            const targetLineAttr = labelData.startLine !== undefined ? ` data-target-line="${labelData.startLine + 1}"` : '';
+            return `<a class="formal-ref formal-page-ref" href="${escapeHtml(uri)}" data-href="${escapeHtml(uri)}"${targetLineAttr} title="${escapeHtml(titleAttr)}" style="color: inherit; text-decoration: none;">${escapeHtml(text)}</a>`;
+        }
         
         const dict = getDictionary(cachedConfig);
         const typeName = dict[labelData.type] || labelData.type;
         const space = usesSpacedDisplayNumber(typeName, labelData.type) ? ' ' : '';
         
         let text = '';
-        if (isTitle) {
+        if (mode === 'title') {
             text = labelData.title || id;
+        } else if (mode === 'full') {
+            const labelNumber = formatDisplayNumber(labelData);
+            const base = labelNumber ? `${typeName}${space}${labelNumber}` : typeName;
+            if (labelData.title) {
+                const open = getLanguage(cachedConfig) === 'en' ? ' (' : '（';
+                const close = getLanguage(cachedConfig) === 'en' ? ')' : '）';
+                text = `${base}${open}${labelData.title}${close}`;
+            } else {
+                text = base;
+            }
         } else {
             const labelNumber = formatDisplayNumber(labelData);
             if (labelNumber) {
@@ -1144,16 +1329,20 @@ export = function formalPlugin(md: any, options: any) {
         let tooltipHtml = '';
         if (labelData.type !== 'section' && labelData.content && (env.tooltipDepth || 0) === 0 && !env.ignoreFormalTooltips) {
             env.formalTooltipCache = env.formalTooltipCache || {};
+            const runtimeTooltipStats = getRuntimeTooltipStats(env);
             
             if (env.formalTooltipCache[id] !== undefined) {
+                runtimeTooltipStats.cacheHits++;
                 tooltipHtml = env.formalTooltipCache[id];
             } else {
                 // Re-render the captured content using the same md instance
+                const tooltipStartedAt = Date.now();
                 const renderedContent = md.render(labelData.content, {
                     ...env,
                     tooltipDepth: 1,
                     formalTooltipCache: env.formalTooltipCache
                 });
+                runtimeTooltipStats.renderMs += elapsedMs(tooltipStartedAt);
                 const safeHtml = inlineSafeRenderedMarkdown(renderedContent);
                     
                 let headerTextTooltip = typeName;
@@ -1171,6 +1360,9 @@ export = function formalPlugin(md: any, options: any) {
                 
                 tooltipHtml = `<span class="formal-tooltip">${headerHtml}${safeHtml}</span>`;
                 env.formalTooltipCache[id] = tooltipHtml;
+                runtimeTooltipStats.generatedCount++;
+                runtimeTooltipStats.contentChars += String(labelData.content || '').length;
+                runtimeTooltipStats.htmlChars += tooltipHtml.length;
             }
         }
         

@@ -8,8 +8,8 @@
 
 完整融合必须保留四块能力：
 
-- 编号与引用：正文用稳定 hash ID，新增对象先写 `tmp-*`，编号对象和章/页引用都从 `reference-map.md` 复制；`#hash` 只用于声明，正文引用只用 `@hash`。
-- 定义查询：定义不编号不 ref；工具先启发式抽取标准定义，AI 只为非标准定义、别名、中英互查和不可靠边界维护 `.markdown-formal/definitions.json`。
+- 编号与引用：正文用稳定 hash ID，新增对象先写 `tmp-*`，编号对象和章/页引用都从 `reference-map.md` 复制；`#hash` 只用于声明，正文引用只用 `@hash` / `@hash.title` / `@hash.full`。章、导读、小结、附录等页面需要被引用时，优先在唯一最高级标题放页面 hash。
+- 定义查询：定义不编号不 ref；工具先启发式抽取标准定义，AI 只为非标准定义、别名、中英互查和不可靠边界维护 `.markdown-formal/definitions.json`。全书定义搜索用于定位，完整 Markdown/LaTeX 预览只保证当前预览文件内的定义。
 - 符号表：项目特有 LaTeX 记号由 AI 维护 `.markdown-formal/symbols.json`。
 - 命题依赖图：命题/引理/定理/推论之间的显式 `@h-...` 依赖由工具生成 JSON，并区分陈述依赖和证明依赖。
 - 工具闭环：`prepare` 生成上下文，`finish` 固化临时 ID，`verify` 检查引用和索引。
@@ -33,7 +33,7 @@
 写作或迁移前运行 npm run formal -- prepare。
 优先读取 .markdown-formal/agent-guide.md，再读取目标原文和 .markdown-formal/reference-map.md。
 
-硬规则：#h-... / #tmp-* 只用于编号对象声明，例如 `命题 #tmp-*（Title）：...`、`## #tmp-* Title`、`公式 #tmp-*：`。正文引用一律使用 @h-... 或 @h-....title；不要写 `命题 #h-...`、`定理 #h-...`、`由 #h-...`。引用已有编号对象时，只能从 reference-map.md 复制 @h-... 或 @h-....title。引用已有章时，复制 @chapter:path/to/chapter.md；路径以拥有 .markdown-formal/ 的 formal root 为基准，不以当前 workdir 为基准。@chapter:path.md.title 只显示标题，@chapter:path.md.full 显示编号加标题；导读、小结、附录等非正文章用 @page:path.md。重要引用附近保留自然语言语义，例如“由谱半径引理 `@h-...` 可得”；不要写成只有裸 `@h-...`。
+硬规则：#h-... / #tmp-* 只用于声明位置，例如唯一最高级章/页标题、`命题 #tmp-*（Title）：...`、`## #tmp-* Title`、`公式 #tmp-*：`。正文引用一律使用 @h-...、@h-....title 或 @h-....full；不要写 `命题 #h-...`、`定理 #h-...`、`由 #h-...`。引用已有编号对象或章/页时，只能从 reference-map.md 复制 @h-... / @h-....title / @h-....full。章、导读、小结、附录若需要被引用，优先在文件唯一最高级标题写 `#tmp-*` 或 `#h-...`，预览会隐藏它且不生成小节编号。@chapter:path.md / @page:path.md 是兼容路径引用；只有目标页没有页面 hash 时才优先使用，路径以拥有 .markdown-formal/ 的 formal root 为基准，不以当前 workdir 为基准。重要引用附近保留自然语言语义，例如“由谱半径引理 `@h-...` 可得”；不要写成只有裸 `@h-...`。
 新增小节、命题、引理、定理、推论、公式、图、表等 marker 使用 tmp-1/tmp-2/...，不要手动生成 hash。
 小节只用于编号和跳转；命题、引理、定理、推论的 recall 只覆盖 `证明` / `Proof` 前的陈述。
 公式、图、表各自独立编号：`公式 #tmp-*：` 放在 display math 前，图 caption 写 `图 #tmp-*（Title）：...`，表 caption 写 `表 #tmp-*（Title）：`。不要把 hash 写进 LaTeX 公式内部。
@@ -76,7 +76,7 @@ npm run formal -- verify
 文件角色：
 
 - `.markdown-formal/agent-guide.md`：工具生成的当次 AI 操作卡。
-- `.markdown-formal/reference-map.md`：显示编号和无编号锚点到 hash ID 的表。
+- `.markdown-formal/reference-map.md`：显示编号、章/页锚点和无编号锚点到 hash ID 的表。
 - `.markdown-formal/dependency-graph.json`：命题/引理/定理/推论显式依赖图的权威 JSON。
 - `.markdown-formal/dependency-report.md`：依赖图审阅报告。
 - `.markdown-formal/report.md`：校验和迁移报告。
@@ -114,7 +114,7 @@ npm run formal -- verify
 
 跨 book 的正文 `@h-...`、`@chapter:` 和 `@page:` 引用也受同一依赖配置约束；没有声明依赖时，`verify` 会把跨 book 引用作为错误处理。
 
-`npm run formal` 应从拥有 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbols.json` 的项目根目录执行。根目录扫描时，必须把构建产物、上下文目录、草稿目录等不属于正式正文体系的 Markdown 写入 `scan.exclude`。概念附录、索引页或超密集引用页如果不需要 recall hover，可写入 `preview.ignoreHover`；支持完整相对路径、裸文件名和 glob。这只关闭正文里的 `@hash` 悬浮 recall，保留编号、导航、跳转、定义搜索以及当前页符号表的 LaTeX 预览。排查空白预览时，可临时设置 `debug.previewLog: true` 并读取 `.markdown-formal/preview-debug.log`。
+`npm run formal` 应从拥有 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbols.json` 的项目根目录执行。根目录扫描时，必须把构建产物、上下文目录、草稿目录等不属于正式正文体系的 Markdown 写入 `scan.exclude`。概念附录、索引页或超密集引用页如果不需要 recall hover，可写入 `preview.ignoreHover`；支持完整相对路径、裸文件名和 glob。这只关闭正文里的 `@hash` 悬浮 recall，保留编号、导航、跳转、定义搜索以及当前页符号表的 LaTeX 预览。为避免 VS Code Markdown preview 每页注入全书定义模板，定义搜索的完整渲染预览只为当前预览文件生成；跨文件匹配以定位跳转为主。排查空白预览时，可临时设置 `debug.previewLog: true` 并读取 `.markdown-formal/preview-debug.log`。
 
 ## Release 接入
 
@@ -156,7 +156,7 @@ npm run formal -- migrate-ids --apply path/to/chapter-or-volume
 
 逐章或逐卷迁移时，默认会同步处理 incoming refs：目标范围内按完整 reference map 迁移，目标范围外只处理指向目标范围编号 marker 的旧文字引用。只有明确要把改写限制在目标文件内时才使用 `--target-only`。
 
-`migrate-text-refs` 只自动改写带类型或小节语义的旧编号引用，例如 `定理 2.1`、`命题2.2`、`Theorem 2.1`、`公式 (2.1)`、`Figure 2.1`、`表 2.1`、`§2.1`、`第 2.1 节`。裸 `2.1`、裸 `(2.1)`、`第 2 章` 或 `Chapter 2` 不自动改写，因为它可能是小数、公式编号、章节号、参数或需要 prose context 的章引用，必须由 AI 结合上下文手工判断。手写章引用应改为 `@chapter:path/to/chapter.md`；`audit` 会在目标章唯一时给出建议路径。工具使用边界匹配，避免把 `2.1` 误替换进 `2.12`、`2.1.3` 或 `22.1`。
+`migrate-text-refs` 只自动改写带类型或小节语义的旧编号引用，例如 `定理 2.1`、`命题2.2`、`Theorem 2.1`、`公式 (2.1)`、`Figure 2.1`、`表 2.1`、`§2.1`、`第 2.1 节`。裸 `2.1`、裸 `(2.1)`、`第 2 章` 或 `Chapter 2` 不自动改写，因为它可能是小数、公式编号、章节号、参数或需要 prose context 的章引用，必须由 AI 结合上下文手工判断。手写章引用应优先改为目标页的 `@h-...`；目标页没有页面 hash 时，先在唯一最高级标题加 `#tmp-*` 并运行 `finish`，或临时使用 `@chapter:path/to/chapter.md`。工具使用边界匹配，避免把 `2.1` 误替换进 `2.12`、`2.1.3` 或 `22.1`。
 
 如果 `migrate-ids --target-only` 发现目标范围内旧 ID 被范围外文件引用，工具会拒绝 apply。此时去掉 `--target-only`，或选择更大的闭合范围。
 

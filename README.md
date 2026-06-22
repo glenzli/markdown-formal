@@ -59,12 +59,12 @@ References:
 
 - `@h-...` renders the object type and display number.
 - `@h-....title` renders the object title.
-- `@chapter:path/to/chapter.md` renders the current chapter number, using a path relative to the formal root that owns `.markdown-formal/`.
-- `@chapter:path/to/chapter.md.title` renders only the chapter title, and `.full` renders number plus title.
-- `@page:path/to/page.md` is the same mechanism for intro, summary, and appendix pages; use `@chapter:` only for real chapter files.
-- Definitions do not have hash IDs and do not participate in references. Lookup is driven by definition names in the concept index; definition bodies are shown after a name match but are not used as broad search text.
+- A chapter, intro, summary, or appendix page may put a hash on its unique highest-level heading, for example `# #h-... Chapter Title` or `## #tmp-* Chapter Title`. The hash is hidden in preview and does not create a section number.
+- Page hashes use the same reference syntax: `@h-...` renders the page label, `@h-....title` renders only the title, and `@h-....full` renders label plus title.
+- `@chapter:path/to/chapter.md` and `@page:path/to/page.md` remain available as path-based compatibility refs, using paths relative to the formal root that owns `.markdown-formal/`. Prefer page hashes once a page heading has one.
+- Definitions do not have hash IDs and do not participate in references. Lookup is driven by definition names in the concept index; definition bodies are not used as broad search text. Rendered Markdown/LaTeX previews are generated only for definitions in the currently previewed file, while cross-file matches focus on location and jump.
 
-Important syntax split: `#h-...` / `#tmp-*` is declaration syntax and belongs only where the numbered object is defined, such as `命题 #tmp-*（Title）：...` or `## #tmp-* Title`. Running prose references must use `@h-...` or `@h-....title`; do not write `命题 #h-...`, `Theorem #h-...`, or `由 #h-...` as a reference.
+Important syntax split: `#h-...` / `#tmp-*` is declaration syntax and belongs only where the object is defined, such as `命题 #tmp-*（Title）：...`, `## #tmp-* Title`, or the unique top page heading. Running prose references must use `@h-...`, `@h-....title`, or `@h-....full`; do not write `命题 #h-...`, `Theorem #h-...`, or `由 #h-...` as a reference.
 
 During drafting, `./chapter.md` and `../vol-2/chapter.md` are accepted as input sugar for page refs. `finish` normalizes them to formal-root-relative paths so the source stays stable regardless of CLI `workdir` or the current Markdown file.
 
@@ -81,7 +81,7 @@ Use `.markdown-formal/definitions.json` only for definition lookup exceptions: n
 ]
 ```
 
-`source` points to the defining sentence or paragraph. `content` is the AI-maintained Markdown excerpt shown in lookup results; `verify` blocks missing or stale AI-maintained definition content.
+`source` points to the defining sentence or paragraph. `content` is the AI-maintained Markdown excerpt used for same-file rendered lookup previews and fallback text; `verify` blocks missing or stale AI-maintained definition content.
 
 Project-specific symbols can be declared in `.markdown-formal/symbols.json`:
 
@@ -106,8 +106,8 @@ Give AI agents this instruction:
 Follow skills/editor.md.
 Before writing or migrating, run npm run formal -- prepare.
 Read .markdown-formal/agent-guide.md, the target Markdown file, and .markdown-formal/reference-map.md.
-Reference existing numbered objects only by copying @h-... or @h-....title from reference-map.md. #h-... / #tmp-* is only for declarations; never write "命题 #h-..." or "Theorem #h-..." in prose as a reference.
-Reference existing chapters only by copying @chapter:path/to/file.md from reference-map.md. Use @chapter:path.md.title for the title and @chapter:path.md.full for number plus title; use @page:path.md for intro/summary/appendix pages.
+Reference existing numbered objects and page anchors only by copying @h-..., @h-....title, or @h-....full from reference-map.md. #h-... / #tmp-* is only for declarations; never write "命题 #h-..." or "Theorem #h-..." in prose as a reference.
+Prefer page-hash refs for existing chapters/pages. @chapter:path.md and @page:path.md are compatibility refs when a page has no heading hash yet.
 Keep a short natural-language cue near important refs, such as "by the spectral-radius lemma `@h-...`"; do not leave important prose as only a bare `@h-...`.
 Use tmp-1/tmp-2/... for new markers; do not generate hash IDs manually.
 Use the same tmp-ID rule for equations, figures, and tables: `公式 #tmp-*：`, `图 #tmp-*（Caption）：...`, `表 #tmp-*（Caption）：`.
@@ -148,7 +148,8 @@ Definition search and the current-page symbol panel are scoped to the current bo
     ]
   },
   "debug": {
-    "previewLog": false
+    "previewLog": false,
+    "markerTraceIds": []
   }
 }
 ```
@@ -157,12 +158,12 @@ Run `npm run formal` from the project root that owns `.markdown-formal/definitio
 
 Formal references across different `book*` roots are blocked by `verify` unless the source book declares the target book in `lookup.bookDependencies`. This keeps independent books from silently depending on each other while still allowing explicit dependency chains.
 
-Set `debug.previewLog` to `true` temporarily when diagnosing blank previews or extension-host stalls. Diagnostic events are written to `.markdown-formal/preview-debug.log`; turn it off after collecting the log.
+Set `debug.previewLog` to `true` temporarily when diagnosing blank previews, extension-host stalls, or marker rendering issues. Diagnostic events are written to `.markdown-formal/preview-debug.log`; set `debug.markerTraceIds` to specific hash IDs such as `["h-..."]` when tracing one marker's before/after token rewrite. Turn debug logging off after collecting the log.
 
 `prepare` writes generated helper files under `.markdown-formal/`:
 
 - `agent-guide.md`: compact AI workflow card
-- `reference-map.md`: display number / unnumbered anchor to hash ID map
+- `reference-map.md`: display number, page anchor, and unnumbered anchor to hash ID map
 - `preview-cache.json`: runtime preview/navigation/definition/symbol table cache
 - `dependency-graph.json`: canonical theorem-like dependency graph built from explicit `@h-...` references
 - `dependency-report.md`: human/AI-readable dependency summary with statement/proof edges, cross-scope edges, cycles, and isolated nodes
@@ -196,9 +197,9 @@ npm run formal -- migrate-text-refs --target-only path/to/chapter-or-volume
 npm run formal -- migrate-text-refs --apply --target-only path/to/chapter-or-volume
 ```
 
-`migrate-text-refs` automatically rewrites unambiguous typed numbered references, including common forms such as `定理 2.1`, `Theorem 2.1`, `公式 (2.1)`, `Figure 2.1`, `表 2.1`, `第 2.1 节`, `§2.1`, and `Sec. 2.1`. It intentionally does not rewrite bare `2.1`, bare `(2.1)`, or handwritten chapter refs such as `第 2 章` / `Chapter 2`, because those need prose context; convert chapter refs manually to `@chapter:path/to/chapter.md`. Matching is bounded so `2.1` is not rewritten inside `2.12`, `2.1.3`, or `22.1`. It does not rewrite old Markdown links in place because formal refs render as links already; those links are listed in `.markdown-formal/text-ref-migration.md` with suggested IDs.
+`migrate-text-refs` automatically rewrites unambiguous typed numbered references, including common forms such as `定理 2.1`, `Theorem 2.1`, `公式 (2.1)`, `Figure 2.1`, `表 2.1`, `第 2.1 节`, `§2.1`, and `Sec. 2.1`. It intentionally does not rewrite bare `2.1`, bare `(2.1)`, or handwritten chapter refs such as `第 2 章` / `Chapter 2`, because those need prose context; convert chapter refs manually to a page hash `@h-...` when available, otherwise to `@chapter:path/to/chapter.md`. Matching is bounded so `2.1` is not rewritten inside `2.12`, `2.1.3`, or `22.1`. It does not rewrite old Markdown links in place because formal refs render as links already; those links are listed in `.markdown-formal/text-ref-migration.md` with suggested IDs.
 
-The same report lists plain `##`/`###` section headings that may need numbered markers. `audit` additionally lists handwritten chapter references with suggested `@chapter:` paths when the target chapter is unambiguous. For referenced sections, write the heading as `## #tmp-* Title`, run `finish`, then rerun the migration.
+The same report lists plain `##`/`###` section headings that may need numbered markers. `audit` additionally lists handwritten chapter references and suggests a page hash when the target chapter already has one, otherwise a compatibility `@chapter:` path. For referenced sections, write the heading as `## #tmp-* Title`, run `finish`, then rerun the migration.
 
 For old semantic IDs:
 

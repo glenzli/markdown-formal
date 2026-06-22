@@ -79,6 +79,7 @@
     "ignoreHover": []
   },
   "debug": {
-    "previewLog": false
+    "previewLog": false,
+    "markerTraceIds": []
   }
 }

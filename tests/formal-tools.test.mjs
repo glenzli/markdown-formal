@@ -10,6 +10,10 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const cliPath = path.join(repoRoot, 'out', 'cli', 'formal-tools.js');
 const require = createRequire(import.meta.url);
 
+function formalCore() {
+    return require(path.join(repoRoot, 'out', 'core', 'formal-core.js'));
+}
+
 async function makeWorkspace(name) {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), `markdown-formal-${name}-`));
     await fs.mkdir(path.join(root, 'book1'), { recursive: true });
@@ -393,6 +397,19 @@ async function testRecallBoundariesAndOptionalBlocks() {
     assert.match(referenceMap, /例 1\.1/);
 }
 
+async function testStrongMarkerWithSoftbreak() {
+    const { parseFormalMarkerLine } = formalCore();
+    const marker = parseFormalMarkerLine([
+        '**命题 #h-2ebc63596b817afd（零化截断条件）**：设 $\\phi^\\natural \\in \\Omega$。',
+        '对指标对 $(i,j)\\in I^2$，若：'
+    ].join('\n'));
+
+    assert.equal(marker?.type, 'prop');
+    assert.equal(marker?.id, 'h-2ebc63596b817afd');
+    assert.equal(marker?.title, '零化截断条件');
+    assert.equal(marker?.markerText, '命题 #h-2ebc63596b817afd');
+}
+
 async function testDependencyGraph() {
     const root = await makeWorkspace('dependency-graph');
     await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
@@ -619,7 +636,7 @@ async function testChapterPageReferences() {
     const root = await makeWorkspace('chapter-page-refs');
     await fs.mkdir(path.join(root, 'book2'), { recursive: true });
     await fs.writeFile(path.join(root, 'book1', 'intro.md'), [
-        '# Book Intro',
+        '# #h-aaaaaaaaaaaaaaaa Book Intro',
         '',
         'Intro page.',
         ''
@@ -628,10 +645,11 @@ async function testChapterPageReferences() {
         '# Chapter 1',
         '',
         '见 @chapter:./02-b.md.full，也可回到 @page:./intro.md.title。',
+        '同样可以引用页面 hash：@h-bbbbbbbbbbbbbbbb.full 与 @h-aaaaaaaaaaaaaaaa.title。',
         ''
     ].join('\n'));
     await fs.writeFile(path.join(root, 'book1', '02-b.md'), [
-        '# Target Chapter',
+        '# #h-bbbbbbbbbbbbbbbb Target Chapter',
         '',
         '定理 #h-1111111111111111（Target）：Statement.',
         ''
@@ -648,8 +666,12 @@ async function testChapterPageReferences() {
     const chapter = await read(root, 'book1/01-a.md');
     assert.match(chapter, /@chapter:book1\/02-b\.md\.full/);
     assert.match(chapter, /@page:book1\/intro\.md\.title/);
+    assert.match(chapter, /@h-bbbbbbbbbbbbbbbb\.full/);
+    assert.match(chapter, /@h-aaaaaaaaaaaaaaaa\.title/);
 
     const referenceMap = await read(root, '.markdown-formal/reference-map.md');
+    assert.match(referenceMap, /@h-bbbbbbbbbbbbbbbb/);
+    assert.match(referenceMap, /@h-aaaaaaaaaaaaaaaa/);
     assert.match(referenceMap, /@chapter:book1\/02-b\.md/);
     assert.match(referenceMap, /@page:book1\/intro\.md/);
 
@@ -678,6 +700,32 @@ async function testChapterPageReferences() {
     const blocked = runCli(root, ['verify']);
     assert.notEqual(blocked.status, 0, combinedOutput(blocked));
     assert.match(combinedOutput(blocked), /cross-book-page-ref-disallowed/);
+}
+
+async function testPageAnchorFinalize() {
+    const root = await makeWorkspace('page-anchor-finalize');
+    await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
+        '# #tmp-ch Draft Chapter',
+        '',
+        '正文引用本章 @tmp-ch.full。',
+        '',
+        '## #tmp-sec Local Section',
+        '',
+        '正文引用小节 @tmp-sec.title。',
+        ''
+    ].join('\n'));
+
+    const finish = runCli(root, ['finish', 'book1/01-a.md']);
+    assert.equal(finish.status, 0, combinedOutput(finish));
+    const chapter = await read(root, 'book1/01-a.md');
+    assert.doesNotMatch(chapter, /tmp-ch|tmp-sec/);
+    assert.match(chapter, /^# #h-[a-f0-9]{16} Draft Chapter/m);
+    assert.match(chapter, /^## #h-[a-f0-9]{16} Local Section/m);
+    assert.match(chapter, /@h-[a-f0-9]{16}\.full/);
+    assert.match(chapter, /@h-[a-f0-9]{16}\.title/);
+
+    const referenceMap = await read(root, '.markdown-formal/reference-map.md');
+    assert.match(referenceMap, /\| 第 1 章 \| `@h-[a-f0-9]{16}` \| `@chapter:book1\/01-a\.md` \| Draft Chapter \|/);
 }
 
 async function testMigrateTextRefsSectionsAndAudits() {
@@ -972,11 +1020,13 @@ const tests = [
     ['symbol cache', testSymbolCache],
     ['warns unbalanced symbol pattern', testWarnsUnbalancedSymbolPattern],
     ['recall boundaries and optional blocks', testRecallBoundariesAndOptionalBlocks],
+    ['strong marker with softbreak', testStrongMarkerWithSoftbreak],
     ['dependency graph', testDependencyGraph],
     ['equation figure table numbering', testEquationFigureTableNumbering],
     ['structured marker validation', testStructuredMarkerValidation],
     ['cross-book references require dependencies', testCrossBookReferencesRequireDependencies],
     ['chapter page references', testChapterPageReferences],
+    ['page anchor finalize', testPageAnchorFinalize],
     ['migrate-text-refs sections and audits', testMigrateTextRefsSectionsAndAudits],
     ['migrate-text-refs updates incoming refs by default', testMigrateTextRefsUpdatesIncomingByDefault],
     ['verify rejects non-hash ids', testVerifyRejectsNonHashIds],

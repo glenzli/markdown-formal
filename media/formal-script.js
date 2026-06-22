@@ -259,15 +259,15 @@
         return [];
       }
     }
-    function readFormulas() {
-      const dataDiv = document.getElementById("formal-formulas-data");
+    function readCurrentSymbolIndexes() {
+      const dataDiv = document.getElementById("formal-symbols-data");
       if (!dataDiv) return [];
       try {
-        const raw = dataDiv.getAttribute("data-formulas");
-        const formulas = raw ? JSON.parse(raw) : [];
-        return Array.isArray(formulas) ? formulas.filter((formula) => formula && typeof formula.latex === "string" && formula.latex.trim()) : [];
+        const raw = dataDiv.getAttribute("data-current-symbol-indexes");
+        const indexes = raw ? JSON.parse(raw) : [];
+        return Array.isArray(indexes) ? indexes.filter((index) => typeof index === "number" && Number.isFinite(index)) : [];
       } catch (err) {
-        console.error("[markdown-formal] Failed to parse formulas", err);
+        console.error("[markdown-formal] Failed to parse current symbol indexes", err);
         return [];
       }
     }
@@ -327,7 +327,7 @@
       return "";
     }
     function getCurrentFilePath(labels, pages) {
-      const formalElement = document.querySelector('.formal-section[id^="formal-"], .formal-block[id^="formal-"]');
+      const formalElement = document.querySelector('.formal-page-anchor[id^="formal-"], .formal-section[id^="formal-"], .formal-block[id^="formal-"]');
       if (!formalElement) {
         const injected = readInjectedCurrentFilePath();
         if (injected) return injected;
@@ -366,7 +366,7 @@
     }
     function getAnchorCandidates() {
       return Array.from(document.querySelectorAll(
-        ".formal-section[id], .formal-block[id], h1[id], h2[id], h3[id], h4[id]"
+        ".formal-page-anchor[id], .formal-section[id], .formal-block[id], h1[id], h2[id], h3[id], h4[id]"
       )).filter((element) => !element.closest("#formal-nav-bar"));
     }
     function getScrollAnchor() {
@@ -566,7 +566,7 @@
         chapter: page.chapter,
         appendix: page.appendix,
         filePath: normalizePath(page.filePath),
-        targetId: findPrimaryTargetId(page.filePath, labels, page.unitKey),
+        targetId: page.id ? `formal-${page.id}` : findPrimaryTargetId(page.filePath, labels, page.unitKey),
         title: page.title || basenameWithoutExtension(page.filePath),
         volumeKey: volume.key,
         volumeTitle: volume.title,
@@ -759,9 +759,6 @@
         return `${a.definition.filePath}:${a.definition.line}`.localeCompare(`${b.definition.filePath}:${b.definition.line}`);
       }).slice(0, limit).map((item) => item.definition);
     }
-    function normalizeLatexSymbol(value) {
-      return String(value || "").trim().replace(/^\$+|\$+$/g, "").replace(/\\left\s*/g, "").replace(/\\right\s*/g, "").replace(/\\operatorname\s*\{([^{}]+)\}/g, "\\$1").replace(/\\([A-Za-z]+)\s+\{([^{}]+)\}/g, "\\$1{$2}").replace(/\s+/g, "").replace(/([_^])([A-Za-z0-9\\])(?![A-Za-z0-9{])/g, "$1{$2}");
-    }
     function symbolInScope(symbol, currentFilePath, config) {
       if (!symbol.sourceFilePath) return true;
       const sourcePath = normalizePath(symbol.sourceFilePath);
@@ -773,42 +770,21 @@
       }
       return true;
     }
-    function makeUnanchoredSymbolRegex(symbol) {
-      const source = String(symbol.regex || "").replace(/^\^/, "").replace(/\$$/, "");
-      if (!source || source === "(.+?)") return void 0;
-      try {
-        return new RegExp(source);
-      } catch (_err) {
-        return void 0;
-      }
-    }
-    function symbolMatchesFormula(symbol, formula) {
-      const latex = normalizeLatexSymbol(formula.latex);
-      if (!latex) return false;
-      const regex = makeUnanchoredSymbolRegex(symbol);
-      if (regex && regex.test(latex)) return true;
-      const pattern = normalizeLatexSymbol(symbol.pattern);
-      if (pattern && !pattern.includes("${") && latex.includes(pattern)) return true;
-      const display = normalizeLatexSymbol(symbol.display);
-      return Boolean(display && latex.includes(display));
-    }
-    function listCurrentFormulaSymbols(symbols, formulas, currentFilePath, config, limit = 200) {
-      if (formulas.length === 0) return [];
+    function listCurrentFormulaSymbols(symbols, symbolIndexes, currentFilePath, config, limit = 200) {
+      if (symbolIndexes.length === 0) return [];
+      const byIndex = new Map(symbols.filter((symbol) => symbol.index !== void 0).map((symbol) => [symbol.index, symbol]));
       const matches = [];
       const seen = /* @__PURE__ */ new Set();
-      symbols.filter((symbol) => symbolInScope(symbol, currentFilePath, config)).forEach((symbol) => {
-        const formulaIndex = formulas.findIndex((formula) => symbolMatchesFormula(symbol, formula));
-        if (formulaIndex < 0) return;
-        const key = symbol.index !== void 0 ? String(symbol.index) : `${symbol.pattern}:${symbol.sourceFilePath || ""}:${symbol.sourceLine || ""}`;
-        if (seen.has(key)) return;
+      for (const index of symbolIndexes) {
+        const symbol = byIndex.get(index);
+        if (!symbol || !symbolInScope(symbol, currentFilePath, config)) continue;
+        const key = String(index);
+        if (seen.has(key)) continue;
         seen.add(key);
-        matches.push({ symbol, formulaIndex });
-      });
-      return matches.sort((a, b) => {
-        if (a.formulaIndex !== b.formulaIndex) return a.formulaIndex - b.formulaIndex;
-        const location = `${a.symbol.sourceFilePath || ""}:${a.symbol.sourceLine || 0}`.localeCompare(`${b.symbol.sourceFilePath || ""}:${b.symbol.sourceLine || 0}`);
-        return location || a.symbol.pattern.localeCompare(b.symbol.pattern);
-      }).slice(0, limit).map((item) => item.symbol);
+        matches.push(symbol);
+        if (matches.length >= limit) break;
+      }
+      return matches;
     }
     function getDefinitionElement(definition) {
       if (definition.targetId) {
@@ -964,17 +940,6 @@
       }
       const fallback = document.createElement("pre");
       fallback.className = "formal-definition-fallback";
-      fallback.textContent = definition.content || definition.title;
-      container.appendChild(fallback);
-    }
-    function appendDefinitionPreview(container, definition) {
-      const template = getDefinitionTemplate(definition);
-      if (template) {
-        const content = document.importNode(template.content, true);
-        container.appendChild(content);
-        return;
-      }
-      const fallback = document.createElement("span");
       fallback.textContent = definition.content || definition.title;
       container.appendChild(fallback);
     }
@@ -1159,10 +1124,7 @@
         const meta = document.createElement("span");
         meta.className = "formal-definition-search-meta";
         meta.textContent = definitionLocationLabel(definition, config);
-        const preview = document.createElement("span");
-        preview.className = "formal-definition-search-preview";
-        appendDefinitionPreview(preview, definition);
-        item.append(title, meta, preview);
+        item.append(title, meta);
         panel.appendChild(item);
       });
     }
@@ -1436,7 +1398,7 @@
         }
       });
     }
-    function renderNav(currentFilePath, tocItems, chapters, definitions, symbols, formulas, config) {
+    function renderNav(currentFilePath, tocItems, chapters, definitions, symbols, currentSymbolIndexes, config) {
       document.getElementById("formal-nav-bar")?.remove();
       const currentChapter = getCurrentChapter(chapters, currentFilePath);
       const navDropdowns = [];
@@ -1558,7 +1520,7 @@
       tocContainer.appendChild(tocMenu);
       registerNavDropdown(tocContainer, navDropdowns, () => closeDefinitionSearch());
       navBar.appendChild(tocContainer);
-      const currentSymbols = symbols.length > 0 ? listCurrentFormulaSymbols(symbols, formulas, currentFilePath, config, 200) : [];
+      const currentSymbols = symbols.length > 0 ? listCurrentFormulaSymbols(symbols, currentSymbolIndexes, currentFilePath, config, 200) : [];
       if (currentSymbols.length > 0) {
         const symbolContainer = document.createElement("div");
         symbolContainer.className = "formal-nav-symbol-container";
@@ -1640,14 +1602,14 @@
         const pages = readPages();
         const definitions = readDefinitions();
         const symbols = readSymbols();
-        const formulas = readFormulas();
+        const currentSymbolIndexes = readCurrentSymbolIndexes();
         const config = readConfig();
         const currentFilePath = getCurrentFilePath(labels, pages);
         const tocItems = collectTocItems();
         const chapters = collectChapters(labels, pages, currentFilePath, config);
         applyIncomingNavigation();
         const expectsRenderedAnchors = Boolean(currentFilePath) && (Object.values(labels).some((label) => normalizePath(label.filePath || "") === currentFilePath) || definitions.some((definition) => normalizePath(definition.filePath || "") === currentFilePath));
-        const hasRenderedAnchors = Boolean(document.querySelector('.formal-section[id^="formal-"], .formal-block[id^="formal-"], .formal-definition'));
+        const hasRenderedAnchors = Boolean(document.querySelector('.formal-page-anchor[id^="formal-"], .formal-section[id^="formal-"], .formal-block[id^="formal-"], .formal-definition'));
         const currentRetrySignature = `${renderSignature}|${currentFilePath}`;
         if (currentRetrySignature !== retryStateSignature) {
           retryStateSignature = currentRetrySignature;
@@ -1662,14 +1624,14 @@
         lastRenderSignature = renderSignature;
         const language = getLanguage(config);
         const uiSignature = JSON.stringify(config.ui?.[language] || {});
-        const signature = `${renderSignature}|${language}|${uiSignature}|${currentFilePath}|${tocItems.map((item) => `${item.id}:${item.display || ""}:${item.title}:${item.line ?? ""}`).join("|")}|${chapters.map((item) => `${item.bookKey}:${item.volumeKey}:${item.unitKind}:${item.unitKey}:${item.filePath}:${item.title}`).join("|")}|${definitions.map((item) => `${item.filePath}:${item.line}:${item.title}`).join("|")}|${symbols.map((item) => `${item.pattern}:${item.scope}:${item.source || ""}`).join("|")}|${formulas.map((item) => item.latex).join("|")}|${readHistory().length}`;
+        const signature = `${renderSignature}|${language}|${uiSignature}|${currentFilePath}|${tocItems.map((item) => `${item.id}:${item.display || ""}:${item.title}:${item.line ?? ""}`).join("|")}|${chapters.map((item) => `${item.bookKey}:${item.volumeKey}:${item.unitKind}:${item.unitKey}:${item.filePath}:${item.title}`).join("|")}|${definitions.map((item) => `${item.filePath}:${item.line}:${item.title}`).join("|")}|${symbols.map((item) => `${item.pattern}:${item.scope}:${item.source || ""}`).join("|")}|${currentSymbolIndexes.join(",")}|${readHistory().length}`;
         if (signature === lastNavSignature && document.getElementById("formal-nav-bar")) {
           normalizeFormalLinks(currentFilePath);
           return;
         }
         lastNavSignature = signature;
         normalizeFormalLinks(currentFilePath);
-        renderNav(currentFilePath, tocItems, chapters, definitions, symbols, formulas, config);
+        renderNav(currentFilePath, tocItems, chapters, definitions, symbols, currentSymbolIndexes, config);
       } finally {
         navRebuildInProgress = false;
         if (navRebuildQueued) {
