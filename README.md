@@ -147,6 +147,23 @@ Definition search and the current-page symbol panel are scoped to the current bo
       "the-operator-evolution-theory/**/appendix-*.md"
     ]
   },
+  "pdf": {
+    "pdfEngine": "xelatex",
+    "paper": "a4",
+    "margin": "2.5cm",
+    "toc": true,
+    "tocDepth": 2,
+    "lang": "zh-CN",
+    "tocTitle": "目录",
+    "title": "算子演化论",
+    "subtitle": "卷 I：规范空间与算子",
+    "author": "",
+    "date": "",
+    "documentClass": "ctexbook",
+    "titlePage": true,
+    "tocPageBreak": true,
+    "variables": []
+  },
   "debug": {
     "previewLog": false,
     "markerTraceIds": []
@@ -179,11 +196,16 @@ Formal Markdown is not meant to be compiled directly by ordinary Markdown/PDF to
 ```bash
 npm run formal -- export-md path/to/chapter-or-dir --out dist/book.md
 npm run formal -- export-pdf path/to/chapter-or-dir --out dist/book.pdf
+npm run formal -- render-pdf dist/book.md --out dist/book.pdf
 ```
 
 `export-md` rewrites formal declarations and refs into ordinary Markdown text while preserving the original Markdown and LaTeX source. It also rewrites relative Markdown link/image targets to be relative to the formal root, so a multi-file export can be compiled from one generated file.
 
-`export-pdf` runs the same Markdown export and then calls `pandoc` from `PATH` with `--pdf-engine xelatex` by default. No npm PDF dependency is bundled. Use `--pdf-engine lualatex` or another installed engine when needed, and `--md-out dist/book.md --keep-md` if you want to inspect the intermediate Markdown.
+`export-md` orders directories by formal page metadata: intro pages, numbered chapters, summaries, then appendices. This avoids `summary.md` falling after appendices just because of filename sorting.
+
+`export-pdf` runs the same Markdown export and then calls `pandoc` from `PATH` with `--pdf-engine xelatex` by default. `render-pdf` starts from an already compiled ordinary Markdown file and only calls `pandoc`; it does not scan formal source, rerun `export-md`, create `.markdown-formal/config.json`, or apply project-specific hooks. Use it when a release flow needs `export-md -> project postprocess -> render-pdf`.
+
+PDF rendering reads defaults from `.markdown-formal/config.json` `pdf` when present. Without config, it defaults to A4 paper, a 2.5cm margin, a table of contents with depth 2, language-based TOC title (`目录` for Chinese, `Contents` for English), and a separate TOC page. Override these with `--paper`, `--margin`, `--no-toc`, `--toc-depth`, `--lang`, `--toc-title`, `--title`, `--subtitle`, `--author`, `--date`, `--documentclass`, `--title-page`, or `--no-toc-page-break`. No npm PDF dependency is bundled. Use `--pdf-engine lualatex` or another installed engine when needed, pass Pandoc variables with `-V key:value` or `--variable key:value`, and use `export-pdf --md-out dist/book.md --keep-md` if you want to inspect the intermediate Markdown.
 
 ## Migrating Existing Text
 

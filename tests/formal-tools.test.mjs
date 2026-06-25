@@ -27,6 +27,14 @@ function runCli(cwd, args) {
     });
 }
 
+function runCliWithEnv(cwd, args, env) {
+    return spawnSync('node', [cliPath, ...args], {
+        cwd,
+        encoding: 'utf8',
+        env: { ...process.env, ...env }
+    });
+}
+
 function combinedOutput(result) {
     return `${result.stdout}\n${result.stderr}`;
 }
@@ -987,7 +995,21 @@ async function testExportMarkdownCompilesFormalSyntax() {
         '',
         'See @h-cccccccccccccccc and @h-cccccccccccccccc.full.',
         '',
+        'This **bold phrase** must stay bold.',
+        '',
         '![pic](figures/main.png)',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', 'summary.md'), [
+        '# Summary',
+        '',
+        'Summary page.',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', 'appendix-a-notes.md'), [
+        '# Appendix Notes',
+        '',
+        'Appendix page.',
         ''
     ].join('\n'));
 
@@ -1001,7 +1023,121 @@ async function testExportMarkdownCompilesFormalSyntax() {
     assert.match(compiled, /命题 1\.1（Main）：Statement uses Section One\./);
     assert.match(compiled, /公式 \(1\.1\)：/);
     assert.match(compiled, /See 命题 1\.1 and 命题 1\.1（Main）\./);
+    assert.match(compiled, /This \*\*bold phrase\*\* must stay bold\./);
     assert.match(compiled, /!\[pic\]\(book1\/figures\/main\.png\)/);
+    assert.ok(compiled.indexOf('# Summary') > compiled.indexOf('# Chapter One'));
+    assert.ok(compiled.indexOf('# Appendix Notes') > compiled.indexOf('# Summary'));
+}
+
+async function makeFakePandoc(root) {
+    const bin = path.join(root, 'bin');
+    const logPath = path.join(root, 'pandoc-args.json');
+    const scriptPath = path.join(bin, 'pandoc');
+    await fs.mkdir(bin, { recursive: true });
+    await fs.writeFile(scriptPath, [
+        '#!/usr/bin/env node',
+        "const fs = require('node:fs');",
+        "const path = require('node:path');",
+        'const args = process.argv.slice(2);',
+        "fs.writeFileSync(process.env.PANDOC_LOG, JSON.stringify(args));",
+        "const outIndex = args.indexOf('-o');",
+        'if (outIndex >= 0 && args[outIndex + 1]) {',
+        '  const output = path.resolve(process.cwd(), args[outIndex + 1]);',
+        '  fs.mkdirSync(path.dirname(output), { recursive: true });',
+        "  fs.writeFileSync(output, 'PDF');",
+        '}',
+        ''
+    ].join('\n'));
+    await fs.chmod(scriptPath, 0o755);
+    return { bin, logPath };
+}
+
+async function testRenderPdfUsesPandocRenderer() {
+    const root = await makeWorkspace('render-pdf');
+    await fs.writeFile(path.join(root, 'compiled.md'), '# Compiled Book\n\nThis is already ordinary Markdown.\n');
+
+    const usage = runCli(root, ['render-pdf']);
+    assert.notEqual(usage.status, 0, combinedOutput(usage));
+    assert.match(combinedOutput(usage), /render-pdf <compiled\.md>/);
+    assert.match(combinedOutput(usage), /--variable key:value/);
+    await assert.rejects(() => fs.stat(path.join(root, '.markdown-formal', 'config.json')));
+
+    await fs.mkdir(path.join(root, '.markdown-formal'), { recursive: true });
+    await fs.writeFile(path.join(root, '.markdown-formal', 'config.json'), JSON.stringify({
+        language: 'zh',
+        pdf: {
+            title: '算子演化论',
+            subtitle: '卷 I：规范空间与算子',
+            author: 'GLENZLI',
+            date: '2026',
+            documentClass: 'ctexbook',
+            titlePage: true
+        }
+    }, null, 2));
+
+    const { bin, logPath } = await makeFakePandoc(root);
+    const rendered = runCliWithEnv(root, [
+        'render-pdf',
+        'compiled.md',
+        '--out',
+        'dist/book.pdf',
+        '--paper',
+        'letter',
+        '--margin',
+        '1in',
+        '--toc-depth',
+        '3',
+        '--variable',
+        'mainfont:STSong',
+        '-V',
+        'header-includes:test'
+    ], {
+        PATH: `${bin}${path.delimiter}${process.env.PATH || ''}`,
+        PANDOC_LOG: logPath
+    });
+
+    assert.equal(rendered.status, 0, combinedOutput(rendered));
+    assert.match(combinedOutput(rendered), /OK render-pdf: compiled\.md -> dist\/book\.pdf/);
+    assert.match(combinedOutput(rendered), /paper=letter, margin=1in, lang=zh-CN, toc=on, toc-depth=3, toc-title=目录, title-page=on, toc-page-break=on, pdf-engine=xelatex/);
+    assert.deepEqual(JSON.parse(await fs.readFile(logPath, 'utf8')), [
+        'compiled.md',
+        '-o',
+        'dist/book.pdf',
+        '--pdf-engine',
+        'xelatex',
+        '-V',
+        'papersize:letter',
+        '-V',
+        'geometry:margin=1in',
+        '-V',
+        'lang:zh-CN',
+        '-V',
+        'toc-title:目录',
+        '-V',
+        'documentclass:ctexbook',
+        '-V',
+        'title:算子演化论',
+        '-V',
+        'subtitle:卷 I：规范空间与算子',
+        '-V',
+        'author:GLENZLI',
+        '-V',
+        'date:2026',
+        '-V',
+        'classoption:titlepage',
+        '-V',
+        `header-includes:${'\\let\\markdownFormalOldTableOfContents\\tableofcontents\\renewcommand{\\tableofcontents}{\\clearpage\\markdownFormalOldTableOfContents\\clearpage}'}`,
+        '-V',
+        'mainfont:STSong',
+        '-V',
+        'header-includes:test',
+        '--toc',
+        '--toc-depth',
+        '3'
+    ]);
+    assert.equal(await read(root, 'dist/book.pdf'), 'PDF');
+    await assert.rejects(() => fs.stat(path.join(root, '.markdown-formal', 'preview-cache.json')));
+    assert.ok(await read(root, '.markdown-formal/config.json'));
 }
 
 async function testAuditReport() {
@@ -1071,6 +1207,7 @@ const tests = [
     ['perf-dummy thresholds', testPerfDummyThresholds],
     ['preview ignore hover patterns', testPreviewIgnoreHoverPatterns],
     ['export-md compiles formal syntax', testExportMarkdownCompilesFormalSyntax],
+    ['render-pdf uses pandoc renderer', testRenderPdfUsesPandocRenderer],
     ['audit report', testAuditReport]
 ];
 

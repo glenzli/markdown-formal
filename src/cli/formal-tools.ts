@@ -61,6 +61,16 @@ async function readConfig() {
     }
 }
 
+async function readConfigIfExists() {
+    const configPath = path.join(CACHE_DIR, 'config.json');
+    try {
+        return mergeConfig(JSON.parse(await fs.readFile(configPath, 'utf8')));
+    } catch (err: any) {
+        if (err?.code === 'ENOENT') return mergeConfig(DEFAULT_CONFIG);
+        throw err;
+    }
+}
+
 async function collectMarkdownFiles(config, dir = ROOT, acc = []) {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
@@ -704,18 +714,112 @@ async function compileFormalMarkdownForFiles(files, state) {
     return `${chunks.filter(Boolean).join('\n\n\\pagebreak\n\n')}\n`;
 }
 
-function parseExportArgs(args, defaultOutput) {
+function exportPageOrder(page) {
+    if (!page) return Number.MAX_SAFE_INTEGER;
+    if (page.kind === 'intro') return -100000;
+    if (page.kind === 'summary') return 90000;
+    if (page.kind === 'appendix') return typeof page.unitOrder === 'number' ? page.unitOrder : 100000;
+    if (typeof page.unitOrder === 'number') return page.unitOrder;
+    return typeof page.order === 'number' ? page.order : Number.MAX_SAFE_INTEGER;
+}
+
+function compareExportNumber(a, b) {
+    const av = Number.isFinite(a) ? a : Number.MAX_SAFE_INTEGER;
+    const bv = Number.isFinite(b) ? b : Number.MAX_SAFE_INTEGER;
+    return av === bv ? 0 : av - bv;
+}
+
+function sortExportFiles(files, state) {
+    const pageByPath = new Map((state.pages || []).map(page => [page.filePath, page]));
+    return [...files].sort((a, b) => {
+        const relA = relativePath(a);
+        const relB = relativePath(b);
+        const pageA: any = pageByPath.get(relA);
+        const pageB: any = pageByPath.get(relB);
+
+        const bookOrder = compareExportNumber(pageA?.bookOrder, pageB?.bookOrder);
+        if (bookOrder !== 0) return bookOrder;
+        const volumeOrder = compareExportNumber(pageA?.volumeOrder, pageB?.volumeOrder);
+        if (volumeOrder !== 0) return volumeOrder;
+        const pageOrder = compareExportNumber(exportPageOrder(pageA), exportPageOrder(pageB));
+        if (pageOrder !== 0) return pageOrder;
+        return relA.localeCompare(relB);
+    });
+}
+
+const PDF_TOC_PAGEBREAK_HEADER = '\\let\\markdownFormalOldTableOfContents\\tableofcontents\\renewcommand{\\tableofcontents}{\\clearpage\\markdownFormalOldTableOfContents\\clearpage}';
+
+function pdfLanguageDefault(config) {
+    return config?.language === 'en' ? 'en-US' : 'zh-CN';
+}
+
+function pdfTocTitleDefault(config) {
+    return config?.language === 'en' ? 'Contents' : '目录';
+}
+
+function pdfConfigDefaults(configInput = DEFAULT_CONFIG) {
+    const config = mergeConfig(configInput);
+    const pdf = config.pdf || {};
+    return {
+        pdfEngine: pdf.pdfEngine || 'xelatex',
+        toc: pdf.toc !== false,
+        tocDepth: Number.isFinite(Number(pdf.tocDepth)) && Number(pdf.tocDepth) >= 1 ? Math.floor(Number(pdf.tocDepth)) : 2,
+        margin: pdf.margin || '2.5cm',
+        paper: pdf.paper || 'a4',
+        lang: pdf.lang || pdfLanguageDefault(config),
+        tocTitle: pdf.tocTitle || pdfTocTitleDefault(config),
+        title: pdf.title || '',
+        subtitle: pdf.subtitle || '',
+        author: pdf.author || '',
+        date: pdf.date || '',
+        documentClass: pdf.documentClass || '',
+        titlePage: pdf.titlePage === true,
+        tocPageBreak: pdf.tocPageBreak !== false,
+        variables: Array.isArray(pdf.variables) ? pdf.variables.filter(value => typeof value === 'string' && value) : []
+    };
+}
+
+function parseExportArgs(args, defaultOutput, configInput = DEFAULT_CONFIG) {
+    const pdfDefaults = pdfConfigDefaults(configInput);
     const options: {
         output: string;
         mdOutput: string;
         pdfEngine: string;
         keepMarkdown: boolean;
+        toc: boolean;
+        tocDepth: number;
+        margin: string;
+        paper: string;
+        lang: string;
+        tocTitle: string;
+        title: string;
+        subtitle: string;
+        author: string;
+        date: string;
+        documentClass: string;
+        titlePage: boolean;
+        tocPageBreak: boolean;
+        variables: string[];
         paths: string[];
     } = {
         output: defaultOutput,
         mdOutput: '',
-        pdfEngine: 'xelatex',
+        pdfEngine: pdfDefaults.pdfEngine,
         keepMarkdown: false,
+        toc: pdfDefaults.toc,
+        tocDepth: pdfDefaults.tocDepth,
+        margin: pdfDefaults.margin,
+        paper: pdfDefaults.paper,
+        lang: pdfDefaults.lang,
+        tocTitle: pdfDefaults.tocTitle,
+        title: pdfDefaults.title,
+        subtitle: pdfDefaults.subtitle,
+        author: pdfDefaults.author,
+        date: pdfDefaults.date,
+        documentClass: pdfDefaults.documentClass,
+        titlePage: pdfDefaults.titlePage,
+        tocPageBreak: pdfDefaults.tocPageBreak,
+        variables: [...pdfDefaults.variables],
         paths: []
     };
 
@@ -733,6 +837,68 @@ function parseExportArgs(args, defaultOutput) {
             options.pdfEngine = args[++i] || options.pdfEngine;
         } else if (arg.startsWith('--pdf-engine=')) {
             options.pdfEngine = arg.slice('--pdf-engine='.length);
+        } else if (arg === '--toc') {
+            options.toc = true;
+        } else if (arg === '--no-toc') {
+            options.toc = false;
+        } else if (arg === '--toc-depth') {
+            options.tocDepth = Number(args[++i] || options.tocDepth);
+        } else if (arg.startsWith('--toc-depth=')) {
+            options.tocDepth = Number(arg.slice('--toc-depth='.length));
+        } else if (arg === '--margin') {
+            options.margin = args[++i] || options.margin;
+        } else if (arg.startsWith('--margin=')) {
+            options.margin = arg.slice('--margin='.length);
+        } else if (arg === '--paper') {
+            options.paper = args[++i] || options.paper;
+        } else if (arg.startsWith('--paper=')) {
+            options.paper = arg.slice('--paper='.length);
+        } else if (arg === '--lang') {
+            options.lang = args[++i] || options.lang;
+        } else if (arg.startsWith('--lang=')) {
+            options.lang = arg.slice('--lang='.length);
+        } else if (arg === '--toc-title') {
+            options.tocTitle = args[++i] || options.tocTitle;
+        } else if (arg.startsWith('--toc-title=')) {
+            options.tocTitle = arg.slice('--toc-title='.length);
+        } else if (arg === '--title') {
+            options.title = args[++i] || options.title;
+        } else if (arg.startsWith('--title=')) {
+            options.title = arg.slice('--title='.length);
+        } else if (arg === '--subtitle') {
+            options.subtitle = args[++i] || options.subtitle;
+        } else if (arg.startsWith('--subtitle=')) {
+            options.subtitle = arg.slice('--subtitle='.length);
+        } else if (arg === '--author') {
+            options.author = args[++i] || options.author;
+        } else if (arg.startsWith('--author=')) {
+            options.author = arg.slice('--author='.length);
+        } else if (arg === '--date') {
+            options.date = args[++i] || options.date;
+        } else if (arg.startsWith('--date=')) {
+            options.date = arg.slice('--date='.length);
+        } else if (arg === '--documentclass' || arg === '--document-class') {
+            options.documentClass = args[++i] || options.documentClass;
+        } else if (arg.startsWith('--documentclass=')) {
+            options.documentClass = arg.slice('--documentclass='.length);
+        } else if (arg.startsWith('--document-class=')) {
+            options.documentClass = arg.slice('--document-class='.length);
+        } else if (arg === '--title-page') {
+            options.titlePage = true;
+        } else if (arg === '--no-title-page') {
+            options.titlePage = false;
+        } else if (arg === '--toc-page-break') {
+            options.tocPageBreak = true;
+        } else if (arg === '--no-toc-page-break') {
+            options.tocPageBreak = false;
+        } else if (arg === '-V' || arg === '--variable') {
+            const value = args[++i];
+            if (value) options.variables.push(value);
+        } else if (arg.startsWith('-V')) {
+            const value = arg.slice(2);
+            if (value) options.variables.push(value);
+        } else if (arg.startsWith('--variable=')) {
+            options.variables.push(arg.slice('--variable='.length));
         } else if (arg === '--keep-md') {
             options.keepMarkdown = true;
         } else if (!arg.startsWith('--')) {
@@ -740,6 +906,8 @@ function parseExportArgs(args, defaultOutput) {
         }
     }
 
+    if (!Number.isFinite(options.tocDepth) || options.tocDepth < 1) options.tocDepth = 2;
+    options.tocDepth = Math.floor(options.tocDepth);
     return options;
 }
 
@@ -760,7 +928,7 @@ async function exportMarkdown(args = []) {
         return '';
     }
 
-    const files = await resolveInputMarkdownFiles(options.paths, state.config);
+    const files = sortExportFiles(await resolveInputMarkdownFiles(options.paths, state.config), state);
     if (files.length === 0) {
         console.error('No Markdown files matched export input.');
         process.exitCode = 1;
@@ -775,10 +943,69 @@ async function exportMarkdown(args = []) {
     return outputPath;
 }
 
+function buildPandocPdfArgs(inputMarkdownPath, outputPdfPath, options) {
+    const variables = [
+        `papersize:${options.paper}`,
+        `geometry:margin=${options.margin}`,
+        options.lang ? `lang:${options.lang}` : '',
+        options.tocTitle ? `toc-title:${options.tocTitle}` : '',
+        options.documentClass ? `documentclass:${options.documentClass}` : '',
+        options.title ? `title:${options.title}` : '',
+        options.subtitle ? `subtitle:${options.subtitle}` : '',
+        options.author ? `author:${options.author}` : '',
+        options.date ? `date:${options.date}` : '',
+        options.titlePage ? 'classoption:titlepage' : '',
+        options.toc && options.tocPageBreak ? `header-includes:${PDF_TOC_PAGEBREAK_HEADER}` : '',
+        ...options.variables
+    ].filter(Boolean);
+
+    const pandocArgs = [
+        relativePath(inputMarkdownPath),
+        '-o',
+        relativePath(outputPdfPath),
+        '--pdf-engine',
+        options.pdfEngine,
+        ...variables.flatMap(value => ['-V', value])
+    ];
+    if (options.toc) {
+        pandocArgs.push('--toc', '--toc-depth', String(options.tocDepth));
+    }
+    return pandocArgs;
+}
+
+function pdfLayoutSummary(options) {
+    return `paper=${options.paper}, margin=${options.margin}, lang=${options.lang || 'n/a'}, toc=${options.toc ? 'on' : 'off'}, toc-depth=${options.toc ? options.tocDepth : 'n/a'}, toc-title=${options.toc && options.tocTitle ? options.tocTitle : 'n/a'}, title-page=${options.titlePage ? 'on' : 'off'}, toc-page-break=${options.toc && options.tocPageBreak ? 'on' : 'off'}, pdf-engine=${options.pdfEngine}`;
+}
+
+async function renderPdfFile(inputMarkdownPath, outputPdfPath, options) {
+    await fs.mkdir(path.dirname(outputPdfPath), { recursive: true });
+    const result = spawnSync('pandoc', buildPandocPdfArgs(inputMarkdownPath, outputPdfPath, options), {
+        cwd: ROOT,
+        encoding: 'utf8'
+    });
+
+    if (result.error) {
+        console.error('PDF rendering requires pandoc on PATH. Install pandoc and a LaTeX engine, or use export-md and compile the generated Markdown yourself.');
+        console.error(String(result.error.message || result.error));
+        process.exitCode = 1;
+        return false;
+    }
+
+    if (result.status !== 0) {
+        if (result.stdout) console.error(result.stdout.trim());
+        if (result.stderr) console.error(result.stderr.trim());
+        process.exitCode = result.status || 1;
+        return false;
+    }
+
+    return true;
+}
+
 async function exportPdf(args = []) {
-    const options = parseExportArgs(args, '.markdown-formal/export.pdf');
+    const config = await readConfigIfExists();
+    const options = parseExportArgs(args, '.markdown-formal/export.pdf', config);
     if (options.paths.length === 0) {
-        console.error('Usage: npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--keep-md]');
+        console.error('Usage: npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title-page] [-V key:value] [--variable key:value] [--keep-md]');
         process.exitCode = 1;
         return;
     }
@@ -789,36 +1016,29 @@ async function exportPdf(args = []) {
     const compiledPath = await exportMarkdown(mdArgs);
     if (!compiledPath || process.exitCode) return;
 
-    await fs.mkdir(path.dirname(pdfPath), { recursive: true });
-    const result = spawnSync('pandoc', [
-        relativePath(compiledPath),
-        '-o',
-        relativePath(pdfPath),
-        '--pdf-engine',
-        options.pdfEngine
-    ], {
-        cwd: ROOT,
-        encoding: 'utf8'
-    });
-
-    if (result.error) {
-        console.error('export-pdf requires pandoc on PATH. Install pandoc and a LaTeX engine, or use export-md and compile the generated Markdown yourself.');
-        console.error(String(result.error.message || result.error));
-        process.exitCode = 1;
-        return;
-    }
-
-    if (result.status !== 0) {
-        if (result.stdout) console.error(result.stdout.trim());
-        if (result.stderr) console.error(result.stderr.trim());
-        process.exitCode = result.status || 1;
-        return;
-    }
+    const rendered = await renderPdfFile(compiledPath, pdfPath, options);
+    if (!rendered) return;
 
     if (!options.keepMarkdown && !options.mdOutput) {
         await fs.rm(compiledPath, { force: true });
     }
-    console.log(`OK export-pdf: ${relativePath(pdfPath)}`);
+    console.log(`OK export-pdf: ${relativePath(pdfPath)} (${pdfLayoutSummary(options)})`);
+}
+
+async function renderPdf(args = []) {
+    const config = await readConfigIfExists();
+    const options = parseExportArgs(args, '.markdown-formal/render.pdf', config);
+    if (options.paths.length !== 1) {
+        console.error('Usage: npm run formal -- render-pdf <compiled.md> --out <book.pdf> [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title-page] [-V key:value] [--variable key:value]');
+        process.exitCode = 1;
+        return;
+    }
+
+    const inputMarkdownPath = path.resolve(ROOT, options.paths[0]);
+    const pdfPath = path.resolve(ROOT, options.output);
+    const rendered = await renderPdfFile(inputMarkdownPath, pdfPath, options);
+    if (!rendered) return;
+    console.log(`OK render-pdf: ${relativePath(inputMarkdownPath)} -> ${relativePath(pdfPath)} (${pdfLayoutSummary(options)})`);
 }
 
 async function resolveInputMarkdownFiles(inputs, config) {
@@ -2009,7 +2229,8 @@ function printHelp({ all = false } = {}) {
   npm run formal -- graph focus <h-id> [--depth N]
   npm run formal -- graph matrix chapter|volume|book
   npm run formal -- export-md <file-or-dir> [...] --out <compiled.md>
-  npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf>
+  npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--no-toc] [--toc-depth N] [--margin 2.5cm]
+  npm run formal -- render-pdf <compiled.md> --out <book.pdf> [--title "Title"] [--toc-title 目录]
   npm run formal -- verify [--strict-chapters]
 
 Migrations are dry-run by default. Pass --apply to edit files.
@@ -2040,7 +2261,8 @@ Advanced commands:
   npm run formal -- graph bridges|isolated|cycles [--where all|statement|proof|body]
   npm run formal -- graph matrix chapter|volume|book [--where all|statement|proof|body]
   npm run formal -- export-md <file-or-dir> [...] --out <compiled.md>
-  npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--keep-md]
+  npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title "Title"] [--subtitle "Subtitle"] [--author Name] [--date 2026] [--documentclass ctexbook] [--title-page] [--no-title-page] [--toc-page-break] [--no-toc-page-break] [-V key:value] [--variable key:value] [--keep-md]
+  npm run formal -- render-pdf <compiled.md> --out <book.pdf> [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title "Title"] [--subtitle "Subtitle"] [--author Name] [--date 2026] [--documentclass ctexbook] [--title-page] [--no-title-page] [--toc-page-break] [--no-toc-page-break] [-V key:value] [--variable key:value]
   npm run formal -- verify [--strict-chapters]
 
 Advanced:
@@ -2085,6 +2307,8 @@ async function main() {
         await exportMarkdown(args);
     } else if (command === 'export-pdf') {
         await exportPdf(args);
+    } else if (command === 'render-pdf') {
+        await renderPdf(args);
     } else if (command === 'audit') {
         await audit(args);
     } else if (command === 'report') {

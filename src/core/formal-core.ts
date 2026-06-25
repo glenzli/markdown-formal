@@ -332,6 +332,23 @@ export const DEFAULT_CONFIG = {
     preview: {
         ignoreHover: []
     },
+    pdf: {
+        pdfEngine: 'xelatex',
+        paper: 'a4',
+        margin: '2.5cm',
+        toc: true,
+        tocDepth: 2,
+        lang: '',
+        tocTitle: '',
+        title: '',
+        subtitle: '',
+        author: '',
+        date: '',
+        documentClass: '',
+        titlePage: false,
+        tocPageBreak: true,
+        variables: []
+    },
     debug: {
         previewLog: false,
         markerTraceIds: []
@@ -384,6 +401,29 @@ export function mergeConfig(config: any): any {
                 ...DEFAULT_CONFIG.preview.ignoreHover,
                 ...(Array.isArray(existing.preview?.ignoreHover) ? existing.preview.ignoreHover.filter((item: unknown) => typeof item === 'string') : [])
             ])
+        },
+        pdf: {
+            ...DEFAULT_CONFIG.pdf,
+            ...(existing.pdf || {}),
+            pdfEngine: typeof existing.pdf?.pdfEngine === 'string' && existing.pdf.pdfEngine ? existing.pdf.pdfEngine : DEFAULT_CONFIG.pdf.pdfEngine,
+            paper: typeof existing.pdf?.paper === 'string' && existing.pdf.paper ? existing.pdf.paper : DEFAULT_CONFIG.pdf.paper,
+            margin: typeof existing.pdf?.margin === 'string' && existing.pdf.margin ? existing.pdf.margin : DEFAULT_CONFIG.pdf.margin,
+            toc: existing.pdf?.toc === false ? false : DEFAULT_CONFIG.pdf.toc,
+            tocDepth: Number.isFinite(Number(existing.pdf?.tocDepth)) && Number(existing.pdf.tocDepth) >= 1
+                ? Math.floor(Number(existing.pdf.tocDepth))
+                : DEFAULT_CONFIG.pdf.tocDepth,
+            lang: typeof existing.pdf?.lang === 'string' ? existing.pdf.lang : DEFAULT_CONFIG.pdf.lang,
+            tocTitle: typeof existing.pdf?.tocTitle === 'string' ? existing.pdf.tocTitle : DEFAULT_CONFIG.pdf.tocTitle,
+            title: typeof existing.pdf?.title === 'string' ? existing.pdf.title : DEFAULT_CONFIG.pdf.title,
+            subtitle: typeof existing.pdf?.subtitle === 'string' ? existing.pdf.subtitle : DEFAULT_CONFIG.pdf.subtitle,
+            author: typeof existing.pdf?.author === 'string' ? existing.pdf.author : DEFAULT_CONFIG.pdf.author,
+            date: typeof existing.pdf?.date === 'string' ? existing.pdf.date : DEFAULT_CONFIG.pdf.date,
+            documentClass: typeof existing.pdf?.documentClass === 'string' ? existing.pdf.documentClass : DEFAULT_CONFIG.pdf.documentClass,
+            titlePage: existing.pdf?.titlePage === true,
+            tocPageBreak: existing.pdf?.tocPageBreak === false ? false : DEFAULT_CONFIG.pdf.tocPageBreak,
+            variables: unique(Array.isArray(existing.pdf?.variables)
+                ? existing.pdf.variables.filter((item: unknown) => typeof item === 'string')
+                : [])
         },
         debug: {
             ...DEFAULT_CONFIG.debug,
@@ -2923,7 +2963,7 @@ export function renderAgentGuide(state: any): string {
         '- Explanatory remarks stay plain: `注（Title）：...` / `Remark (Title): ...`, without hash. Non-mainline fact remarks that need a proof or later citation use `注 #tmp-*（Title）：...`; `> 注 #tmp-*（Title）：...` is also recognized inside standard blockquotes. The hash is only an anchor, renders without a remark number, and still supports recall. Examples stay plain by default; only explicitly cited examples use `例 #tmp-*` / `Example #tmp-*` and remain numbered.',
         '- Symbols: maintain only project-specific `source`, `pattern`, and `meaning` entries in `.markdown-formal/symbols.json`; patterns describe the notation itself with balanced delimiters, not whole equations or open-ended formula fragments. The navigation symbol table lists symbols matched in the current preview file. Symbols are not inline formula refs and are not searched through the definition search box.',
         '- Appendices use the appendix file prefix, so markers in `appendix-a-*.md` render as `A.1`, `A.2`, etc. `00-introduction.md`, `intro.md`, and `introduction.md` are intro pages, not chapter 0.',
-        '- Export: do not compile formal source Markdown directly. Use `npm run formal -- export-md <file-or-dir> --out dist/book.md` to produce portable Markdown, or `npm run formal -- export-pdf <file-or-dir> --out dist/book.pdf` to call local pandoc after the Markdown export. No PDF engine is bundled.',
+        '- Export: do not compile formal source Markdown directly. Use `npm run formal -- export-md <file-or-dir> --out dist/book.md` to produce portable Markdown, `npm run formal -- export-pdf <file-or-dir> --out dist/book.pdf` to call local pandoc after Markdown export, or `npm run formal -- render-pdf dist/book.md --out dist/book.pdf` when a project release flow has already postprocessed the compiled Markdown. PDF rendering reads `.markdown-formal/config.json` `pdf` defaults when present: A4, 2.5cm margins, TOC depth 2, language-aware TOC title, separate TOC page, and optional title page metadata. Override with `--title`, `--subtitle`, `--author`, `--date`, `--documentclass`, `--title-page`, `--margin`, `--no-toc`, `--toc-depth`, `--paper`, or Pandoc `-V key:value`. No PDF engine is bundled.',
         '',
         '## Generated Files',
         '',

@@ -81,5 +81,22 @@
   "debug": {
     "previewLog": false,
     "markerTraceIds": []
+  },
+  "pdf": {
+    "pdfEngine": "xelatex",
+    "paper": "a4",
+    "margin": "2.5cm",
+    "toc": true,
+    "tocDepth": 2,
+    "lang": "",
+    "tocTitle": "",
+    "title": "",
+    "subtitle": "",
+    "author": "",
+    "date": "",
+    "documentClass": "",
+    "titlePage": false,
+    "tocPageBreak": true,
+    "variables": []
   }
 }
