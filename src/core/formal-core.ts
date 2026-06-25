@@ -2923,6 +2923,7 @@ export function renderAgentGuide(state: any): string {
         '- Explanatory remarks stay plain: `注（Title）：...` / `Remark (Title): ...`, without hash. Non-mainline fact remarks that need a proof or later citation use `注 #tmp-*（Title）：...`; `> 注 #tmp-*（Title）：...` is also recognized inside standard blockquotes. The hash is only an anchor, renders without a remark number, and still supports recall. Examples stay plain by default; only explicitly cited examples use `例 #tmp-*` / `Example #tmp-*` and remain numbered.',
         '- Symbols: maintain only project-specific `source`, `pattern`, and `meaning` entries in `.markdown-formal/symbols.json`; patterns describe the notation itself with balanced delimiters, not whole equations or open-ended formula fragments. The navigation symbol table lists symbols matched in the current preview file. Symbols are not inline formula refs and are not searched through the definition search box.',
         '- Appendices use the appendix file prefix, so markers in `appendix-a-*.md` render as `A.1`, `A.2`, etc. `00-introduction.md`, `intro.md`, and `introduction.md` are intro pages, not chapter 0.',
+        '- Export: do not compile formal source Markdown directly. Use `npm run formal -- export-md <file-or-dir> --out dist/book.md` to produce portable Markdown, or `npm run formal -- export-pdf <file-or-dir> --out dist/book.pdf` to call local pandoc after the Markdown export. No PDF engine is bundled.',
         '',
         '## Generated Files',
         '',

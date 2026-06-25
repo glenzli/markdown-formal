@@ -969,6 +969,41 @@ async function testPreviewIgnoreHoverPatterns() {
     assert.equal(shouldIgnorePreviewHover('book1/01-main.md', config), false);
 }
 
+async function testExportMarkdownCompilesFormalSyntax() {
+    const root = await makeWorkspace('export-md');
+    await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
+        '# #h-aaaaaaaaaaaaaaaa Chapter One',
+        '',
+        '本章见 @h-aaaaaaaaaaaaaaaa.full。',
+        '',
+        '## #h-bbbbbbbbbbbbbbbb Section One',
+        '',
+        '命题 #h-cccccccccccccccc（Main）：Statement uses @h-bbbbbbbbbbbbbbbb.title.',
+        '',
+        '公式 #h-dddddddddddddddd：',
+        '$$',
+        'a=b',
+        '$$',
+        '',
+        'See @h-cccccccccccccccc and @h-cccccccccccccccc.full.',
+        '',
+        '![pic](figures/main.png)',
+        ''
+    ].join('\n'));
+
+    const exported = runCli(root, ['export-md', 'book1', '--out', 'compiled.md']);
+    assert.equal(exported.status, 0, combinedOutput(exported));
+    const compiled = await read(root, 'compiled.md');
+    assert.doesNotMatch(compiled, /#h-|@h-/);
+    assert.match(compiled, /^# Chapter One/m);
+    assert.match(compiled, /本章见 第 1 章：Chapter One。/);
+    assert.match(compiled, /^## 1\.1 Section One/m);
+    assert.match(compiled, /命题 1\.1（Main）：Statement uses Section One\./);
+    assert.match(compiled, /公式 \(1\.1\)：/);
+    assert.match(compiled, /See 命题 1\.1 and 命题 1\.1（Main）\./);
+    assert.match(compiled, /!\[pic\]\(book1\/figures\/main\.png\)/);
+}
+
 async function testAuditReport() {
     const root = await makeWorkspace('audit');
     await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
@@ -1035,6 +1070,7 @@ const tests = [
     ['page title uses unique highest heading', testPageTitleUsesUniqueHighestHeading],
     ['perf-dummy thresholds', testPerfDummyThresholds],
     ['preview ignore hover patterns', testPreviewIgnoreHoverPatterns],
+    ['export-md compiles formal syntax', testExportMarkdownCompilesFormalSyntax],
     ['audit report', testAuditReport]
 ];
 

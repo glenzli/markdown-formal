@@ -172,6 +172,19 @@ Set `debug.previewLog` to `true` temporarily when diagnosing blank previews, ext
 
 Do not edit generated `.markdown-formal/` files by hand. The project-maintained entries under that directory are `.markdown-formal/config.json`, `.markdown-formal/definitions.json`, and `.markdown-formal/symbols.json`; the rest are generated caches and reports.
 
+## Exporting PDF
+
+Formal Markdown is not meant to be compiled directly by ordinary Markdown/PDF tools because it contains stable hash declarations and `@h-...` references. Export a portable Markdown source first:
+
+```bash
+npm run formal -- export-md path/to/chapter-or-dir --out dist/book.md
+npm run formal -- export-pdf path/to/chapter-or-dir --out dist/book.pdf
+```
+
+`export-md` rewrites formal declarations and refs into ordinary Markdown text while preserving the original Markdown and LaTeX source. It also rewrites relative Markdown link/image targets to be relative to the formal root, so a multi-file export can be compiled from one generated file.
+
+`export-pdf` runs the same Markdown export and then calls `pandoc` from `PATH` with `--pdf-engine xelatex` by default. No npm PDF dependency is bundled. Use `--pdf-engine lualatex` or another installed engine when needed, and `--md-out dist/book.md --keep-md` if you want to inspect the intermediate Markdown.
+
 ## Migrating Existing Text
 
 For old prose references such as `定理 2.1` or `Theorem 2.1`:

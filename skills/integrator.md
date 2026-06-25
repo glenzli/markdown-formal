@@ -12,6 +12,7 @@
 - 定义查询：定义不编号不 ref；工具先启发式抽取标准定义，AI 只为非标准定义、别名、中英互查和不可靠边界维护 `.markdown-formal/definitions.json`。全书定义搜索用于定位，完整 Markdown/LaTeX 预览只保证当前预览文件内的定义。
 - 符号表：项目特有 LaTeX 记号由 AI 维护 `.markdown-formal/symbols.json`。
 - 命题依赖图：命题/引理/定理/推论之间的显式 `@h-...` 依赖由工具生成 JSON，并区分陈述依赖和证明依赖。
+- 导出：PDF/普通 Markdown 不直接编译 formal 源文件；先用 `export-md` 降级 marker/ref，`export-pdf` 再调用本机 pandoc。
 - 工具闭环：`prepare` 生成上下文，`finish` 固化临时 ID，`verify` 检查引用和索引。
 
 如果目标项目只合并了 hash 编号规则，却丢掉定义提取、符号提取、`.markdown-formal` 源表、`prepare` / `finish` / `verify` 调用方式，就不是完整接入。

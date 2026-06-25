@@ -45,6 +45,17 @@ npm run formal -- finish path/to/chapter-or-dir
 不要把 `.markdown-formal/` 下的生成缓存当成写作源；人工维护入口只有 `config.json`、`definitions.json` 和 `symbols.json`。
 编辑器插件只有在项目根目录存在 `.markdown-formal/config.json` 且已有生成的 `.markdown-formal/preview-cache.json` 时才注入导航、定义搜索、符号表和 formal ref 数据；缺失时预览保持原生 Markdown。写作或迁移前运行 `npm run formal -- prepare` 来建立这两个文件。
 
+## PDF/Markdown 导出
+
+formal 源文件不能直接交给普通 Markdown/PDF 工具编译，因为其中有 `#h-...` 声明和 `@h-...` 引用。需要导出时先运行：
+
+```bash
+npm run formal -- export-md path/to/chapter-or-dir --out dist/book.md
+npm run formal -- export-pdf path/to/chapter-or-dir --out dist/book.pdf
+```
+
+`export-md` 会把 marker 和引用降级成普通 Markdown 文本，并保留原始 LaTeX。`export-pdf` 在此基础上调用本机 `pandoc`；仓库不捆绑 PDF 引擎。没有 pandoc 时，先交付 `export-md` 的中间稿，或者由用户安装 pandoc/LaTeX 后再运行 `export-pdf`。
+
 ## 编号语法
 
 把原本手写编号的位置换成稳定 ID：

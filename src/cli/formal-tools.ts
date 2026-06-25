@@ -11,6 +11,7 @@ import {
     displayLabel,
     displayNumber,
     escapeRegExp,
+    formatPageReference,
     mergeConfig,
     normalizeFormalPagePath,
     parseFormalMarkerLine,
@@ -37,6 +38,7 @@ import {
 
 const ROOT = process.cwd();
 const CACHE_DIR = path.join(ROOT, '.markdown-formal');
+const { spawnSync } = require('node:child_process');
 
 async function ensureCacheDir() {
     await fs.mkdir(CACHE_DIR, { recursive: true });
@@ -549,6 +551,274 @@ function rewritePageReferences(content, file) {
     });
 
     return changed ? updated.join(eol) : content;
+}
+
+function isPageLabel(label) {
+    return !!label && ['chapter', 'intro', 'summary', 'appendix'].includes(label.type);
+}
+
+function pageFromLabel(label, state) {
+    const page = (state.pages || []).find(item => item.id && state.labels[item.id] === label);
+    if (page) return page;
+    return {
+        kind: label.type,
+        filePath: label.filePath,
+        title: label.title,
+        order: label.unitOrder || 0,
+        bookKey: label.bookKey,
+        bookTitle: label.bookTitle,
+        bookOrder: label.bookOrder,
+        volumeKey: label.volumeKey,
+        volumeTitle: label.volumeTitle,
+        volumeOrder: label.volumeOrder,
+        unitKind: label.unitKind,
+        unitKey: label.unitKey,
+        unitLabel: label.unitLabel,
+        unitOrder: label.unitOrder,
+        chapter: label.chapter,
+        appendix: label.appendix
+    };
+}
+
+function findDefinitionById(state, id) {
+    return (state.definitions || []).find(def => def.id === id);
+}
+
+function displayObjectReference(state, id, mode = 'default') {
+    const label = state.labels[id];
+    if (!label) return `@${id}${mode === 'default' ? '' : `.${mode}`}`;
+
+    if (isPageLabel(label)) {
+        const page = pageFromLabel(label, state);
+        const pageMode = mode === 'title' || mode === 'full' ? mode : 'default';
+        return formatPageReference(page, state.config, pageMode);
+    }
+
+    if (mode === 'title') return label.title || id;
+
+    const def = findDefinitionById(state, id);
+    const base = def ? displayLabel(def, state.config) : label.title || id;
+    if (mode !== 'full' || !label.title) return base;
+
+    const language = state.config?.language === 'en' ? 'en' : 'zh';
+    const open = language === 'en' ? ' (' : '（';
+    const close = language === 'en' ? ')' : '）';
+    return `${base}${open}${label.title}${close}`;
+}
+
+function displayPagePathReference(state, sourceFilePath, kind, rawTarget, mode = 'default') {
+    const target = normalizeFormalPagePath(rawTarget, sourceFilePath);
+    const page = (state.pages || []).find(item => item.filePath === target);
+    if (!page) return `@${kind}:${rawTarget}${mode === 'default' ? '' : `.${mode}`}`;
+    const displayMode = mode === 'title' || mode === 'full' ? mode : 'default';
+    return formatPageReference(page, state.config, displayMode);
+}
+
+function displayMarkerDeclaration(marker, state) {
+    if (!marker?.id) return marker?.markerText || '';
+    const label = state.labels[marker.id];
+    if (!label) return marker.markerText;
+    if (isPageLabel(label)) return '';
+
+    const def = findDefinitionById(state, marker.id);
+    if (!def) return marker.markerText;
+    if (marker.type === 'section') return displayNumber(def) || marker.title;
+    return displayLabel(def, state.config);
+}
+
+function compileFormalMarkerLine(line, state) {
+    const marker = parseFormalMarkerLine(line);
+    if (!marker?.id) return line;
+
+    const label = state.labels[marker.id];
+    if (isPageLabel(label)) {
+        const headingRe = new RegExp(`^(\\s*#{1,6}\\s+)#${escapeRegExp(marker.id)}\\b\\s*`);
+        return line.replace(headingRe, '$1');
+    }
+
+    const replacement = displayMarkerDeclaration(marker, state);
+    return line.replace(marker.markerText, replacement);
+}
+
+function rewriteFormalRefsForExport(text, sourceFilePath, state) {
+    const pageRefRe = /(^|[^A-Za-z0-9_])@(chapter|page):([^\s<>"'`，。；;！？]+?\.md)(?:\.(title|full))?(?=$|[\s,，。；;:：.!！?？)\]}])/g;
+    const idRefRe = /(^|[^A-Za-z0-9_])@([A-Za-z0-9_-]+)(?:\.(title|full))?\b(?!:)/g;
+
+    return text
+        .replace(pageRefRe, (_match, prefix, kind, rawTarget, mode) => {
+            return `${prefix}${displayPagePathReference(state, sourceFilePath, kind, rawTarget, mode || 'default')}`;
+        })
+        .replace(idRefRe, (_match, prefix, id, mode) => {
+            return `${prefix}${displayObjectReference(state, id, mode || 'default')}`;
+        });
+}
+
+function normalizeExportLinkTarget(rawTarget, sourceFilePath) {
+    const raw = String(rawTarget || '');
+    const match = raw.match(/^(\s*<?)([^\s>]+)(>?[\s\S]*)$/);
+    if (!match) return raw;
+
+    const target = match[2];
+    if (!target || /^(?:[a-z][a-z0-9+.-]*:|#|\/)/i.test(target)) return raw;
+    if (target.startsWith('@')) return raw;
+    if (target.startsWith('{') || target.startsWith('[')) return raw;
+
+    const sourceDir = path.posix.dirname(sourceFilePath);
+    const normalized = path.posix.normalize(path.posix.join(sourceDir === '.' ? '' : sourceDir, target)).replace(/^\.\/+/, '');
+    return `${match[1]}${normalized}${match[3]}`;
+}
+
+function rewriteMarkdownLinkTargetsForExport(segment, sourceFilePath) {
+    return segment.replace(/(\[[^\]\n]*\]\()([^\)\n]+)(\))/g, (_match, prefix, target, suffix) => {
+        return `${prefix}${normalizeExportLinkTarget(target, sourceFilePath)}${suffix}`;
+    });
+}
+
+function compileFormalMarkdownContent(content, sourceFilePath, state) {
+    const lines = String(content || '').split(/\r?\n/);
+    let inFence = false;
+
+    return lines.map(line => {
+        if (/^\s*(```|~~~)/.test(line)) {
+            inFence = !inFence;
+            return line;
+        }
+        if (inFence) return line;
+
+        const markerCompiled = compileFormalMarkerLine(line, state);
+        return splitProtectedInlineSegments(markerCompiled).map(part => {
+            if (part.kind === 'code') return part.text;
+            if (part.kind === 'link') return rewriteMarkdownLinkTargetsForExport(part.text, sourceFilePath);
+            return rewriteFormalRefsForExport(part.text, sourceFilePath, state);
+        }).join('');
+    }).join('\n');
+}
+
+async function compileFormalMarkdownForFiles(files, state) {
+    const chunks = [];
+    for (const filePath of files) {
+        const relative = relativePath(filePath);
+        const content = await fs.readFile(filePath, 'utf8');
+        chunks.push(compileFormalMarkdownContent(content, relative, state).trimEnd());
+    }
+    return `${chunks.filter(Boolean).join('\n\n\\pagebreak\n\n')}\n`;
+}
+
+function parseExportArgs(args, defaultOutput) {
+    const options: {
+        output: string;
+        mdOutput: string;
+        pdfEngine: string;
+        keepMarkdown: boolean;
+        paths: string[];
+    } = {
+        output: defaultOutput,
+        mdOutput: '',
+        pdfEngine: 'xelatex',
+        keepMarkdown: false,
+        paths: []
+    };
+
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+        if (arg === '--out' || arg === '-o') {
+            options.output = args[++i] || options.output;
+        } else if (arg.startsWith('--out=')) {
+            options.output = arg.slice('--out='.length);
+        } else if (arg === '--md-out') {
+            options.mdOutput = args[++i] || options.mdOutput;
+        } else if (arg.startsWith('--md-out=')) {
+            options.mdOutput = arg.slice('--md-out='.length);
+        } else if (arg === '--pdf-engine') {
+            options.pdfEngine = args[++i] || options.pdfEngine;
+        } else if (arg.startsWith('--pdf-engine=')) {
+            options.pdfEngine = arg.slice('--pdf-engine='.length);
+        } else if (arg === '--keep-md') {
+            options.keepMarkdown = true;
+        } else if (!arg.startsWith('--')) {
+            options.paths.push(arg);
+        }
+    }
+
+    return options;
+}
+
+async function exportMarkdown(args = []) {
+    const options = parseExportArgs(args, '.markdown-formal/export.md');
+    if (options.paths.length === 0) {
+        console.error('Usage: npm run formal -- export-md <file-or-dir> [...] --out <compiled.md>');
+        process.exitCode = 1;
+        return '';
+    }
+
+    const state = await scanWorkspace();
+    await writeArtifacts(state);
+    const errors = state.issues.filter(issue => issue.severity === 'error');
+    if (errors.length > 0) {
+        printSummary('export-md', state);
+        process.exitCode = 1;
+        return '';
+    }
+
+    const files = await resolveInputMarkdownFiles(options.paths, state.config);
+    if (files.length === 0) {
+        console.error('No Markdown files matched export input.');
+        process.exitCode = 1;
+        return '';
+    }
+
+    const outputPath = path.resolve(ROOT, options.output);
+    const compiled = await compileFormalMarkdownForFiles(files, state);
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    await fs.writeFile(outputPath, compiled, 'utf8');
+    console.log(`OK export-md: ${files.length} files -> ${relativePath(outputPath)}`);
+    return outputPath;
+}
+
+async function exportPdf(args = []) {
+    const options = parseExportArgs(args, '.markdown-formal/export.pdf');
+    if (options.paths.length === 0) {
+        console.error('Usage: npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--keep-md]');
+        process.exitCode = 1;
+        return;
+    }
+
+    const pdfPath = path.resolve(ROOT, options.output);
+    const mdPath = path.resolve(ROOT, options.mdOutput || `${options.output.replace(/\.pdf$/i, '')}.compiled.md`);
+    const mdArgs = [...options.paths, '--out', relativePath(mdPath)];
+    const compiledPath = await exportMarkdown(mdArgs);
+    if (!compiledPath || process.exitCode) return;
+
+    await fs.mkdir(path.dirname(pdfPath), { recursive: true });
+    const result = spawnSync('pandoc', [
+        relativePath(compiledPath),
+        '-o',
+        relativePath(pdfPath),
+        '--pdf-engine',
+        options.pdfEngine
+    ], {
+        cwd: ROOT,
+        encoding: 'utf8'
+    });
+
+    if (result.error) {
+        console.error('export-pdf requires pandoc on PATH. Install pandoc and a LaTeX engine, or use export-md and compile the generated Markdown yourself.');
+        console.error(String(result.error.message || result.error));
+        process.exitCode = 1;
+        return;
+    }
+
+    if (result.status !== 0) {
+        if (result.stdout) console.error(result.stdout.trim());
+        if (result.stderr) console.error(result.stderr.trim());
+        process.exitCode = result.status || 1;
+        return;
+    }
+
+    if (!options.keepMarkdown && !options.mdOutput) {
+        await fs.rm(compiledPath, { force: true });
+    }
+    console.log(`OK export-pdf: ${relativePath(pdfPath)}`);
 }
 
 async function resolveInputMarkdownFiles(inputs, config) {
@@ -1738,6 +2008,8 @@ function printHelp({ all = false } = {}) {
   npm run formal -- graph impact <h-id>
   npm run formal -- graph focus <h-id> [--depth N]
   npm run formal -- graph matrix chapter|volume|book
+  npm run formal -- export-md <file-or-dir> [...] --out <compiled.md>
+  npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf>
   npm run formal -- verify [--strict-chapters]
 
 Migrations are dry-run by default. Pass --apply to edit files.
@@ -1767,6 +2039,8 @@ Advanced commands:
   npm run formal -- graph upstream <h-id> [--where all|statement|proof|body]
   npm run formal -- graph bridges|isolated|cycles [--where all|statement|proof|body]
   npm run formal -- graph matrix chapter|volume|book [--where all|statement|proof|body]
+  npm run formal -- export-md <file-or-dir> [...] --out <compiled.md>
+  npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--keep-md]
   npm run formal -- verify [--strict-chapters]
 
 Advanced:
@@ -1807,6 +2081,10 @@ async function main() {
         await migrateTextRefs(args);
     } else if (command === 'migrate-ids') {
         await migrateIds(args);
+    } else if (command === 'export-md') {
+        await exportMarkdown(args);
+    } else if (command === 'export-pdf') {
+        await exportPdf(args);
     } else if (command === 'audit') {
         await audit(args);
     } else if (command === 'report') {
