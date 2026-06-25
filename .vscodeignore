@@ -1,0 +1,16 @@
+.git/**
+.gitignore
+.markdown-formal/**
+dist/**
+node_modules/**
+src/**
+tests/**
+examples/**
+docs/**
+out/cli/**
+out/webview/**
+*.ts
+tsconfig*.json
+vite.*.ts
+package-lock.json
+.DS_Store

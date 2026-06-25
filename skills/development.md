@@ -26,7 +26,7 @@
 需要注意：
 
 - `src/webview/formal-script.ts` 会打包到 `media/formal-script.js`，改预览端交互后必须运行 `npm run build`。
-- Webview 端由固定版本 `vite@6.4.2` 打包成单文件 IIFE；不要新增 Vite dev server 脚本，预览运行时只加载 `media/formal-script.js` 和 `media/styles.css`。
+- Webview 端由固定版本 `vite@6.4.3` 打包成单文件 IIFE；不要新增 Vite dev server 脚本，预览运行时只加载 `media/formal-script.js` 和 `media/styles.css`。
 - 扫描缓存位于 `.markdown-formal/`，包含 `preview-cache.json`、`config.json`、`agent-guide.md`、`reference-map.md`、`dependency-graph.json`、`dependency-report.md` 和 `report.md`。
 - 项目根的 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbols.json` 分别是非标准定义查询、符号表源表，修改后会刷新 `preview-cache.json`。
 - CLI 源码位于 `src/cli/`；`npm run formal -- ...` 会先 typecheck 并用 Vite 打包到 `out/cli/formal-tools.js` 再执行。
@@ -51,7 +51,7 @@ npm run formal -- perf-dummy 50 200
 
 ## 本地 Release
 
-当前 release 不引入 vsce 或压缩依赖，只组装可复制目录；CLI 和 webview 脚本在 `npm run build` 阶段已经由 Vite 输出到 `out/cli/*.js` 和 `media/formal-script.js`：
+release 同时生成 VSIX、可复制扩展目录、可 vendoring 的 CLI 包、AI skills 和文档。CLI 和 webview 脚本在 `npm run build` 阶段已经由 Vite 输出到 `out/cli/*.js` 和 `media/formal-script.js`；VSIX 由固定版本 `@vscode/vsce@3.9.2` 从本地 dev dependency 生成：
 
 ```bash
 npm run release:local
@@ -59,16 +59,20 @@ npm run release:local
 
 产物位于 `dist/markdown-formal-<version>/`：
 
+- `markdown-formal-<version>.vsix`：VS Code 兼容扩展安装包。
 - `extension/`：编辑器扩展目录包。
 - `cli/`：可复制到目标项目 `tools/markdown-formal/` 的 CLI 包。
+- `skills/`：给目标项目 AI 指令融合用的规则源材料。
+- `docs/`：人类阅读的使用、AI 集成和 release 文档。
+- `INSTALL.md`：当前 release 包的快速安装说明。
 - `manifest.json`：产物结构说明。
 - `checksums.txt`：所有产物文件的 sha256。
 
-`.vsix` 暂不生成；CLI release 直接复制已经打包好的 `out/cli/formal-tools.js` 和 `out/cli/release.js`。
+VSIX 用于正式编辑器安装；本地开发仍优先使用软链接。CLI release 直接复制已经打包好的 `out/cli/formal-tools.js` 和 `out/cli/release.js`，运行时不依赖 npm 包。
 
 ## 依赖安全
 
-运行时维护工具仍只使用 Node 内置模块；新增依赖只允许作为开发期构建依赖。当前额外开发依赖为固定版本 `vite@6.4.2`，仅用于 `vite build` 生成 CLI 和 webview 单文件脚本。
+运行时维护工具仍只使用 Node 内置模块；新增依赖只允许作为开发期构建、测试或打包依赖。当前额外开发依赖为固定版本 `vite@6.4.3` 和 `@vscode/vsce@3.9.2`，分别用于 `vite build` 生成 CLI/webview 单文件脚本，以及生成 VSIX。
 
 新增或升级 npm 包前必须：
 

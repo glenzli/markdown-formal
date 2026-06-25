@@ -4,6 +4,11 @@
   "description": "Agent-native, runtime-zero-dependency formal mathematics markdown assistant",
   "version": "0.1.0",
   "publisher": "glenzli",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/glenzli/markdown-formal.git"
+  },
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -23,6 +28,7 @@
     "check": "npm run build && npm run formal -- verify",
     "test:migrations": "node tests/formal-tools.test.mjs",
     "test": "npm run check && npm run test:migrations",
+    "package:vsix": "npm run build && vsce package --no-dependencies",
     "release:local": "npm test && node out/cli/release.js"
   },
   "contributes": {
@@ -41,7 +47,8 @@
     ]
   },
   "devDependencies": {
+    "@vscode/vsce": "3.9.2",
     "typescript": "^6.0.3",
-    "vite": "6.4.2"
+    "vite": "6.4.3"
   }
 }

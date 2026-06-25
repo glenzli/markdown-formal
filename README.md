@@ -1,379 +1,69 @@
 # markdown-formal
 
-`markdown-formal` is a VS Code-compatible Markdown preview extension and local CLI for long-form mathematical writing. It separates human-visible numbering from stable machine IDs so chapters can be edited, moved, and migrated without manually maintaining theorem references.
+Language: [English](#english) | [中文](#中文)
 
-The project is designed for AI-assisted writing:
+<a id="english"></a>
 
-- Preview renders lightweight numbered markers, references, LaTeX, chapter navigation, volumes, intro/summary pages, appendices, definition lookup, and a current-page declared-symbol table.
-- The CLI generates theorem-like dependency graph data from explicit `@h-...` references, split into statement and proof edges.
-- Source Markdown stores stable hash IDs for numbered objects, such as `#h-8f2a91c4d7e03b6a`.
-- AI agents write new numbered markers with temporary IDs such as `tmp-1`, then the CLI finalizes them.
-- Generated or migrated content is checked with a strict `verify` gate.
+## English
 
-## Basic Syntax
+`markdown-formal` is a VS Code-compatible Markdown preview extension and local CLI for long-form mathematical and technical writing.
 
-Put the stable ID where a human-maintained number used to be:
+It keeps stable hash IDs in source Markdown, then renders human-facing numbering, references, navigation, definition lookup, symbol tables, dependency graphs, and publication exports from generated metadata.
 
-```markdown
-## #tmp-1 Compactness
+The design target is AI-assisted editing:
 
-定理 #tmp-2（Compactness Criterion）：Let \(X\) be ...
+- AI writes lightweight `tmp-*` markers while drafting.
+- The CLI finalizes those markers into stable `h-*` IDs.
+- Verification catches broken references, stale temporary IDs, and migration residue.
 
-By @tmp-2, the sequence is tight.
-```
+### Main Capabilities
 
-Supported markers:
+- Stable numbering for pages, sections, theorem-like blocks, equations, figures, and tables.
+- `@h-...` references that survive insertion, deletion, and chapter reordering.
+- Definition lookup without forcing definitions into the numbering system.
+- Current-page symbol table for project-specific LaTeX notation.
+- Explicit theorem dependency graph built from `@h-...` references.
+- Markdown and PDF export with title page, publication metadata page, and front matter pages.
+- AI workflow documents under `skills/` for integration into another project.
 
-- Sections: `## #h-... Title` render as numbered anchors and links, but do not generate hover recall previews.
-- Numbered together per chapter or appendix: `命题 #h-...`, `引理 #h-...`, `定理 #h-...`, `推论 #h-...`
-- Separate counters per chapter or appendix: `公式 #h-...：`, `图 #h-...（Caption）：...`, `表 #h-...（Caption）：`
-- English numbered markers are also supported: `Proposition #h-...`, `Lemma #h-...`, `Theorem #h-...`, `Corollary #h-...`, `Equation #h-...`, `Figure #h-...`, `Table #h-...`
-- Definition lookup uses a tool-first, AI-exception workflow. Standard `定义（Term）：...` / `Definition (Term): ...` lines are scanned automatically with structural range heuristics; nonstandard prose definitions, aliases, bilingual lookup, or unreliable boundaries are indexed through `.markdown-formal/definitions.json`.
-- Remarks have two modes: explanatory remarks stay plain as `注（...）` / `Remark (...)`, while non-mainline fact remarks that need a proof or later citation use `注 #h-...（...）` / `Remark #h-... (...)`. Anchored fact remarks may also be written inside standard blockquotes as `> 注 #h-...（...）`; they hide the hash, do not render a remark number, and do not enter the preview contents menu.
-- Examples stay plain by default; only add `#h-...` when an example is explicitly cited. Cited examples use their own example counter.
+### Development Install
 
-Hover recall is generated for propositions, lemmas, theorems, corollaries, anchored fact remarks, and explicitly cited examples. For theorem-like blocks, the preview captures the statement and stops before `证明` / `Proof`.
-
-Equations, figures, and tables use the same stable-ID model without wrapping the surrounding content:
-
-```markdown
-公式 #tmp-3：
-$$
-\rho(T)<1
-$$
-
-![Feedback loop](assets/feedback.svg)
-
-图 #tmp-4（Feedback loop）：The loop weight controls the spectral radius.
-
-表 #tmp-5（Stability conditions）：
-
-| Condition | Meaning |
-| --- | --- |
-| $\rho(T)<1$ | Convergence |
-```
-
-Equations render as `公式 (2.1)` / `Equation (2.1)`, while figures and tables render as `图 2.1` / `Figure 2.1` and `表 2.1` / `Table 2.1`. In appendices they render as `(A.1)`, `图 A.1`, and `表 A.1`.
-
-References:
-
-- `@h-...` renders the object type and display number.
-- `@h-....title` renders the object title.
-- A chapter, intro, summary, or appendix page may put a hash on its unique highest-level heading, for example `# #h-... Chapter Title` or `## #tmp-* Chapter Title`. The hash is hidden in preview and does not create a section number. Chapter and appendix headings are rendered/exported with their page label by default, such as `第 1 章 Chapter Title`; source titles should not handwrite the chapter number unless the project intentionally sets `render.pageHeadingStyle` to `title`.
-- Page hashes use the same reference syntax: `@h-...` renders the page label, `@h-....title` renders only the title, and `@h-....full` renders label plus title.
-- `@chapter:path/to/chapter.md` and `@page:path/to/page.md` remain available as path-based compatibility refs, using paths relative to the formal root that owns `.markdown-formal/`. Prefer page hashes once a page heading has one.
-- Definitions do not have hash IDs and do not participate in references. Lookup is driven by definition names in the concept index; definition bodies are not used as broad search text. Rendered Markdown/LaTeX previews are generated only for definitions in the currently previewed file, while cross-file matches focus on location and jump.
-
-Important syntax split: `#h-...` / `#tmp-*` is declaration syntax and belongs only where the object is defined, such as `命题 #tmp-*（Title）：...`, `## #tmp-* Title`, or the unique top page heading. Running prose references must use `@h-...`, `@h-....title`, or `@h-....full`; do not write `命题 #h-...`, `Theorem #h-...`, or `由 #h-...` as a reference.
-
-During drafting, `./chapter.md` and `../vol-2/chapter.md` are accepted as input sugar for page refs. `finish` normalizes them to formal-root-relative paths so the source stays stable regardless of CLI `workdir` or the current Markdown file.
-
-Use `.markdown-formal/definitions.json` only for definition lookup exceptions: nonstandard prose definitions, aliases, bilingual lookup, stable multi-paragraph preview content, or cases where the automatic boundary is likely wrong. Standard definitions that naturally end by punctuation or structure can stay in the Markdown source only:
-
-```json
-[
-  {
-    "term": "定义域",
-    "aliases": ["domain"],
-    "source": "examples/book1/01-introduction.md:7",
-    "content": "定义域是算子实际作用的对象范围。"
-  }
-]
-```
-
-`source` points to the defining sentence or paragraph. `content` is the AI-maintained Markdown excerpt used for same-file rendered lookup previews and fallback text; `verify` blocks missing or stale AI-maintained definition content.
-
-Project-specific symbols can be declared in `.markdown-formal/symbols.json`:
-
-```json
-[
-  {
-    "pattern": "\\sigma(${operator})",
-    "meaning": "匹配到的算子的谱。",
-    "scope": "book",
-    "source": "examples/book1/03-spectral-theory.md:7"
-  }
-]
-```
-
-Only record explicit local notation conventions. Symbols are exposed through the current-page navigation symbol table rather than inline formula bindings or the definition search box. The symbol table lists declarations that match LaTeX formulas in the current preview file. Do not list generic math notation or whole derivation formulas. `pattern` should describe the notation atom/family itself, with balanced delimiters; do not leave a placeholder open at the end of a formula fragment. `source`, `pattern`, and `meaning` are required; `display` is optional and normally generated from the pattern.
-
-## AI Workflow
-
-Give AI agents this instruction:
-
-```text
-Follow skills/editor.md.
-Before writing or migrating, run npm run formal -- prepare.
-Read .markdown-formal/agent-guide.md, the target Markdown file, and .markdown-formal/reference-map.md.
-Reference existing numbered objects and page anchors only by copying @h-..., @h-....title, or @h-....full from reference-map.md. #h-... / #tmp-* is only for declarations; never write "命题 #h-..." or "Theorem #h-..." in prose as a reference.
-Prefer page-hash refs for existing chapters/pages. @chapter:path.md and @page:path.md are compatibility refs when a page has no heading hash yet.
-Keep a short natural-language cue near important refs, such as "by the spectral-radius lemma `@h-...`"; do not leave important prose as only a bare `@h-...`.
-Use tmp-1/tmp-2/... for new markers; do not generate hash IDs manually.
-Use the same tmp-ID rule for equations, figures, and tables: `公式 #tmp-*：`, `图 #tmp-*（Caption）：...`, `表 #tmp-*（Caption）：`.
-Definitions do not get hash IDs or refs. Tool scanning handles standard `定义（Term）：...` / `Definition (Term): ...` definitions first, including common multiline ranges. When editing a file, AI only updates .markdown-formal/definitions.json for exceptions in that file: nonstandard phrases such as "called X", "we call it X", "所谓 X", "称为 X", or "记作 X", aliases/bilingual lookup, stable multi-paragraph preview content, or boundaries the heuristic may get wrong. Do not mechanically rewrite prose just to fit a marker format, and do not full-book regenerate definitions.json.
-Maintain .markdown-formal/symbols.json only for explicit project-specific notation conventions, not ordinary formulas or complete equations.
-After editing, run npm run formal -- finish <file-or-dir>.
-Keep Markdown and LaTeX unescaped.
-```
-
-Normal edit loop:
+Install dependencies and build:
 
 ```bash
-npm run formal -- prepare
-npm run formal -- finish path/to/chapter.md
-```
-
-Definition search and the current-page symbol panel are scoped to the current book by default. If one book intentionally depends on another, declare it in `.markdown-formal/config.json`:
-
-```json
-{
-  "scan": {
-    "exclude": [
-      "formal-oet/.lake/**",
-      ".context/**",
-      "draft/**"
-    ]
-  },
-  "lookup": {
-    "bookDependencies": {
-      "book3": ["book2"]
-    }
-  },
-  "preview": {
-    "ignoreHover": [
-      "appendix-b-concepts.md",
-      "concept-*.md",
-      "the-operator-evolution-theory/**/appendix-*.md"
-    ]
-  },
-  "render": {
-    "pageHeadingStyle": "label-title"
-  },
-  "pdf": {
-    "pdfEngine": "xelatex",
-    "paper": "a4",
-    "margin": "2.5cm",
-    "toc": true,
-    "tocDepth": 2,
-    "lang": "zh-CN",
-    "tocTitle": "目录",
-    "title": "算子演化论",
-    "subtitle": "卷 I：规范空间与算子",
-    "author": "Zhe Li",
-    "authorNative": "李喆",
-    "authorAliases": ["Glen Li / glenzli"],
-    "orcid": "https://orcid.org/0009-0006-6536-3453",
-    "repository": "https://github.com/glenzli/formal-math",
-    "license": "CC BY 4.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
-    "preferredCitation": "Zhe Li ..., licensed under CC BY 4.0.",
-    "date": "Revised 2026-06-26",
-    "releaseVersion": "rc.1",
-    "releaseTag": "",
-    "releaseCommit": "",
-    "doi": "",
-    "showVersionOnCover": true,
-    "metadataPage": true,
-    "documentClass": "ctexbook",
-    "titlePage": true,
-    "coverStyle": "simple",
-    "titleSize": "32pt",
-    "subtitleSize": "18pt",
-    "authorSize": "12pt",
-    "dateSize": "12pt",
-    "tocPageBreak": true,
-    "frontMatter": [
-      {
-        "title": "AI 辅助声明",
-        "source": "the-operator-evolution-theory/AI-PARTICIPATION.short.md",
-        "toc": false,
-        "pageBreakAfter": true
-      },
-      {
-        "title": "AI Assistance Statement",
-        "content": "This publication used AI systems as assistive tools during drafting, restructuring, formalization, and release preparation.",
-        "toc": false,
-        "pageBreakAfter": true
-      }
-    ],
-    "variables": []
-  },
-  "debug": {
-    "previewLog": false,
-    "markerTraceIds": []
-  }
-}
-```
-
-Run `npm run formal` from the project root that owns `.markdown-formal/definitions.json` and `.markdown-formal/symbols.json`. `.markdown-formal/config.json` is the explicit opt-in switch for enhanced Markdown preview; if the config or generated `preview-cache.json` is missing, the extension leaves the preview as ordinary Markdown and does not inject navigation, search, or formal reference data. Use `scan.exclude` to keep generated, context, draft, or build directories out of the formal book scan. Use `preview.ignoreHover` for concept appendices or other recall-heavy files where inline `@hash` hover previews should be skipped; numbering, navigation, jumps, definition search, and the current-page symbol panel still work. Patterns may be full relative paths, bare filenames such as `appendix-b-concepts.md`, or globs such as `concept-*.md` and `book/**/appendix-*.md`. `render.pageHeadingStyle` controls page heading display in preview and export: `label-title` is the default, `number-title` uses only the chapter/appendix number prefix, and `title` leaves the source heading title unchanged. `00-introduction.md`, `intro.md`, and `introduction.md` are treated as intro pages, not chapter 0.
-
-Formal references across different `book*` roots are blocked by `verify` unless the source book declares the target book in `lookup.bookDependencies`. This keeps independent books from silently depending on each other while still allowing explicit dependency chains.
-
-Set `debug.previewLog` to `true` temporarily when diagnosing blank previews, extension-host stalls, or marker rendering issues. Diagnostic events are written to `.markdown-formal/preview-debug.log`; set `debug.markerTraceIds` to specific hash IDs such as `["h-..."]` when tracing one marker's before/after token rewrite. Turn debug logging off after collecting the log.
-
-`prepare` writes generated helper files under `.markdown-formal/`:
-
-- `agent-guide.md`: compact AI workflow card
-- `reference-map.md`: display number, page anchor, and unnumbered anchor to hash ID map
-- `preview-cache.json`: runtime preview/navigation/definition/symbol table cache
-- `dependency-graph.json`: canonical theorem-like dependency graph built from explicit `@h-...` references
-- `dependency-report.md`: human/AI-readable dependency summary with statement/proof edges, cross-scope edges, cycles, and isolated nodes
-- `report.md`: lint/verify details
-- `audit.md`: advisory cleanup report generated by `npm run formal -- audit`
-
-Do not edit generated `.markdown-formal/` files by hand. The project-maintained entries under that directory are `.markdown-formal/config.json`, `.markdown-formal/definitions.json`, and `.markdown-formal/symbols.json`; the rest are generated caches and reports.
-
-## Exporting PDF
-
-Formal Markdown is not meant to be compiled directly by ordinary Markdown/PDF tools because it contains stable hash declarations and `@h-...` references. Export a portable Markdown source first:
-
-```bash
-npm run formal -- export-md path/to/chapter-or-dir --out dist/book.md
-npm run formal -- export-pdf path/to/chapter-or-dir --out dist/book.pdf
-npm run formal -- render-pdf dist/book.md --out dist/book.pdf
-```
-
-`export-md` rewrites formal declarations and refs into ordinary Markdown text while preserving the original Markdown and LaTeX source. It also rewrites relative Markdown link/image targets to be relative to the formal root, so a multi-file export can be compiled from one generated file.
-
-`export-md` orders directories by formal page metadata: intro pages, numbered chapters, summaries, then appendices. This avoids `summary.md` falling after appendices just because of filename sorting.
-
-`export-pdf` runs the same Markdown export and then calls `pandoc` from `PATH` with `--pdf-engine xelatex` by default. `render-pdf` starts from an already compiled ordinary Markdown file and only calls `pandoc`; it does not scan formal source, rerun `export-md`, create `.markdown-formal/config.json`, or apply project-specific hooks. Use it when a release flow needs `export-md -> project postprocess -> render-pdf`.
-
-PDF rendering reads defaults from `.markdown-formal/config.json` `pdf` when present. Without config, it defaults to A4 paper, a 2.5cm margin, a table of contents with depth 2, language-based TOC title (`目录` for Chinese, `Contents` for English), and a separate TOC page. When `titlePage` is enabled, the built-in `simple` cover uses larger title/subtitle type and treats `date` as the visible revision line, such as `Revised 2026-06-26`. `author` is the cover author and the PDF document metadata author; keep native names and aliases out of that machine field. When `metadataPage` is enabled, `render-pdf` / `export-pdf` insert a generated publication metadata page after the title page and before the table of contents, using `authorNative`, repeated `authorAliases`, `orcid`, `repository`, `license`, `licenseUrl`, `releaseVersion`, `releaseTag`, `releaseCommit`, `doi`, and `preferredCitation`; the page is unnumbered and not listed in the TOC. `frontMatter` pages are inserted after the metadata page and before the TOC; each entry may use `source` or inline `content`, supports ordinary Markdown/LaTeX via Pandoc conversion, defaults to `toc: false`, and defaults to `pageBreakAfter: true`. `releaseVersion` is for local release candidates or other non-DOI builds; it is passed as PDF metadata and is only shown on the cover when `showVersionOnCover` is true. Override these with `--paper`, `--margin`, `--no-toc`, `--toc-depth`, `--lang`, `--toc-title`, `--title`, `--subtitle`, `--author`, `--author-native`, `--author-alias`, `--orcid`, `--repository`, `--license`, `--license-url`, `--preferred-citation`, `--date`, `--release-version`, `--release-tag`, `--release-commit`, `--doi`, `--metadata-page`, `--no-metadata-page`, `--front-matter`, `--front-matter-title`, `--front-matter-toc`, `--no-front-matter-toc`, `--show-version-on-cover`, `--documentclass`, `--title-page`, `--cover-style`, `--title-size`, `--subtitle-size`, or `--no-toc-page-break`. No npm PDF dependency is bundled. Use `--pdf-engine lualatex` or another installed engine when needed, pass Pandoc variables with `-V key:value` or `--variable key:value`, and use `export-pdf --md-out dist/book.md --keep-md` if you want to inspect the intermediate Markdown.
-
-## Migrating Existing Text
-
-For old prose references such as `定理 2.1` or `Theorem 2.1`:
-
-```bash
-npm run formal -- prepare
-npm run formal -- migrate-text-refs path/to/chapter-or-volume
-npm run formal -- migrate-text-refs --apply path/to/chapter-or-volume
-npm run formal -- verify
-```
-
-Scoped text-reference migration has two ranges:
-
-- Numbered-object scope: the chapter or volume passed on the command line.
-- Reference rewrite scope: where textual references are rewritten.
-
-By default, target files are migrated against the full reference map, while non-target files only rewrite incoming references that point into the target scope. This keeps gradual migration reviewable without leaving incoming references behind.
-
-If you explicitly want the older, narrower behavior, restrict the rewrite to the target files:
-
-```bash
-npm run formal -- migrate-text-refs --target-only path/to/chapter-or-volume
-npm run formal -- migrate-text-refs --apply --target-only path/to/chapter-or-volume
-```
-
-`migrate-text-refs` automatically rewrites unambiguous typed numbered references, including common forms such as `定理 2.1`, `Theorem 2.1`, `公式 (2.1)`, `Figure 2.1`, `表 2.1`, `第 2.1 节`, `§2.1`, and `Sec. 2.1`. It intentionally does not rewrite bare `2.1`, bare `(2.1)`, or handwritten chapter refs such as `第 2 章` / `Chapter 2`, because those need prose context; convert chapter refs manually to a page hash `@h-...` when available, otherwise to `@chapter:path/to/chapter.md`. Matching is bounded so `2.1` is not rewritten inside `2.12`, `2.1.3`, or `22.1`. It does not rewrite old Markdown links in place because formal refs render as links already; those links are listed in `.markdown-formal/text-ref-migration.md` with suggested IDs.
-
-The same report lists plain `##`/`###` section headings that may need numbered markers. `audit` additionally lists handwritten chapter references and suggests a page hash when the target chapter already has one, otherwise a compatibility `@chapter:` path. For referenced sections, write the heading as `## #tmp-* Title`, run `finish`, then rerun the migration.
-
-For old semantic IDs:
-
-```bash
-npm run formal -- migrate-ids path/to/chapter-or-volume
-npm run formal -- migrate-ids --apply path/to/chapter-or-volume
-npm run formal -- verify
-```
-
-Scoped ID migration also updates incoming references by default. If you explicitly want to touch only the target files, use `--target-only`; the tool will refuse to apply if that would leave outside references pointing at removed IDs:
-
-```bash
-npm run formal -- migrate-ids --apply --target-only path/to/chapter-or-volume
-```
-
-## Books, Volumes, And Appendices
-
-The scanner infers structure from paths:
-
-```text
-book1/
-  01-introduction.md
-  02-main-theory.md
-book2/
-  vol-1-foundations/
-    intro.md
-    01-background.md
-    appendix-a-estimates.md
-    summary.md
-  volume-2-geometry/
-    03-moduli.md
-    appendix-a-tables.md
-```
-
-Rules:
-
-- `book1`, `book2`, etc. are separate books.
-- `vol-*` and `volume-*` add a navigation layer but do not reset chapter numbering.
-- `intro.md` and `summary.md` are navigable but not numbered.
-- `appendix-a-*.md` uses appendix numbering scoped to the current book and volume.
-
-## Commands
-
-```bash
+npm install
 npm run build
-npm run formal -- prepare
-npm run formal -- verify
-npm run formal -- finalize <file-or-dir> [--all]
-npm run formal -- finish <file-or-dir> [--all]
-npm run formal -- migrate-text-refs <file-or-dir>
-npm run formal -- migrate-text-refs --apply <file-or-dir>
-npm run formal -- migrate-text-refs --target-only <file-or-dir>
-npm run formal -- migrate-text-refs --apply --target-only <file-or-dir>
-npm run formal -- migrate-ids <file-or-dir>
-npm run formal -- migrate-ids --apply <file-or-dir>
-npm run formal -- migrate-ids --apply --target-only <file-or-dir>
-npm run formal -- audit [file-or-dir]
-npm run formal -- graph
-npm run formal -- graph summary [--where all|statement|proof|body]
-npm run formal -- graph focus <h-id> [--depth N] [--where all|statement|proof|body]
-npm run formal -- graph impact <h-id> [--where all|statement|proof|body]
-npm run formal -- graph upstream <h-id> [--where all|statement|proof|body]
-npm run formal -- graph bridges|isolated|cycles [--where all|statement|proof|body]
-npm run formal -- graph matrix chapter|volume|book [--where all|statement|proof|body]
-npm run formal -- perf-dummy 50 200 --max-ms 2000 --max-heap-mb 256
-npm test
 ```
 
-`verify` is the strict generated/migrated-content gate. It fails on missing refs, missing page refs, duplicate IDs, remaining temporary IDs, non-hash IDs, disallowed cross-book refs, malformed equation/figure/table markers, and unresolved text-reference migration reports.
-
-`audit` is advisory and exits successfully. It writes `.markdown-formal/audit.md` with old typed references, handwritten chapter references, old Markdown links, plain section headings that may need stable markers, suspicious bare number references, unused optional example hashes, and theorem-like blocks that do not have a visible `证明` / `Proof` boundary.
-
-`graph` refreshes `.markdown-formal/dependency-graph.json` and `.markdown-formal/dependency-report.md`. `prepare`, `finish`, and `verify` also write these files, so `graph` is mainly for focused dependency inspection. The graph only treats `prop`/`lemma`/`theorem`/`cor` nodes as theorem dependencies; references outside theorem-like statement/proof blocks are reported as ambient diagnostics rather than dependency edges.
-
-Use graph analysis commands when changing theorem-like content:
-
-- `graph impact <h-id>` shows downstream theorem-like nodes that explicitly depend on a node.
-- `graph upstream <h-id>` shows the upstream dependencies of a node.
-- `graph focus <h-id> --depth 2` shows a local upstream/downstream neighborhood and local edges.
-- `graph matrix chapter|volume|book` summarizes dependency flow between scopes.
-- `graph bridges`, `graph isolated`, and `graph cycles` give structural review lists.
-- `--where statement|proof|body` filters edges by where the explicit `@h-...` reference occurs.
-
-These commands are generic graph analysis only. Domain meanings such as "foundation theorem", "bridge lemma", "Lean priority", or project-specific coupling rules belong in the target project, not in markdown-formal's canonical explicit graph.
-
-## Local Release
-
-The editor extension is compiled with `tsc`; the CLI and Markdown preview script are bundled by the pinned dev dependency `vite@6.4.2` into `out/cli/*.js` and `media/formal-script.js`. Runtime artifacts remain dependency-free. Build a local directory release with:
+Link into VS Code:
 
 ```bash
-npm run release:local
+ln -s "$PWD" ~/.vscode/extensions/markdown-formal
 ```
 
-The result is:
+Link into Antigravity:
+
+```bash
+ln -s "$PWD" ~/.antigravity-ide/extensions/markdown-formal
+```
+
+Reload the editor window after rebuilding.
+
+### Use In A Writing Project
+
+A writing project vendors the CLI and owns its `.markdown-formal/` metadata:
 
 ```text
-dist/markdown-formal-<version>/
-  extension/
-  cli/
-  manifest.json
-  checksums.txt
+tools/markdown-formal/
+  out/cli/formal-tools.js
+
+.markdown-formal/
+  config.json
+  definitions.json
+  symbols.json
 ```
 
-For another project, copy `dist/markdown-formal-<version>/cli` into `tools/markdown-formal/`, copy the `skills/` directory into that project, and add:
+Add a project script:
 
 ```json
 {
@@ -383,23 +73,267 @@ For another project, copy `dist/markdown-formal-<version>/cli` into `tools/markd
 }
 ```
 
-Check `checksums.txt` before copying release artifacts. Do not auto-install or auto-update skills from remote sources. Then use `skills/integrator.md` as an integration patch: merge the markdown-formal rules into the target project's native AI writing instructions, such as `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, an existing writing skill, or the repository README. Do not leave it as a detached extra skill if the project already has its own writing workflow.
-
-## Development
-
-For local extension development, link the repository into your editor extension directory, run:
+Prepare the project:
 
 ```bash
-npm run build
+npm run formal -- prepare
 ```
 
-Then reload the editor window.
+After editing a file or directory:
 
-Before committing:
+```bash
+npm run formal -- finish path/to/chapter-or-dir
+```
+
+Before committing generated or migrated content:
+
+```bash
+npm run formal -- verify
+```
+
+Enhanced preview is opt-in. The project must contain `.markdown-formal/config.json` and a generated `.markdown-formal/preview-cache.json`; otherwise the extension leaves Markdown preview unchanged.
+
+### Minimal Syntax
+
+Use stable IDs where hand-written numbers would normally appear:
+
+```markdown
+# #tmp-1 Basic Topology
+
+## #tmp-2 Compactness
+
+Theorem #tmp-3 (Finite Subcover Criterion): Let \(X\) be a compact space.
+
+Proof: ...
+
+By @tmp-3, every open cover has a finite subcover.
+```
+
+Rules:
+
+- `#h-...` and `#tmp-*` are declarations only.
+- Prose references use `@h-...`, `@h-....title`, or `@h-....full`.
+- New declarations use `tmp-1`, `tmp-2`, and so on; `finish` replaces them.
+- Definitions do not get hash IDs. Standard `Definition (Term): ...` and `定义（术语）：...` entries are scanned automatically.
+- AI maintains `.markdown-formal/definitions.json` only for exceptions.
+- Only project-specific notation goes into `.markdown-formal/symbols.json`.
+
+### Documentation
+
+- [docs/usage.md](docs/usage.md): syntax, commands, project structure, configuration, and PDF export.
+- [docs/ai-integration.md](docs/ai-integration.md): how to merge the workflow into another project's AI instructions.
+- [docs/release.md](docs/release.md): release bundle structure and publishing checks.
+- [skills/editor.md](skills/editor.md): detailed AI writing rules.
+- [skills/integrator.md](skills/integrator.md): AI integration source material.
+- [skills/development.md](skills/development.md): development and dependency policy for this repository.
+
+### Release
+
+Build and verify:
 
 ```bash
 npm test
+npm run release:local
+```
+
+Release output:
+
+```text
+dist/markdown-formal-<version>/
+  markdown-formal-<version>.vsix
+  extension/
+  cli/
+  skills/
+  docs/
+  README.md
+  LICENSE
+  INSTALL.md
+  manifest.json
+  checksums.txt
+```
+
+Use the VSIX for editor installation, `cli/` for repo-local vendoring, and `skills/` as reviewed AI integration material.
+
+### Checks
+
+```bash
+npm test
+```
+
+```bash
 npm run formal -- perf-dummy 50 200 --max-ms 2000 --max-heap-mb 256
 ```
 
-The CLI and release tooling use only Node built-ins and the existing TypeScript compiler.
+```bash
+npm audit --registry=https://registry.npmjs.org --omit=optional
+```
+
+The runtime extension and CLI outputs remain dependency-free after build. Development dependencies are pinned for TypeScript, Vite bundling, and VSIX packaging.
+
+<a id="中文"></a>
+
+## 中文
+
+`markdown-formal` 是一个兼容 VS Code Markdown Preview 的扩展和本地 CLI，用于长期维护数学或技术类 Markdown 书稿。
+
+它让源码保存稳定的 hash ID，再由工具渲染面向读者的编号、引用、导航、定义查询、符号表、依赖图和发布产物。
+
+这个项目面向 AI 辅助写作：
+
+- AI 写作时只需要使用轻量的 `tmp-*` 占位。
+- CLI 会把临时 ID 固化为稳定的 `h-*` hash。
+- 校验工具会检查断裂引用、残留临时 ID 和迁移遗留问题。
+
+### 主要能力
+
+- 章节、页面、小节、命题类对象、公式、图、表的稳定编号。
+- `@h-...` 引用可承受插入、删除和章节重排。
+- 定义查询不侵入编号系统。
+- 当前页符号表用于展示项目特有 LaTeX 记号。
+- 从显式 `@h-...` 引用生成命题依赖图。
+- Markdown/PDF 导出，支持封面、出版元数据页和前置声明页。
+- `skills/` 提供给目标项目 AI 指令融合的规则材料。
+
+### 本地开发安装
+
+安装依赖并构建：
+
+```bash
+npm install
+npm run build
+```
+
+链接到 VS Code：
+
+```bash
+ln -s "$PWD" ~/.vscode/extensions/markdown-formal
+```
+
+链接到 Antigravity：
+
+```bash
+ln -s "$PWD" ~/.antigravity-ide/extensions/markdown-formal
+```
+
+重新构建后 reload editor window。
+
+### 在写作项目中使用
+
+目标项目通常 vendoring CLI，并自己维护 `.markdown-formal/` 数据：
+
+```text
+tools/markdown-formal/
+  out/cli/formal-tools.js
+
+.markdown-formal/
+  config.json
+  definitions.json
+  symbols.json
+```
+
+添加项目脚本：
+
+```json
+{
+  "scripts": {
+    "formal": "node tools/markdown-formal/out/cli/formal-tools.js"
+  }
+}
+```
+
+开始前生成索引：
+
+```bash
+npm run formal -- prepare
+```
+
+编辑文件或目录后固化 ID 并刷新缓存：
+
+```bash
+npm run formal -- finish path/to/chapter-or-dir
+```
+
+提交生成或迁移内容前运行校验：
+
+```bash
+npm run formal -- verify
+```
+
+增强预览是显式启用的。项目必须存在 `.markdown-formal/config.json`，并生成 `.markdown-formal/preview-cache.json`；否则扩展会保持原生 Markdown 预览，不注入增强能力。
+
+### 最小语法
+
+把原本需要手写编号的位置替换成稳定 ID：
+
+```markdown
+# #tmp-1 基础拓扑
+
+## #tmp-2 紧性
+
+定理 #tmp-3（有限子覆盖判据）：设 \(X\) 为紧空间。
+
+证明：...
+
+由 @tmp-3 可知，每个开覆盖都有有限子覆盖。
+```
+
+规则：
+
+- `#h-...` 和 `#tmp-*` 只用于声明位置。
+- 正文引用使用 `@h-...`、`@h-....title` 或 `@h-....full`。
+- 新增声明使用 `tmp-1`、`tmp-2` 等；`finish` 会替换为正式 hash。
+- 定义不加 hash。标准 `定义（术语）：...` 和 `Definition (Term): ...` 会自动扫描。
+- AI 只为例外定义维护 `.markdown-formal/definitions.json`。
+- 只有项目特有符号约定进入 `.markdown-formal/symbols.json`。
+
+### 文档入口
+
+- [docs/usage.md](docs/usage.md)：语法、命令、项目结构、配置和 PDF 导出。
+- [docs/ai-integration.md](docs/ai-integration.md)：如何把工作流融合到目标项目 AI 指令中。
+- [docs/release.md](docs/release.md)：release 包结构和发布检查。
+- [skills/editor.md](skills/editor.md)：详细 AI 写作规则。
+- [skills/integrator.md](skills/integrator.md)：AI 集成规则源材料。
+- [skills/development.md](skills/development.md)：本仓库开发与依赖策略。
+
+### Release
+
+构建并验证：
+
+```bash
+npm test
+npm run release:local
+```
+
+生成产物：
+
+```text
+dist/markdown-formal-<version>/
+  markdown-formal-<version>.vsix
+  extension/
+  cli/
+  skills/
+  docs/
+  README.md
+  LICENSE
+  INSTALL.md
+  manifest.json
+  checksums.txt
+```
+
+VSIX 用于编辑器安装，`cli/` 用于目标项目本地 vendoring，`skills/` 是需要审阅和融合的 AI 指令材料。
+
+### 检查
+
+```bash
+npm test
+```
+
+```bash
+npm run formal -- perf-dummy 50 200 --max-ms 2000 --max-heap-mb 256
+```
+
+```bash
+npm audit --registry=https://registry.npmjs.org --omit=optional
+```
+
+构建后的扩展运行时和 CLI 运行时保持无 npm 运行时依赖。开发依赖只用于 TypeScript、Vite 打包和 VSIX 打包。

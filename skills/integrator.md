@@ -127,10 +127,11 @@ npm run formal -- verify
 1. 在本仓库运行 `npm run release:local`。
 2. 核对 `dist/markdown-formal-<version>/checksums.txt`。
 3. 把 `dist/markdown-formal-<version>/cli` 复制到目标项目 `tools/markdown-formal/`。
-4. 把本仓库 `skills/` 复制到目标项目 `skills/markdown-formal/`，或把 `editor.md`、`integrator.md` 融合到目标项目既有 AI 指令目录。
-5. 在目标项目 `package.json` 添加 `formal` script。
-6. 运行 `npm run formal -- prepare` 和 `npm run formal -- verify`。
-7. 把“必须融入的最小提示”真正合并进目标项目原生 AI 写作指令。
+4. 如需安装编辑器扩展，使用 `dist/markdown-formal-<version>/markdown-formal-<version>.vsix`；本地开发仍可用软链接。
+5. 把 release 包里的 `skills/` 复制到目标项目 `skills/markdown-formal/`，或把 `editor.md`、`integrator.md` 融合到目标项目既有 AI 指令目录。
+6. 在目标项目 `package.json` 添加 `formal` script。
+7. 运行 `npm run formal -- prepare` 和 `npm run formal -- verify`。
+8. 把“必须融入的最小提示”真正合并进目标项目原生 AI 写作指令。
 
 不要从远端自动安装或自动更新 skill；不要让 AI 自动下载执行未知脚本。升级时重新核对 checksums，再重复接入步骤。
 
