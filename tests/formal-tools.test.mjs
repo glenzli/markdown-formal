@@ -1128,7 +1128,8 @@ async function testRenderPdfUsesPandocRenderer() {
     assert.equal(rendered.status, 0, combinedOutput(rendered));
     assert.match(combinedOutput(rendered), /OK render-pdf: compiled\.md -> dist\/book\.pdf/);
     assert.match(combinedOutput(rendered), /paper=letter, margin=1in, lang=zh-CN, toc=on, toc-depth=3, toc-title=目录, title-page=on, cover-style=simple, release-version=rc\.1, show-version-on-cover=on, toc-page-break=on, pdf-engine=xelatex/);
-    const coverHeader = '\\renewcommand{\\maketitle}{%\\begin{titlepage}\\thispagestyle{empty}\\vspace*{0.20\\textheight}\\begin{center}{\\fontsize{32pt}{40pt}\\selectfont \\bfseries 算子演化论\\par}\\vspace{1.2em}{\\fontsize{18pt}{23pt}\\selectfont 卷 I：规范空间与算子\\par}\\vfill{\\fontsize{12pt}{15pt}\\selectfont GLENZLI\\par}\\vspace{0.8em}{\\fontsize{12pt}{15pt}\\selectfont Revised 2026-06-26\\par}\\vspace{0.8em}{\\fontsize{12pt}{15pt}\\selectfont rc.1\\par}\\end{center}\\end{titlepage}%}';
+    const coverHeader = '\\renewcommand{\\maketitle}{\\begin{titlepage}\\thispagestyle{empty}\\vspace*{0.20\\textheight}\\begin{center}{\\fontsize{32pt}{40pt}\\selectfont \\bfseries 算子演化论\\par}\\vspace{1.2em}{\\fontsize{18pt}{23pt}\\selectfont 卷 I：规范空间与算子\\par}\\vfill{\\fontsize{12pt}{15pt}\\selectfont GLENZLI\\par}\\vspace{0.8em}{\\fontsize{12pt}{15pt}\\selectfont Revised 2026-06-26\\par}\\vspace{0.8em}{\\fontsize{12pt}{15pt}\\selectfont rc.1\\par}\\end{center}\\end{titlepage}}';
+    assert.doesNotMatch(coverHeader, /%/);
     assert.deepEqual(JSON.parse(await fs.readFile(logPath, 'utf8')), [
         'compiled.md',
         '-o',

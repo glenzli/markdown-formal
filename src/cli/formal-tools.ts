@@ -777,12 +777,12 @@ function simpleTitlePageHeader(options) {
     const version = options.showVersionOnCover ? latexLine(options.releaseVersion, options.dateSize) : '';
     const authorBlock = [author, date, version].filter(Boolean).join('\\vspace{0.8em}');
     return [
-        '\\renewcommand{\\maketitle}{%',
+        '\\renewcommand{\\maketitle}{',
         '\\begin{titlepage}\\thispagestyle{empty}\\vspace*{0.20\\textheight}\\begin{center}',
         title,
         subtitle ? `\\vspace{1.2em}${subtitle}` : '',
         authorBlock ? `\\vfill${authorBlock}` : '',
-        '\\end{center}\\end{titlepage}%',
+        '\\end{center}\\end{titlepage}',
         '}'
     ].filter(Boolean).join('');
 }
