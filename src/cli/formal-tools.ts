@@ -787,6 +787,139 @@ function simpleTitlePageHeader(options) {
     ].filter(Boolean).join('');
 }
 
+function normalizedMetadataUrl(value) {
+    const text = String(value || '').trim();
+    return text;
+}
+
+function publicationMetadataRows(options): Array<[string, string]> {
+    const rows: Array<[string, string]> = [];
+    const add = (label: string, value: string) => {
+        const normalized = String(value || '').trim();
+        if (normalized) rows.push([label, normalized]);
+    };
+
+    add('Author', options.author);
+    add('Native name', options.authorNative);
+    add('Also known as', (options.authorAliases || []).join('; '));
+    add('ORCID', normalizedMetadataUrl(options.orcid));
+    add('Repository', normalizedMetadataUrl(options.repository));
+    const license = options.licenseUrl
+        ? `${options.license || options.licenseUrl}${options.license ? ' ' : ''}(${normalizedMetadataUrl(options.licenseUrl)})`
+        : options.license;
+    add('License', license);
+    add('Release version', options.releaseVersion);
+    add('Release tag', options.releaseTag);
+    add('Commit', options.releaseCommit);
+    add('DOI', options.doi);
+    add('Preferred citation', options.preferredCitation);
+    return rows;
+}
+
+function latexMetadataText(value) {
+    return latexEscapeText(value).replace(/\r?\n/g, '\\par ');
+}
+
+function frontMatterMarkdownWithSafeHeadings(content, includeHeadingsInToc) {
+    const classes = includeHeadingsInToc ? '{.unnumbered}' : '{.unnumbered .unlisted}';
+    return String(content || '').replace(/^(#{1,6}\s+)(.+?)\s*$/gm, (_match, prefix, title) => {
+        if (/\{[^}]*\}\s*$/.test(title)) return `${prefix}${title}`;
+        return `${prefix}${title} ${classes}`;
+    });
+}
+
+function markdownToLatexSnippet(content, sourceLabel) {
+    const result = spawnSync('pandoc', ['-f', 'markdown', '-t', 'latex'], {
+        cwd: ROOT,
+        input: content,
+        encoding: 'utf8'
+    });
+
+    if (result.error) {
+        throw new Error(`Unable to render front matter ${sourceLabel}: ${result.error.message || result.error}`);
+    }
+    if (result.status !== 0) {
+        throw new Error(`Unable to render front matter ${sourceLabel}: ${result.stderr || result.stdout || `pandoc exited with ${result.status}`}`);
+    }
+    return String(result.stdout || '').trim();
+}
+
+async function frontMatterMarkdown(entry) {
+    const parts: string[] = [];
+    if (entry.source) {
+        const sourcePath = path.resolve(ROOT, entry.source);
+        parts.push(await fs.readFile(sourcePath, 'utf8'));
+    }
+    if (entry.content) {
+        parts.push(entry.content);
+    }
+    return parts.join('\n\n').trim();
+}
+
+async function frontMatterLatex(options) {
+    const pages: string[] = [];
+    for (const entry of options.frontMatter || []) {
+        const markdown = await frontMatterMarkdown(entry);
+        const normalized = frontMatterMarkdownWithSafeHeadings(markdown, entry.toc === true);
+        const body = normalized ? markdownToLatexSnippet(normalized, entry.source || entry.title || 'inline content') : '';
+        if (!entry.title && !body) continue;
+
+        const lines = ['\\clearpage'];
+        if (entry.title) {
+            lines.push(`\\section*{${latexMetadataText(entry.title)}}`);
+            if (entry.toc === true) {
+                lines.push(`\\addcontentsline{toc}{section}{${latexMetadataText(entry.title)}}`);
+            }
+        }
+        if (body) lines.push(body);
+        if (entry.pageBreakAfter !== false) lines.push('\\clearpage');
+        pages.push(lines.join('\n'));
+    }
+    return pages.join('\n\n');
+}
+
+function publicationMetadataLatex(options) {
+    if (!options.metadataPage) return '';
+
+    const rows = publicationMetadataRows(options);
+    if (rows.length === 0) return '';
+
+    return [
+        '\\clearpage',
+        '\\section*{Publication Metadata}',
+        '\\begin{description}',
+        ...rows.map(([label, value]) => `\\item[${latexMetadataText(label)}] ${latexMetadataText(value)}`),
+        '\\end{description}',
+        '\\clearpage',
+        ''
+    ].join('\n');
+}
+
+async function preparePdfIncludeBeforeBody(options, inputMarkdownPath) {
+    const chunks = [
+        publicationMetadataLatex(options),
+        await frontMatterLatex(options)
+    ].filter(Boolean);
+    if (chunks.length === 0) {
+        return {
+            path: '',
+            cleanup: async () => {}
+        };
+    }
+
+    const frontMatter = chunks.join('\n\n');
+    const base = path.basename(inputMarkdownPath).replace(/[^A-Za-z0-9_.-]/g, '_');
+    const name = `.${base}.${process.pid}.${Date.now()}.publication.tex`;
+    const candidate = path.join(path.dirname(inputMarkdownPath), name);
+    await fs.writeFile(candidate, frontMatter, 'utf8');
+    return {
+        path: candidate,
+        cleanup: async () => {
+            await fs.rm(candidate, { force: true });
+        }
+    };
+}
+
 function pdfLanguageDefault(config) {
     return config?.language === 'en' ? 'en-US' : 'zh-CN';
 }
@@ -809,9 +942,20 @@ function pdfConfigDefaults(configInput = DEFAULT_CONFIG) {
         title: pdf.title || '',
         subtitle: pdf.subtitle || '',
         author: pdf.author || '',
+        authorNative: pdf.authorNative || '',
+        authorAliases: Array.isArray(pdf.authorAliases) ? pdf.authorAliases.filter(value => typeof value === 'string' && value) : [],
+        orcid: pdf.orcid || '',
+        repository: pdf.repository || '',
+        license: pdf.license || '',
+        licenseUrl: pdf.licenseUrl || '',
+        preferredCitation: pdf.preferredCitation || '',
         date: pdf.date || '',
         releaseVersion: pdf.releaseVersion || '',
+        releaseTag: pdf.releaseTag || '',
+        releaseCommit: pdf.releaseCommit || '',
+        doi: pdf.doi || '',
         showVersionOnCover: pdf.showVersionOnCover === true,
+        metadataPage: pdf.metadataPage === true,
         documentClass: pdf.documentClass || '',
         titlePage: pdf.titlePage === true,
         coverStyle: pdf.coverStyle || 'simple',
@@ -820,6 +964,7 @@ function pdfConfigDefaults(configInput = DEFAULT_CONFIG) {
         authorSize: pdf.authorSize || '12pt',
         dateSize: pdf.dateSize || '12pt',
         tocPageBreak: pdf.tocPageBreak !== false,
+        frontMatter: Array.isArray(pdf.frontMatter) ? pdf.frontMatter : [],
         variables: Array.isArray(pdf.variables) ? pdf.variables.filter(value => typeof value === 'string' && value) : []
     };
 }
@@ -840,9 +985,20 @@ function parseExportArgs(args, defaultOutput, configInput = DEFAULT_CONFIG) {
         title: string;
         subtitle: string;
         author: string;
+        authorNative: string;
+        authorAliases: string[];
+        orcid: string;
+        repository: string;
+        license: string;
+        licenseUrl: string;
+        preferredCitation: string;
         date: string;
         releaseVersion: string;
+        releaseTag: string;
+        releaseCommit: string;
+        doi: string;
         showVersionOnCover: boolean;
+        metadataPage: boolean;
         documentClass: string;
         titlePage: boolean;
         coverStyle: string;
@@ -851,6 +1007,8 @@ function parseExportArgs(args, defaultOutput, configInput = DEFAULT_CONFIG) {
         authorSize: string;
         dateSize: string;
         tocPageBreak: boolean;
+        includeBeforeBodyPath: string;
+        frontMatter: Array<{ title?: string; source?: string; content?: string; toc?: boolean; pageBreakAfter?: boolean }>;
         variables: string[];
         paths: string[];
     } = {
@@ -867,9 +1025,20 @@ function parseExportArgs(args, defaultOutput, configInput = DEFAULT_CONFIG) {
         title: pdfDefaults.title,
         subtitle: pdfDefaults.subtitle,
         author: pdfDefaults.author,
+        authorNative: pdfDefaults.authorNative,
+        authorAliases: [...pdfDefaults.authorAliases],
+        orcid: pdfDefaults.orcid,
+        repository: pdfDefaults.repository,
+        license: pdfDefaults.license,
+        licenseUrl: pdfDefaults.licenseUrl,
+        preferredCitation: pdfDefaults.preferredCitation,
         date: pdfDefaults.date,
         releaseVersion: pdfDefaults.releaseVersion,
+        releaseTag: pdfDefaults.releaseTag,
+        releaseCommit: pdfDefaults.releaseCommit,
+        doi: pdfDefaults.doi,
         showVersionOnCover: pdfDefaults.showVersionOnCover,
+        metadataPage: pdfDefaults.metadataPage,
         documentClass: pdfDefaults.documentClass,
         titlePage: pdfDefaults.titlePage,
         coverStyle: pdfDefaults.coverStyle,
@@ -878,6 +1047,8 @@ function parseExportArgs(args, defaultOutput, configInput = DEFAULT_CONFIG) {
         authorSize: pdfDefaults.authorSize,
         dateSize: pdfDefaults.dateSize,
         tocPageBreak: pdfDefaults.tocPageBreak,
+        includeBeforeBodyPath: '',
+        frontMatter: [...pdfDefaults.frontMatter],
         variables: [...pdfDefaults.variables],
         paths: []
     };
@@ -932,6 +1103,36 @@ function parseExportArgs(args, defaultOutput, configInput = DEFAULT_CONFIG) {
             options.author = args[++i] || options.author;
         } else if (arg.startsWith('--author=')) {
             options.author = arg.slice('--author='.length);
+        } else if (arg === '--author-native') {
+            options.authorNative = args[++i] || options.authorNative;
+        } else if (arg.startsWith('--author-native=')) {
+            options.authorNative = arg.slice('--author-native='.length);
+        } else if (arg === '--author-alias') {
+            const value = args[++i];
+            if (value) options.authorAliases.push(value);
+        } else if (arg.startsWith('--author-alias=')) {
+            const value = arg.slice('--author-alias='.length);
+            if (value) options.authorAliases.push(value);
+        } else if (arg === '--orcid') {
+            options.orcid = args[++i] || options.orcid;
+        } else if (arg.startsWith('--orcid=')) {
+            options.orcid = arg.slice('--orcid='.length);
+        } else if (arg === '--repository') {
+            options.repository = args[++i] || options.repository;
+        } else if (arg.startsWith('--repository=')) {
+            options.repository = arg.slice('--repository='.length);
+        } else if (arg === '--license') {
+            options.license = args[++i] || options.license;
+        } else if (arg.startsWith('--license=')) {
+            options.license = arg.slice('--license='.length);
+        } else if (arg === '--license-url') {
+            options.licenseUrl = args[++i] || options.licenseUrl;
+        } else if (arg.startsWith('--license-url=')) {
+            options.licenseUrl = arg.slice('--license-url='.length);
+        } else if (arg === '--preferred-citation') {
+            options.preferredCitation = args[++i] || options.preferredCitation;
+        } else if (arg.startsWith('--preferred-citation=')) {
+            options.preferredCitation = arg.slice('--preferred-citation='.length);
         } else if (arg === '--date') {
             options.date = args[++i] || options.date;
         } else if (arg.startsWith('--date=')) {
@@ -940,10 +1141,46 @@ function parseExportArgs(args, defaultOutput, configInput = DEFAULT_CONFIG) {
             options.releaseVersion = args[++i] || options.releaseVersion;
         } else if (arg.startsWith('--release-version=')) {
             options.releaseVersion = arg.slice('--release-version='.length);
+        } else if (arg === '--release-tag') {
+            options.releaseTag = args[++i] || options.releaseTag;
+        } else if (arg.startsWith('--release-tag=')) {
+            options.releaseTag = arg.slice('--release-tag='.length);
+        } else if (arg === '--release-commit') {
+            options.releaseCommit = args[++i] || options.releaseCommit;
+        } else if (arg.startsWith('--release-commit=')) {
+            options.releaseCommit = arg.slice('--release-commit='.length);
+        } else if (arg === '--doi') {
+            options.doi = args[++i] || options.doi;
+        } else if (arg.startsWith('--doi=')) {
+            options.doi = arg.slice('--doi='.length);
         } else if (arg === '--show-version-on-cover') {
             options.showVersionOnCover = true;
         } else if (arg === '--no-show-version-on-cover') {
             options.showVersionOnCover = false;
+        } else if (arg === '--metadata-page') {
+            options.metadataPage = true;
+        } else if (arg === '--no-metadata-page') {
+            options.metadataPage = false;
+        } else if (arg === '--front-matter') {
+            const value = args[++i];
+            if (value) options.frontMatter.push({ source: value, toc: false, pageBreakAfter: true });
+        } else if (arg.startsWith('--front-matter=')) {
+            const value = arg.slice('--front-matter='.length);
+            if (value) options.frontMatter.push({ source: value, toc: false, pageBreakAfter: true });
+        } else if (arg === '--front-matter-title') {
+            const value = args[++i] || '';
+            const last = options.frontMatter[options.frontMatter.length - 1];
+            if (last && value) last.title = value;
+        } else if (arg.startsWith('--front-matter-title=')) {
+            const value = arg.slice('--front-matter-title='.length);
+            const last = options.frontMatter[options.frontMatter.length - 1];
+            if (last && value) last.title = value;
+        } else if (arg === '--front-matter-toc') {
+            const last = options.frontMatter[options.frontMatter.length - 1];
+            if (last) last.toc = true;
+        } else if (arg === '--no-front-matter-toc') {
+            const last = options.frontMatter[options.frontMatter.length - 1];
+            if (last) last.toc = false;
         } else if (arg === '--documentclass' || arg === '--document-class') {
             options.documentClass = args[++i] || options.documentClass;
         } else if (arg.startsWith('--documentclass=')) {
@@ -1057,6 +1294,9 @@ function buildPandocPdfArgs(inputMarkdownPath, outputPdfPath, options) {
         options.pdfEngine,
         ...variables.flatMap(value => ['-V', value])
     ];
+    if (options.includeBeforeBodyPath) {
+        pandocArgs.push('--include-before-body', relativePath(options.includeBeforeBodyPath));
+    }
     if (options.toc) {
         pandocArgs.push('--toc', '--toc-depth', String(options.tocDepth));
     }
@@ -1064,15 +1304,30 @@ function buildPandocPdfArgs(inputMarkdownPath, outputPdfPath, options) {
 }
 
 function pdfLayoutSummary(options) {
-    return `paper=${options.paper}, margin=${options.margin}, lang=${options.lang || 'n/a'}, toc=${options.toc ? 'on' : 'off'}, toc-depth=${options.toc ? options.tocDepth : 'n/a'}, toc-title=${options.toc && options.tocTitle ? options.tocTitle : 'n/a'}, title-page=${options.titlePage ? 'on' : 'off'}, cover-style=${options.titlePage ? options.coverStyle : 'n/a'}, release-version=${options.releaseVersion || 'n/a'}, show-version-on-cover=${options.showVersionOnCover ? 'on' : 'off'}, toc-page-break=${options.toc && options.tocPageBreak ? 'on' : 'off'}, pdf-engine=${options.pdfEngine}`;
+    return `paper=${options.paper}, margin=${options.margin}, lang=${options.lang || 'n/a'}, toc=${options.toc ? 'on' : 'off'}, toc-depth=${options.toc ? options.tocDepth : 'n/a'}, toc-title=${options.toc && options.tocTitle ? options.tocTitle : 'n/a'}, title-page=${options.titlePage ? 'on' : 'off'}, cover-style=${options.titlePage ? options.coverStyle : 'n/a'}, release-version=${options.releaseVersion || 'n/a'}, show-version-on-cover=${options.showVersionOnCover ? 'on' : 'off'}, metadata-page=${options.metadataPage ? 'on' : 'off'}, toc-page-break=${options.toc && options.tocPageBreak ? 'on' : 'off'}, pdf-engine=${options.pdfEngine}`;
 }
 
 async function renderPdfFile(inputMarkdownPath, outputPdfPath, options) {
     await fs.mkdir(path.dirname(outputPdfPath), { recursive: true });
-    const result = spawnSync('pandoc', buildPandocPdfArgs(inputMarkdownPath, outputPdfPath, options), {
-        cwd: ROOT,
-        encoding: 'utf8'
-    });
+    let preparedInclude;
+    try {
+        preparedInclude = await preparePdfIncludeBeforeBody(options, inputMarkdownPath);
+    } catch (err: any) {
+        console.error(err?.message || String(err));
+        process.exitCode = 1;
+        return false;
+    }
+    options.includeBeforeBodyPath = preparedInclude.path;
+    let result;
+    try {
+        result = spawnSync('pandoc', buildPandocPdfArgs(inputMarkdownPath, outputPdfPath, options), {
+            cwd: ROOT,
+            encoding: 'utf8'
+        });
+    } finally {
+        options.includeBeforeBodyPath = '';
+        await preparedInclude.cleanup();
+    }
 
     if (result.error) {
         console.error('PDF rendering requires pandoc on PATH. Install pandoc and a LaTeX engine, or use export-md and compile the generated Markdown yourself.');
@@ -1095,7 +1350,7 @@ async function exportPdf(args = []) {
     const config = await readConfigIfExists();
     const options = parseExportArgs(args, '.markdown-formal/export.pdf', config);
     if (options.paths.length === 0) {
-        console.error('Usage: npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title-page] [--release-version rc.1] [--show-version-on-cover] [--cover-style simple] [--title-size 32pt] [-V key:value] [--variable key:value] [--keep-md]');
+        console.error('Usage: npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title-page] [--release-version rc.1] [--release-tag v1] [--release-commit abc123] [--doi DOI] [--metadata-page] [--front-matter page.md] [--front-matter-title Title] [--front-matter-toc] [--author-native Name] [--author-alias Alias] [--orcid URL] [--repository URL] [--license Name] [--license-url URL] [--preferred-citation Text] [--show-version-on-cover] [--cover-style simple] [--title-size 32pt] [-V key:value] [--variable key:value] [--keep-md]');
         process.exitCode = 1;
         return;
     }
@@ -1119,7 +1374,7 @@ async function renderPdf(args = []) {
     const config = await readConfigIfExists();
     const options = parseExportArgs(args, '.markdown-formal/render.pdf', config);
     if (options.paths.length !== 1) {
-        console.error('Usage: npm run formal -- render-pdf <compiled.md> --out <book.pdf> [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title-page] [--release-version rc.1] [--show-version-on-cover] [--cover-style simple] [--title-size 32pt] [-V key:value] [--variable key:value]');
+        console.error('Usage: npm run formal -- render-pdf <compiled.md> --out <book.pdf> [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title-page] [--release-version rc.1] [--release-tag v1] [--release-commit abc123] [--doi DOI] [--metadata-page] [--front-matter page.md] [--front-matter-title Title] [--front-matter-toc] [--author-native Name] [--author-alias Alias] [--orcid URL] [--repository URL] [--license Name] [--license-url URL] [--preferred-citation Text] [--show-version-on-cover] [--cover-style simple] [--title-size 32pt] [-V key:value] [--variable key:value]');
         process.exitCode = 1;
         return;
     }
@@ -2351,8 +2606,8 @@ Advanced commands:
   npm run formal -- graph bridges|isolated|cycles [--where all|statement|proof|body]
   npm run formal -- graph matrix chapter|volume|book [--where all|statement|proof|body]
   npm run formal -- export-md <file-or-dir> [...] --out <compiled.md>
-  npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title "Title"] [--subtitle "Subtitle"] [--author Name] [--date "Revised 2026-06-26"] [--release-version rc.1] [--show-version-on-cover] [--documentclass ctexbook] [--title-page] [--no-title-page] [--cover-style simple] [--title-size 32pt] [--subtitle-size 18pt] [--toc-page-break] [--no-toc-page-break] [-V key:value] [--variable key:value] [--keep-md]
-  npm run formal -- render-pdf <compiled.md> --out <book.pdf> [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title "Title"] [--subtitle "Subtitle"] [--author Name] [--date "Revised 2026-06-26"] [--release-version rc.1] [--show-version-on-cover] [--documentclass ctexbook] [--title-page] [--no-title-page] [--cover-style simple] [--title-size 32pt] [--subtitle-size 18pt] [--toc-page-break] [--no-toc-page-break] [-V key:value] [--variable key:value]
+  npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title "Title"] [--subtitle "Subtitle"] [--author Name] [--author-native Name] [--author-alias Alias] [--orcid URL] [--repository URL] [--license Name] [--license-url URL] [--preferred-citation Text] [--date "Revised 2026-06-26"] [--release-version rc.1] [--release-tag v1] [--release-commit abc123] [--doi DOI] [--metadata-page] [--front-matter page.md] [--front-matter-title "AI Statement"] [--front-matter-toc] [--show-version-on-cover] [--documentclass ctexbook] [--title-page] [--no-title-page] [--cover-style simple] [--title-size 32pt] [--subtitle-size 18pt] [--toc-page-break] [--no-toc-page-break] [-V key:value] [--variable key:value] [--keep-md]
+  npm run formal -- render-pdf <compiled.md> --out <book.pdf> [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title "Title"] [--subtitle "Subtitle"] [--author Name] [--author-native Name] [--author-alias Alias] [--orcid URL] [--repository URL] [--license Name] [--license-url URL] [--preferred-citation Text] [--date "Revised 2026-06-26"] [--release-version rc.1] [--release-tag v1] [--release-commit abc123] [--doi DOI] [--metadata-page] [--front-matter page.md] [--front-matter-title "AI Statement"] [--front-matter-toc] [--show-version-on-cover] [--documentclass ctexbook] [--title-page] [--no-title-page] [--cover-style simple] [--title-size 32pt] [--subtitle-size 18pt] [--toc-page-break] [--no-toc-page-break] [-V key:value] [--variable key:value]
   npm run formal -- verify [--strict-chapters]
 
 Advanced:

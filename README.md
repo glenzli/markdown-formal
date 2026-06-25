@@ -160,10 +160,21 @@ Definition search and the current-page symbol panel are scoped to the current bo
     "tocTitle": "目录",
     "title": "算子演化论",
     "subtitle": "卷 I：规范空间与算子",
-    "author": "",
+    "author": "Zhe Li",
+    "authorNative": "李喆",
+    "authorAliases": ["Glen Li / glenzli"],
+    "orcid": "https://orcid.org/0009-0006-6536-3453",
+    "repository": "https://github.com/glenzli/formal-math",
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "preferredCitation": "Zhe Li ..., licensed under CC BY 4.0.",
     "date": "Revised 2026-06-26",
     "releaseVersion": "rc.1",
+    "releaseTag": "",
+    "releaseCommit": "",
+    "doi": "",
     "showVersionOnCover": true,
+    "metadataPage": true,
     "documentClass": "ctexbook",
     "titlePage": true,
     "coverStyle": "simple",
@@ -172,6 +183,20 @@ Definition search and the current-page symbol panel are scoped to the current bo
     "authorSize": "12pt",
     "dateSize": "12pt",
     "tocPageBreak": true,
+    "frontMatter": [
+      {
+        "title": "AI 辅助声明",
+        "source": "the-operator-evolution-theory/AI-PARTICIPATION.short.md",
+        "toc": false,
+        "pageBreakAfter": true
+      },
+      {
+        "title": "AI Assistance Statement",
+        "content": "This publication used AI systems as assistive tools during drafting, restructuring, formalization, and release preparation.",
+        "toc": false,
+        "pageBreakAfter": true
+      }
+    ],
     "variables": []
   },
   "debug": {
@@ -215,7 +240,7 @@ npm run formal -- render-pdf dist/book.md --out dist/book.pdf
 
 `export-pdf` runs the same Markdown export and then calls `pandoc` from `PATH` with `--pdf-engine xelatex` by default. `render-pdf` starts from an already compiled ordinary Markdown file and only calls `pandoc`; it does not scan formal source, rerun `export-md`, create `.markdown-formal/config.json`, or apply project-specific hooks. Use it when a release flow needs `export-md -> project postprocess -> render-pdf`.
 
-PDF rendering reads defaults from `.markdown-formal/config.json` `pdf` when present. Without config, it defaults to A4 paper, a 2.5cm margin, a table of contents with depth 2, language-based TOC title (`目录` for Chinese, `Contents` for English), and a separate TOC page. When `titlePage` is enabled, the built-in `simple` cover uses larger title/subtitle type and treats `date` as the visible revision line, such as `Revised 2026-06-26`. `releaseVersion` is for local release candidates or other non-DOI builds; it is passed as PDF metadata and is only shown on the cover when `showVersionOnCover` is true. Override these with `--paper`, `--margin`, `--no-toc`, `--toc-depth`, `--lang`, `--toc-title`, `--title`, `--subtitle`, `--author`, `--date`, `--release-version`, `--show-version-on-cover`, `--documentclass`, `--title-page`, `--cover-style`, `--title-size`, `--subtitle-size`, or `--no-toc-page-break`. No npm PDF dependency is bundled. Use `--pdf-engine lualatex` or another installed engine when needed, pass Pandoc variables with `-V key:value` or `--variable key:value`, and use `export-pdf --md-out dist/book.md --keep-md` if you want to inspect the intermediate Markdown.
+PDF rendering reads defaults from `.markdown-formal/config.json` `pdf` when present. Without config, it defaults to A4 paper, a 2.5cm margin, a table of contents with depth 2, language-based TOC title (`目录` for Chinese, `Contents` for English), and a separate TOC page. When `titlePage` is enabled, the built-in `simple` cover uses larger title/subtitle type and treats `date` as the visible revision line, such as `Revised 2026-06-26`. `author` is the cover author and the PDF document metadata author; keep native names and aliases out of that machine field. When `metadataPage` is enabled, `render-pdf` / `export-pdf` insert a generated publication metadata page after the title page and before the table of contents, using `authorNative`, repeated `authorAliases`, `orcid`, `repository`, `license`, `licenseUrl`, `releaseVersion`, `releaseTag`, `releaseCommit`, `doi`, and `preferredCitation`; the page is unnumbered and not listed in the TOC. `frontMatter` pages are inserted after the metadata page and before the TOC; each entry may use `source` or inline `content`, supports ordinary Markdown/LaTeX via Pandoc conversion, defaults to `toc: false`, and defaults to `pageBreakAfter: true`. `releaseVersion` is for local release candidates or other non-DOI builds; it is passed as PDF metadata and is only shown on the cover when `showVersionOnCover` is true. Override these with `--paper`, `--margin`, `--no-toc`, `--toc-depth`, `--lang`, `--toc-title`, `--title`, `--subtitle`, `--author`, `--author-native`, `--author-alias`, `--orcid`, `--repository`, `--license`, `--license-url`, `--preferred-citation`, `--date`, `--release-version`, `--release-tag`, `--release-commit`, `--doi`, `--metadata-page`, `--no-metadata-page`, `--front-matter`, `--front-matter-title`, `--front-matter-toc`, `--no-front-matter-toc`, `--show-version-on-cover`, `--documentclass`, `--title-page`, `--cover-style`, `--title-size`, `--subtitle-size`, or `--no-toc-page-break`. No npm PDF dependency is bundled. Use `--pdf-engine lualatex` or another installed engine when needed, pass Pandoc variables with `-V key:value` or `--variable key:value`, and use `export-pdf --md-out dist/book.md --keep-md` if you want to inspect the intermediate Markdown.
 
 ## Migrating Existing Text
 

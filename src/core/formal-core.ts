@@ -346,9 +346,20 @@ export const DEFAULT_CONFIG = {
         title: '',
         subtitle: '',
         author: '',
+        authorNative: '',
+        authorAliases: [],
+        orcid: '',
+        repository: '',
+        license: '',
+        licenseUrl: '',
+        preferredCitation: '',
         date: '',
         releaseVersion: '',
+        releaseTag: '',
+        releaseCommit: '',
+        doi: '',
         showVersionOnCover: false,
+        metadataPage: false,
         documentClass: '',
         titlePage: false,
         coverStyle: 'simple',
@@ -357,6 +368,7 @@ export const DEFAULT_CONFIG = {
         authorSize: '12pt',
         dateSize: '12pt',
         tocPageBreak: true,
+        frontMatter: [],
         variables: []
     },
     debug: {
@@ -375,6 +387,20 @@ export function escapeRegExp(value: string): string {
 
 export function unique(values: string[]): string[] {
     return [...new Set(values.filter(Boolean))];
+}
+
+function normalizePdfFrontMatter(value: unknown): any[] {
+    if (!Array.isArray(value)) return [];
+    return value
+        .filter(item => item && typeof item === 'object')
+        .map((item: any) => ({
+            title: typeof item.title === 'string' ? item.title : '',
+            source: typeof item.source === 'string' ? item.source : '',
+            content: typeof item.content === 'string' ? item.content : '',
+            toc: item.toc === true,
+            pageBreakAfter: item.pageBreakAfter === false ? false : true
+        }))
+        .filter(item => item.title || item.source || item.content);
 }
 
 export function mergeConfig(config: any): any {
@@ -434,9 +460,22 @@ export function mergeConfig(config: any): any {
             title: typeof existing.pdf?.title === 'string' ? existing.pdf.title : DEFAULT_CONFIG.pdf.title,
             subtitle: typeof existing.pdf?.subtitle === 'string' ? existing.pdf.subtitle : DEFAULT_CONFIG.pdf.subtitle,
             author: typeof existing.pdf?.author === 'string' ? existing.pdf.author : DEFAULT_CONFIG.pdf.author,
+            authorNative: typeof existing.pdf?.authorNative === 'string' ? existing.pdf.authorNative : DEFAULT_CONFIG.pdf.authorNative,
+            authorAliases: unique(Array.isArray(existing.pdf?.authorAliases)
+                ? existing.pdf.authorAliases.filter((item: unknown) => typeof item === 'string')
+                : []),
+            orcid: typeof existing.pdf?.orcid === 'string' ? existing.pdf.orcid : DEFAULT_CONFIG.pdf.orcid,
+            repository: typeof existing.pdf?.repository === 'string' ? existing.pdf.repository : DEFAULT_CONFIG.pdf.repository,
+            license: typeof existing.pdf?.license === 'string' ? existing.pdf.license : DEFAULT_CONFIG.pdf.license,
+            licenseUrl: typeof existing.pdf?.licenseUrl === 'string' ? existing.pdf.licenseUrl : DEFAULT_CONFIG.pdf.licenseUrl,
+            preferredCitation: typeof existing.pdf?.preferredCitation === 'string' ? existing.pdf.preferredCitation : DEFAULT_CONFIG.pdf.preferredCitation,
             date: typeof existing.pdf?.date === 'string' ? existing.pdf.date : DEFAULT_CONFIG.pdf.date,
             releaseVersion: typeof existing.pdf?.releaseVersion === 'string' ? existing.pdf.releaseVersion : DEFAULT_CONFIG.pdf.releaseVersion,
+            releaseTag: typeof existing.pdf?.releaseTag === 'string' ? existing.pdf.releaseTag : DEFAULT_CONFIG.pdf.releaseTag,
+            releaseCommit: typeof existing.pdf?.releaseCommit === 'string' ? existing.pdf.releaseCommit : DEFAULT_CONFIG.pdf.releaseCommit,
+            doi: typeof existing.pdf?.doi === 'string' ? existing.pdf.doi : DEFAULT_CONFIG.pdf.doi,
             showVersionOnCover: existing.pdf?.showVersionOnCover === true,
+            metadataPage: existing.pdf?.metadataPage === true,
             documentClass: typeof existing.pdf?.documentClass === 'string' ? existing.pdf.documentClass : DEFAULT_CONFIG.pdf.documentClass,
             titlePage: existing.pdf?.titlePage === true,
             coverStyle: typeof existing.pdf?.coverStyle === 'string' && existing.pdf.coverStyle ? existing.pdf.coverStyle : DEFAULT_CONFIG.pdf.coverStyle,
@@ -445,6 +484,7 @@ export function mergeConfig(config: any): any {
             authorSize: typeof existing.pdf?.authorSize === 'string' && existing.pdf.authorSize ? existing.pdf.authorSize : DEFAULT_CONFIG.pdf.authorSize,
             dateSize: typeof existing.pdf?.dateSize === 'string' && existing.pdf.dateSize ? existing.pdf.dateSize : DEFAULT_CONFIG.pdf.dateSize,
             tocPageBreak: existing.pdf?.tocPageBreak === false ? false : DEFAULT_CONFIG.pdf.tocPageBreak,
+            frontMatter: normalizePdfFrontMatter(existing.pdf?.frontMatter),
             variables: unique(Array.isArray(existing.pdf?.variables)
                 ? existing.pdf.variables.filter((item: unknown) => typeof item === 'string')
                 : [])
@@ -3044,7 +3084,7 @@ export function renderAgentGuide(state: any): string {
         '- Explanatory remarks stay plain: `注（Title）：...` / `Remark (Title): ...`, without hash. Non-mainline fact remarks that need a proof or later citation use `注 #tmp-*（Title）：...`; `> 注 #tmp-*（Title）：...` is also recognized inside standard blockquotes. The hash is only an anchor, renders without a remark number, and still supports recall. Examples stay plain by default; only explicitly cited examples use `例 #tmp-*` / `Example #tmp-*` and remain numbered.',
         '- Symbols: maintain only project-specific `source`, `pattern`, and `meaning` entries in `.markdown-formal/symbols.json`; patterns describe the notation itself with balanced delimiters, not whole equations or open-ended formula fragments. The navigation symbol table lists symbols matched in the current preview file. Symbols are not inline formula refs and are not searched through the definition search box.',
         '- Appendices use the appendix file prefix, so markers in `appendix-a-*.md` render as `A.1`, `A.2`, etc. `00-introduction.md`, `intro.md`, and `introduction.md` are intro pages, not chapter 0.',
-        '- Export: do not compile formal source Markdown directly. Use `npm run formal -- export-md <file-or-dir> --out dist/book.md` to produce portable Markdown, `npm run formal -- export-pdf <file-or-dir> --out dist/book.pdf` to call local pandoc after Markdown export, or `npm run formal -- render-pdf dist/book.md --out dist/book.pdf` when a project release flow has already postprocessed the compiled Markdown. PDF rendering reads `.markdown-formal/config.json` `pdf` defaults when present: A4, 2.5cm margins, TOC depth 2, language-aware TOC title, separate TOC page, and optional title page metadata. Override with `--title`, `--subtitle`, `--author`, `--date`, `--documentclass`, `--title-page`, `--margin`, `--no-toc`, `--toc-depth`, `--paper`, or Pandoc `-V key:value`. No PDF engine is bundled.',
+        '- Export: do not compile formal source Markdown directly. Use `npm run formal -- export-md <file-or-dir> --out dist/book.md` to produce portable Markdown, `npm run formal -- export-pdf <file-or-dir> --out dist/book.pdf` to call local pandoc after Markdown export, or `npm run formal -- render-pdf dist/book.md --out dist/book.pdf` when a project release flow has already postprocessed the compiled Markdown. PDF rendering reads `.markdown-formal/config.json` `pdf` defaults when present: A4, 2.5cm margins, TOC depth 2, language-aware TOC title, separate TOC page, optional title page metadata, optional publication metadata page, and optional front matter pages. `author` is the cover/PDF metadata author; fuller identity fields are `authorNative`, `authorAliases`, `orcid`, `repository`, `license`, `licenseUrl`, `preferredCitation`, `releaseTag`, `releaseCommit`, and `doi`. When `metadataPage` is true, the generated metadata page is unnumbered, unlisted, and placed after the title page but before the table of contents. Longer AI, license, citation, or provenance statements belong in `frontMatter`, placed after metadata and before the TOC; front matter entries use `source` or `content`, default to `toc: false`, and default to page breaks. Override with `--title`, `--subtitle`, `--author`, `--author-native`, `--author-alias`, `--orcid`, `--repository`, `--license`, `--license-url`, `--preferred-citation`, `--date`, `--release-version`, `--release-tag`, `--release-commit`, `--doi`, `--metadata-page`, `--front-matter`, `--front-matter-title`, `--front-matter-toc`, `--documentclass`, `--title-page`, `--margin`, `--no-toc`, `--toc-depth`, `--paper`, or Pandoc `-V key:value`. No PDF engine is bundled.',
         '',
         '## Generated Files',
         '',

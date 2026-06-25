@@ -96,9 +96,20 @@
     "title": "",
     "subtitle": "",
     "author": "",
+    "authorNative": "",
+    "authorAliases": [],
+    "orcid": "",
+    "repository": "",
+    "license": "",
+    "licenseUrl": "",
+    "preferredCitation": "",
     "date": "",
     "releaseVersion": "",
+    "releaseTag": "",
+    "releaseCommit": "",
+    "doi": "",
     "showVersionOnCover": false,
+    "metadataPage": false,
     "documentClass": "",
     "titlePage": false,
     "coverStyle": "simple",
@@ -107,6 +118,7 @@
     "authorSize": "12pt",
     "dateSize": "12pt",
     "tocPageBreak": true,
+    "frontMatter": [],
     "variables": []
   }
 }

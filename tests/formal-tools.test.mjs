@@ -1066,7 +1066,22 @@ async function makeFakePandoc(root) {
         "const fs = require('node:fs');",
         "const path = require('node:path');",
         'const args = process.argv.slice(2);',
+        "if (args.includes('-t') && args[args.indexOf('-t') + 1] === 'latex') {",
+        "  const input = fs.readFileSync(0, 'utf8');",
+        "  const output = input",
+        "    .replace(/^#\\s+(.+?)\\s*\\{[^}]*\\}\\s*$/gm, '\\\\section*{$1}')",
+        "    .replace(/\\$([^$]+)\\$/g, '\\\\($1\\\\)');",
+        "  process.stdout.write(output);",
+        "  process.exit(0);",
+        "}",
         "fs.writeFileSync(process.env.PANDOC_LOG, JSON.stringify(args));",
+        "if (process.env.PANDOC_INPUT_LOG && args[0]) {",
+        "  fs.writeFileSync(process.env.PANDOC_INPUT_LOG, fs.readFileSync(path.resolve(process.cwd(), args[0]), 'utf8'));",
+        "}",
+        "const includeBeforeIndex = args.indexOf('--include-before-body');",
+        "if (process.env.PANDOC_INCLUDE_BEFORE_LOG && includeBeforeIndex >= 0 && args[includeBeforeIndex + 1]) {",
+        "  fs.writeFileSync(process.env.PANDOC_INCLUDE_BEFORE_LOG, fs.readFileSync(path.resolve(process.cwd(), args[includeBeforeIndex + 1]), 'utf8'));",
+        "}",
         "const outIndex = args.indexOf('-o');",
         'if (outIndex >= 0 && args[outIndex + 1]) {',
         '  const output = path.resolve(process.cwd(), args[outIndex + 1]);',
@@ -1127,7 +1142,7 @@ async function testRenderPdfUsesPandocRenderer() {
 
     assert.equal(rendered.status, 0, combinedOutput(rendered));
     assert.match(combinedOutput(rendered), /OK render-pdf: compiled\.md -> dist\/book\.pdf/);
-    assert.match(combinedOutput(rendered), /paper=letter, margin=1in, lang=zh-CN, toc=on, toc-depth=3, toc-title=目录, title-page=on, cover-style=simple, release-version=rc\.1, show-version-on-cover=on, toc-page-break=on, pdf-engine=xelatex/);
+    assert.match(combinedOutput(rendered), /paper=letter, margin=1in, lang=zh-CN, toc=on, toc-depth=3, toc-title=目录, title-page=on, cover-style=simple, release-version=rc\.1, show-version-on-cover=on, metadata-page=off, toc-page-break=on, pdf-engine=xelatex/);
     const coverHeader = '\\renewcommand{\\maketitle}{\\begin{titlepage}\\thispagestyle{empty}\\vspace*{0.20\\textheight}\\begin{center}{\\fontsize{32pt}{40pt}\\selectfont \\bfseries 算子演化论\\par}\\vspace{1.2em}{\\fontsize{18pt}{23pt}\\selectfont 卷 I：规范空间与算子\\par}\\vfill{\\fontsize{12pt}{15pt}\\selectfont GLENZLI\\par}\\vspace{0.8em}{\\fontsize{12pt}{15pt}\\selectfont Revised 2026-06-26\\par}\\vspace{0.8em}{\\fontsize{12pt}{15pt}\\selectfont rc.1\\par}\\end{center}\\end{titlepage}}';
     assert.doesNotMatch(coverHeader, /%/);
     assert.deepEqual(JSON.parse(await fs.readFile(logPath, 'utf8')), [
@@ -1173,6 +1188,111 @@ async function testRenderPdfUsesPandocRenderer() {
     assert.equal(await read(root, 'dist/book.pdf'), 'PDF');
     await assert.rejects(() => fs.stat(path.join(root, '.markdown-formal', 'preview-cache.json')));
     assert.ok(await read(root, '.markdown-formal/config.json'));
+}
+
+async function testRenderPdfMetadataPage() {
+    const root = await makeWorkspace('render-pdf-metadata');
+    const originalMarkdown = '# Body\n\nCompiled body.\n';
+    await fs.writeFile(path.join(root, 'compiled.md'), originalMarkdown);
+    await fs.writeFile(path.join(root, 'license-note.md'), 'License note with $L$.\n');
+    await fs.writeFile(path.join(root, 'ai-en.md'), 'AI assistance statement with $A$.\n');
+    await fs.mkdir(path.join(root, '.markdown-formal'), { recursive: true });
+    await fs.writeFile(path.join(root, '.markdown-formal', 'config.json'), JSON.stringify({
+        language: 'zh',
+        pdf: {
+            author: 'Zhe Li',
+            authorNative: '李喆',
+            authorAliases: ['Glen Li / glenzli'],
+            orcid: 'https://orcid.org/0009-0006-6536-3453',
+            repository: 'https://github.com/glenzli/formal-math',
+            license: 'CC BY 4.0',
+            licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
+            preferredCitation: 'Zhe Li ... licensed under CC BY 4.0.',
+            releaseVersion: 'rc.1',
+            frontMatter: [
+                {
+                    title: 'AI 辅助声明',
+                    content: '本书使用 $A$ 作为辅助工具。',
+                    toc: false,
+                    pageBreakAfter: true
+                },
+                {
+                    title: 'License Note',
+                    source: 'license-note.md',
+                    toc: true,
+                    pageBreakAfter: true
+                }
+            ]
+        }
+    }, null, 2));
+
+    const { bin, logPath } = await makeFakePandoc(root);
+    const inputLogPath = path.join(root, 'pandoc-input.md');
+    const includeBeforeLogPath = path.join(root, 'pandoc-before.tex');
+    const rendered = runCliWithEnv(root, [
+        'render-pdf',
+        'compiled.md',
+        '--out',
+        'dist/book.pdf',
+        '--metadata-page',
+        '--author-alias',
+        'G. Li',
+        '--release-tag',
+        'v0.1.0',
+        '--release-commit',
+        'abc123',
+        '--doi',
+        '10.1234/formal',
+        '--front-matter',
+        'ai-en.md',
+        '--front-matter-title',
+        'AI Assistance Statement'
+    ], {
+        PATH: `${bin}${path.delimiter}${process.env.PATH || ''}`,
+        PANDOC_LOG: logPath,
+        PANDOC_INPUT_LOG: inputLogPath,
+        PANDOC_INCLUDE_BEFORE_LOG: includeBeforeLogPath
+    });
+
+    assert.equal(rendered.status, 0, combinedOutput(rendered));
+    assert.match(combinedOutput(rendered), /metadata-page=on/);
+    const pandocArgs = JSON.parse(await fs.readFile(logPath, 'utf8'));
+    assert.equal(pandocArgs[0], 'compiled.md');
+    const includeBeforeIndex = pandocArgs.indexOf('--include-before-body');
+    assert.ok(includeBeforeIndex > 0);
+    assert.match(pandocArgs[includeBeforeIndex + 1], /\.publication\.tex$/);
+    assert.ok(pandocArgs.includes('author:Zhe Li'));
+    assert.equal(pandocArgs.some(item => String(item).includes('李喆') || String(item).includes('glenzli')), false);
+
+    const pandocInput = await fs.readFile(inputLogPath, 'utf8');
+    assert.equal(pandocInput, originalMarkdown);
+    const metadataInput = await fs.readFile(includeBeforeLogPath, 'utf8');
+    assert.match(metadataInput, /\\clearpage\n\\section\*\{Publication Metadata\}/);
+    assert.match(metadataInput, /\\item\[Author\] Zhe Li/);
+    assert.match(metadataInput, /\\item\[Native name\] 李喆/);
+    assert.match(metadataInput, /\\item\[Also known as\] Glen Li \/ glenzli; G\. Li/);
+    assert.match(metadataInput, /\\item\[ORCID\] https:\/\/orcid\.org\/0009-0006-6536-3453/);
+    assert.match(metadataInput, /\\item\[Repository\] https:\/\/github\.com\/glenzli\/formal-math/);
+    assert.match(metadataInput, /\\item\[License\] CC BY 4\.0 \(https:\/\/creativecommons\.org\/licenses\/by\/4\.0\/\)/);
+    assert.match(metadataInput, /\\item\[Release version\] rc\.1/);
+    assert.match(metadataInput, /\\item\[Release tag\] v0\.1\.0/);
+    assert.match(metadataInput, /\\item\[Commit\] abc123/);
+    assert.match(metadataInput, /\\item\[DOI\] 10\.1234\/formal/);
+    assert.match(metadataInput, /\\item\[Preferred citation\] Zhe Li \.\.\. licensed under CC BY 4\.0\./);
+    assert.match(metadataInput, /\\end\{description\}\n\\clearpage/);
+    assert.ok(metadataInput.indexOf('\\section*{Publication Metadata}') < metadataInput.indexOf('\\section*{AI 辅助声明}'));
+    assert.ok(metadataInput.indexOf('\\section*{AI 辅助声明}') < metadataInput.indexOf('\\section*{License Note}'));
+    assert.ok(metadataInput.indexOf('\\section*{License Note}') < metadataInput.indexOf('\\section*{AI Assistance Statement}'));
+    assert.match(metadataInput, /\\section\*\{AI 辅助声明\}/);
+    assert.match(metadataInput, /本书使用 \\\(A\\\) 作为辅助工具。/);
+    assert.doesNotMatch(metadataInput, /\\addcontentsline\{toc\}\{section\}\{AI 辅助声明\}/);
+    assert.match(metadataInput, /\\section\*\{License Note\}/);
+    assert.match(metadataInput, /\\addcontentsline\{toc\}\{section\}\{License Note\}/);
+    assert.match(metadataInput, /License note with \\\(L\\\)\./);
+    assert.match(metadataInput, /\\section\*\{AI Assistance Statement\}/);
+    assert.match(metadataInput, /AI assistance statement with \\\(A\\\)\./);
+    assert.equal(await read(root, 'compiled.md'), originalMarkdown);
+    await assert.rejects(() => fs.stat(path.join(root, pandocArgs[includeBeforeIndex + 1])));
 }
 
 async function testAuditReport() {
@@ -1244,6 +1364,7 @@ const tests = [
     ['page heading formatting', testPageHeadingFormatting],
     ['export-md compiles formal syntax', testExportMarkdownCompilesFormalSyntax],
     ['render-pdf uses pandoc renderer', testRenderPdfUsesPandocRenderer],
+    ['render-pdf metadata page', testRenderPdfMetadataPage],
     ['audit report', testAuditReport]
 ];
 
