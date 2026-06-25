@@ -332,6 +332,9 @@ export const DEFAULT_CONFIG = {
     preview: {
         ignoreHover: []
     },
+    render: {
+        pageHeadingStyle: 'label-title'
+    },
     pdf: {
         pdfEngine: 'xelatex',
         paper: 'a4',
@@ -344,8 +347,15 @@ export const DEFAULT_CONFIG = {
         subtitle: '',
         author: '',
         date: '',
+        releaseVersion: '',
+        showVersionOnCover: false,
         documentClass: '',
         titlePage: false,
+        coverStyle: 'simple',
+        titleSize: '32pt',
+        subtitleSize: '18pt',
+        authorSize: '12pt',
+        dateSize: '12pt',
         tocPageBreak: true,
         variables: []
     },
@@ -402,6 +412,13 @@ export function mergeConfig(config: any): any {
                 ...(Array.isArray(existing.preview?.ignoreHover) ? existing.preview.ignoreHover.filter((item: unknown) => typeof item === 'string') : [])
             ])
         },
+        render: {
+            ...DEFAULT_CONFIG.render,
+            ...(existing.render || {}),
+            pageHeadingStyle: ['title', 'number-title', 'label-title'].includes(existing.render?.pageHeadingStyle)
+                ? existing.render.pageHeadingStyle
+                : DEFAULT_CONFIG.render.pageHeadingStyle
+        },
         pdf: {
             ...DEFAULT_CONFIG.pdf,
             ...(existing.pdf || {}),
@@ -418,8 +435,15 @@ export function mergeConfig(config: any): any {
             subtitle: typeof existing.pdf?.subtitle === 'string' ? existing.pdf.subtitle : DEFAULT_CONFIG.pdf.subtitle,
             author: typeof existing.pdf?.author === 'string' ? existing.pdf.author : DEFAULT_CONFIG.pdf.author,
             date: typeof existing.pdf?.date === 'string' ? existing.pdf.date : DEFAULT_CONFIG.pdf.date,
+            releaseVersion: typeof existing.pdf?.releaseVersion === 'string' ? existing.pdf.releaseVersion : DEFAULT_CONFIG.pdf.releaseVersion,
+            showVersionOnCover: existing.pdf?.showVersionOnCover === true,
             documentClass: typeof existing.pdf?.documentClass === 'string' ? existing.pdf.documentClass : DEFAULT_CONFIG.pdf.documentClass,
             titlePage: existing.pdf?.titlePage === true,
+            coverStyle: typeof existing.pdf?.coverStyle === 'string' && existing.pdf.coverStyle ? existing.pdf.coverStyle : DEFAULT_CONFIG.pdf.coverStyle,
+            titleSize: typeof existing.pdf?.titleSize === 'string' && existing.pdf.titleSize ? existing.pdf.titleSize : DEFAULT_CONFIG.pdf.titleSize,
+            subtitleSize: typeof existing.pdf?.subtitleSize === 'string' && existing.pdf.subtitleSize ? existing.pdf.subtitleSize : DEFAULT_CONFIG.pdf.subtitleSize,
+            authorSize: typeof existing.pdf?.authorSize === 'string' && existing.pdf.authorSize ? existing.pdf.authorSize : DEFAULT_CONFIG.pdf.authorSize,
+            dateSize: typeof existing.pdf?.dateSize === 'string' && existing.pdf.dateSize ? existing.pdf.dateSize : DEFAULT_CONFIG.pdf.dateSize,
             tocPageBreak: existing.pdf?.tocPageBreak === false ? false : DEFAULT_CONFIG.pdf.tocPageBreak,
             variables: unique(Array.isArray(existing.pdf?.variables)
                 ? existing.pdf.variables.filter((item: unknown) => typeof item === 'string')
@@ -565,6 +589,63 @@ export function formatPageReference(page: PageData, config: any, mode: 'default'
         return `${label}${colon}${title}`;
     }
     return label;
+}
+
+function pageHeadingStyle(config: any): 'title' | 'number-title' | 'label-title' {
+    const style = config?.render?.pageHeadingStyle;
+    return style === 'title' || style === 'number-title' || style === 'label-title' ? style : 'label-title';
+}
+
+function pageHeadingLabel(page: PageData, config: any, style: 'number-title' | 'label-title'): string {
+    if (page.kind === 'chapter') {
+        const number = page.unitLabel || (page.chapter !== undefined ? String(page.chapter) : '');
+        if (!number) return '';
+        return style === 'number-title' ? number : uiText(config, 'chapter', { number });
+    }
+
+    if (page.kind === 'appendix') {
+        const label = page.unitLabel || page.appendix || '';
+        if (!label) return '';
+        return style === 'number-title' ? label : uiText(config, 'appendix', { label });
+    }
+
+    return '';
+}
+
+function startsWithPageHeadingLabel(title: string, label: string): boolean {
+    const normalizedTitle = title.replace(/\s+/g, ' ').trim();
+    const normalizedLabel = label.replace(/\s+/g, ' ').trim();
+    if (!normalizedTitle || !normalizedLabel) return false;
+    if (normalizedTitle === normalizedLabel) return true;
+    if (normalizedTitle.startsWith(normalizedLabel)) {
+        const next = normalizedTitle.slice(normalizedLabel.length, normalizedLabel.length + 1);
+        if (!next || /[\s:：,，.．、\-]/.test(next)) return true;
+    }
+
+    const compactTitle = normalizedTitle.replace(/\s+/g, '');
+    const compactLabel = normalizedLabel.replace(/\s+/g, '');
+    if (!compactTitle || !compactLabel || !compactTitle.startsWith(compactLabel)) return false;
+    const next = compactTitle.slice(compactLabel.length, compactLabel.length + 1);
+    return !next || !/[A-Za-z0-9]/.test(next);
+}
+
+export function formatPageHeadingPrefix(page: PageData, config: any): string {
+    const style = pageHeadingStyle(config);
+    if (style === 'title') return '';
+
+    const label = pageHeadingLabel(page, config, style);
+    if (!label) return '';
+
+    const title = page.title || '';
+    if (startsWithPageHeadingLabel(title, label)) return '';
+
+    return label;
+}
+
+export function formatPageHeading(page: PageData, config: any): string {
+    const title = page.title || page.filePath;
+    const prefix = formatPageHeadingPrefix(page, config);
+    return prefix ? `${prefix} ${title}` : title;
 }
 
 export function getContentPreview(content: string, maxLength = 240): string {

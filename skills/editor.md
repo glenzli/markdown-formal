@@ -57,7 +57,7 @@ npm run formal -- render-pdf dist/book.md --out dist/book.pdf
 
 `export-md` 会把 marker 和引用降级成普通 Markdown 文本，并保留原始 LaTeX；目录导出顺序是导读、正文章节、summary、附录。`export-pdf` 在此基础上调用本机 `pandoc`。如果目标项目 release 流程需要在降级后插入签名剥离、metadata、Lean 快照或 witness 等项目级处理，流程应是 `export-md -> 项目后处理 -> render-pdf`；`render-pdf` 只接收已处理好的普通 Markdown，不重新扫描 formal 源，不创建缺失的 config，也不提供任意 shell hook。
 
-PDF 渲染优先读取 `.markdown-formal/config.json` 的 `pdf` 段；没有配置时默认 A4、2.5cm 边距、目录深度 2、按语言选择目录标题（中文为 `目录`，英文为 `Contents`），并让目录独立成页。项目可配置 `pdf.title`、`pdf.subtitle`、`pdf.author`、`pdf.date`、`pdf.documentClass`、`pdf.titlePage`、`pdf.tocPageBreak`、`pdf.lang` 和 `pdf.tocTitle`。CLI 可用 `--title`、`--subtitle`、`--author`、`--date`、`--documentclass`、`--title-page`、`--no-title-page`、`--toc-page-break`、`--no-toc-page-break`、`--margin`、`--no-toc`、`--toc-depth`、`--paper`、`-V key:value` 和 `--variable key:value` 覆盖。仓库不捆绑 PDF 引擎。没有 pandoc 时，先交付 `export-md` 的中间稿，或者由用户安装 pandoc/LaTeX 后再运行 `export-pdf` / `render-pdf`。
+PDF 渲染优先读取 `.markdown-formal/config.json` 的 `pdf` 段；没有配置时默认 A4、2.5cm 边距、目录深度 2、按语言选择目录标题（中文为 `目录`，英文为 `Contents`），并让目录独立成页。项目可配置 `pdf.title`、`pdf.subtitle`、`pdf.author`、`pdf.date`、`pdf.releaseVersion`、`pdf.showVersionOnCover`、`pdf.documentClass`、`pdf.titlePage`、`pdf.tocPageBreak`、`pdf.lang` 和 `pdf.tocTitle`。正式书稿封面建议 `pdf.date` 写成可引用的修订行，例如 `Revised 2026-06-26`；rc 或非 DOI 发布可写 `releaseVersion: "rc.1"`，只在需要时打开 `showVersionOnCover`。`titlePage: true` 时默认 `coverStyle: "simple"`，标题 32pt、副标题 18pt，可用 `titleSize` / `subtitleSize` 调整。CLI 可用 `--title`、`--subtitle`、`--author`、`--date`、`--release-version`、`--show-version-on-cover`、`--documentclass`、`--title-page`、`--no-title-page`、`--cover-style`、`--title-size`、`--subtitle-size`、`--toc-page-break`、`--no-toc-page-break`、`--margin`、`--no-toc`、`--toc-depth`、`--paper`、`-V key:value` 和 `--variable key:value` 覆盖。仓库不捆绑 PDF 引擎。没有 pandoc 时，先交付 `export-md` 的中间稿，或者由用户安装 pandoc/LaTeX 后再运行 `export-pdf` / `render-pdf`。
 
 ## 编号语法
 
@@ -84,7 +84,7 @@ $$
 
 - 新增编号对象只写 `#tmp-1`、`#tmp-2`，不要手动生成正式 hash。
 - `#h-...` / `#tmp-*` 只出现在声明位置，例如唯一最高级章/页标题、小节标题、命题行、公式/图/表 marker；正文引用一律使用 `@h-...`、`@h-....title` 或 `@h-....full`。
-- 章、导读、小结、附录页面如果需要被引用，优先在文件唯一最高级标题写页面 hash，例如 `# #tmp-* Chapter Title` 或 `## #tmp-* Chapter Title`。预览会隐藏这个 hash，它不生成小节编号。
+- 章、导读、小结、附录页面如果需要被引用，优先在文件唯一最高级标题写页面 hash，例如 `# #tmp-* Chapter Title` 或 `## #tmp-* Chapter Title`。预览会隐藏这个 hash，它不生成小节编号；章和附录标题默认在预览/导出层显示为 `第 1 章 Title` / `附录 A Title`，所以源标题不要手写章号或附录号，除非项目明确把 `render.pageHeadingStyle` 改为 `title`。
 - 引用已有对象或已有章/页时，从 `reference-map.md` 复制 `@h-...`、`@h-....title` 或 `@h-....full`。不要在行文里写 `命题 #h-...`、`定理 #h-...`、`由 #h-...`；这会被视为声明语法而不是引用语法。
 - `@chapter:path/to/chapter.md` / `@page:path/to/page.md` 是兼容路径引用；只有目标页还没有页面 hash 时才优先使用。路径以拥有 `.markdown-formal/` 的 formal root 为基准，不以当前 `workdir` 为基准。
 - 写作时可以临时用 `@chapter:./02-main.md` 或 `@chapter:../vol-2/04-main.md`，但运行 `finish` 后应被规范化为 formal-root-relative 路径。

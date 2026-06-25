@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
     DEFAULT_CONFIG,
+    formatPageHeadingPrefix,
     formatPageReference,
     formatDisplayNumber,
     getLanguage,
@@ -420,7 +421,7 @@ function usesSpacedDisplayNumber(typeName: string, type: string): boolean {
 
 function renderedMarkerPrefix(marker: any, labelData: LabelData, config: any): string {
     if (isPageLabelData(labelData)) {
-        return '';
+        return formatPageHeadingPrefix(pageDataFromLabel(labelData), config);
     }
 
     if (marker.type === 'section') {

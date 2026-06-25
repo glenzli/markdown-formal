@@ -78,6 +78,9 @@
   "preview": {
     "ignoreHover": []
   },
+  "render": {
+    "pageHeadingStyle": "label-title"
+  },
   "debug": {
     "previewLog": false,
     "markerTraceIds": []
@@ -94,8 +97,15 @@
     "subtitle": "",
     "author": "",
     "date": "",
+    "releaseVersion": "",
+    "showVersionOnCover": false,
     "documentClass": "",
     "titlePage": false,
+    "coverStyle": "simple",
+    "titleSize": "32pt",
+    "subtitleSize": "18pt",
+    "authorSize": "12pt",
+    "dateSize": "12pt",
     "tocPageBreak": true,
     "variables": []
   }

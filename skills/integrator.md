@@ -12,7 +12,7 @@
 - 定义查询：定义不编号不 ref；工具先启发式抽取标准定义，AI 只为非标准定义、别名、中英互查和不可靠边界维护 `.markdown-formal/definitions.json`。全书定义搜索用于定位，完整 Markdown/LaTeX 预览只保证当前预览文件内的定义。
 - 符号表：项目特有 LaTeX 记号由 AI 维护 `.markdown-formal/symbols.json`。
 - 命题依赖图：命题/引理/定理/推论之间的显式 `@h-...` 依赖由工具生成 JSON，并区分陈述依赖和证明依赖。
-- 导出：PDF/普通 Markdown 不直接编译 formal 源文件；先用 `export-md` 降级 marker/ref，`export-pdf` 再调用本机 pandoc。项目 release 需要插入签名剥离、metadata、Lean 快照或 witness 时，使用 `export-md -> 项目后处理 -> render-pdf`；后处理规则留在目标项目，不写进 markdown-formal。PDF 版式默认可放在 `.markdown-formal/config.json` 的 `pdf` 段，例如 title/subtitle/author/date、`tocTitle`、`lang`、`documentClass`、`titlePage` 和 `tocPageBreak`。
+- 导出：PDF/普通 Markdown 不直接编译 formal 源文件；先用 `export-md` 降级 marker/ref，`export-pdf` 再调用本机 pandoc。项目 release 需要插入签名剥离、metadata、Lean 快照或 witness 时，使用 `export-md -> 项目后处理 -> render-pdf`；后处理规则留在目标项目，不写进 markdown-formal。PDF 版式默认可放在 `.markdown-formal/config.json` 的 `pdf` 段，例如 title/subtitle/author/date、`releaseVersion`、`showVersionOnCover`、`tocTitle`、`lang`、`documentClass`、`titlePage`、`coverStyle`、`titleSize`、`subtitleSize` 和 `tocPageBreak`；书稿修订建议把 `date` 写成 `Revised YYYY-MM-DD`，rc 或非 DOI 发布再记录 `releaseVersion`。
 - 工具闭环：`prepare` 生成上下文，`finish` 固化临时 ID，`verify` 检查引用和索引。
 
 如果目标项目只合并了 hash 编号规则，却丢掉定义提取、符号提取、`.markdown-formal` 源表、`prepare` / `finish` / `verify` 调用方式，就不是完整接入。
@@ -34,7 +34,7 @@
 写作或迁移前运行 npm run formal -- prepare。
 优先读取 .markdown-formal/agent-guide.md，再读取目标原文和 .markdown-formal/reference-map.md。
 
-硬规则：#h-... / #tmp-* 只用于声明位置，例如唯一最高级章/页标题、`命题 #tmp-*（Title）：...`、`## #tmp-* Title`、`公式 #tmp-*：`。正文引用一律使用 @h-...、@h-....title 或 @h-....full；不要写 `命题 #h-...`、`定理 #h-...`、`由 #h-...`。引用已有编号对象或章/页时，只能从 reference-map.md 复制 @h-... / @h-....title / @h-....full。章、导读、小结、附录若需要被引用，优先在文件唯一最高级标题写 `#tmp-*` 或 `#h-...`，预览会隐藏它且不生成小节编号。@chapter:path.md / @page:path.md 是兼容路径引用；只有目标页没有页面 hash 时才优先使用，路径以拥有 .markdown-formal/ 的 formal root 为基准，不以当前 workdir 为基准。重要引用附近保留自然语言语义，例如“由谱半径引理 `@h-...` 可得”；不要写成只有裸 `@h-...`。
+硬规则：#h-... / #tmp-* 只用于声明位置，例如唯一最高级章/页标题、`命题 #tmp-*（Title）：...`、`## #tmp-* Title`、`公式 #tmp-*：`。正文引用一律使用 @h-...、@h-....title 或 @h-....full；不要写 `命题 #h-...`、`定理 #h-...`、`由 #h-...`。引用已有编号对象或章/页时，只能从 reference-map.md 复制 @h-... / @h-....title / @h-....full。章、导读、小结、附录若需要被引用，优先在文件唯一最高级标题写 `#tmp-*` 或 `#h-...`，预览会隐藏它且不生成小节编号；章和附录的显示标题默认由 `render.pageHeadingStyle: "label-title"` 补成 `第 1 章 Title` / `附录 A Title`，源标题不要手写章号或附录号，除非目标项目明确改为 `title`。@chapter:path.md / @page:path.md 是兼容路径引用；只有目标页没有页面 hash 时才优先使用，路径以拥有 .markdown-formal/ 的 formal root 为基准，不以当前 workdir 为基准。重要引用附近保留自然语言语义，例如“由谱半径引理 `@h-...` 可得”；不要写成只有裸 `@h-...`。
 新增小节、命题、引理、定理、推论、公式、图、表等 marker 使用 tmp-1/tmp-2/...，不要手动生成 hash。
 小节只用于编号和跳转；命题、引理、定理、推论的 recall 只覆盖 `证明` / `Proof` 前的陈述。
 公式、图、表各自独立编号：`公式 #tmp-*：` 放在 display math 前，图 caption 写 `图 #tmp-*（Title）：...`，表 caption 写 `表 #tmp-*（Title）：`。不要把 hash 写进 LaTeX 公式内部。
@@ -109,6 +109,9 @@ npm run formal -- verify
       "appendix-b-concepts.md",
       "book1/**/concept-*.md"
     ]
+  },
+  "render": {
+    "pageHeadingStyle": "label-title"
   }
 }
 ```

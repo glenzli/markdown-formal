@@ -59,7 +59,7 @@ References:
 
 - `@h-...` renders the object type and display number.
 - `@h-....title` renders the object title.
-- A chapter, intro, summary, or appendix page may put a hash on its unique highest-level heading, for example `# #h-... Chapter Title` or `## #tmp-* Chapter Title`. The hash is hidden in preview and does not create a section number.
+- A chapter, intro, summary, or appendix page may put a hash on its unique highest-level heading, for example `# #h-... Chapter Title` or `## #tmp-* Chapter Title`. The hash is hidden in preview and does not create a section number. Chapter and appendix headings are rendered/exported with their page label by default, such as `第 1 章 Chapter Title`; source titles should not handwrite the chapter number unless the project intentionally sets `render.pageHeadingStyle` to `title`.
 - Page hashes use the same reference syntax: `@h-...` renders the page label, `@h-....title` renders only the title, and `@h-....full` renders label plus title.
 - `@chapter:path/to/chapter.md` and `@page:path/to/page.md` remain available as path-based compatibility refs, using paths relative to the formal root that owns `.markdown-formal/`. Prefer page hashes once a page heading has one.
 - Definitions do not have hash IDs and do not participate in references. Lookup is driven by definition names in the concept index; definition bodies are not used as broad search text. Rendered Markdown/LaTeX previews are generated only for definitions in the currently previewed file, while cross-file matches focus on location and jump.
@@ -147,6 +147,9 @@ Definition search and the current-page symbol panel are scoped to the current bo
       "the-operator-evolution-theory/**/appendix-*.md"
     ]
   },
+  "render": {
+    "pageHeadingStyle": "label-title"
+  },
   "pdf": {
     "pdfEngine": "xelatex",
     "paper": "a4",
@@ -158,9 +161,16 @@ Definition search and the current-page symbol panel are scoped to the current bo
     "title": "算子演化论",
     "subtitle": "卷 I：规范空间与算子",
     "author": "",
-    "date": "",
+    "date": "Revised 2026-06-26",
+    "releaseVersion": "rc.1",
+    "showVersionOnCover": true,
     "documentClass": "ctexbook",
     "titlePage": true,
+    "coverStyle": "simple",
+    "titleSize": "32pt",
+    "subtitleSize": "18pt",
+    "authorSize": "12pt",
+    "dateSize": "12pt",
     "tocPageBreak": true,
     "variables": []
   },
@@ -171,7 +181,7 @@ Definition search and the current-page symbol panel are scoped to the current bo
 }
 ```
 
-Run `npm run formal` from the project root that owns `.markdown-formal/definitions.json` and `.markdown-formal/symbols.json`. `.markdown-formal/config.json` is the explicit opt-in switch for enhanced Markdown preview; if the config or generated `preview-cache.json` is missing, the extension leaves the preview as ordinary Markdown and does not inject navigation, search, or formal reference data. Use `scan.exclude` to keep generated, context, draft, or build directories out of the formal book scan. Use `preview.ignoreHover` for concept appendices or other recall-heavy files where inline `@hash` hover previews should be skipped; numbering, navigation, jumps, definition search, and the current-page symbol panel still work. Patterns may be full relative paths, bare filenames such as `appendix-b-concepts.md`, or globs such as `concept-*.md` and `book/**/appendix-*.md`. `00-introduction.md`, `intro.md`, and `introduction.md` are treated as intro pages, not chapter 0.
+Run `npm run formal` from the project root that owns `.markdown-formal/definitions.json` and `.markdown-formal/symbols.json`. `.markdown-formal/config.json` is the explicit opt-in switch for enhanced Markdown preview; if the config or generated `preview-cache.json` is missing, the extension leaves the preview as ordinary Markdown and does not inject navigation, search, or formal reference data. Use `scan.exclude` to keep generated, context, draft, or build directories out of the formal book scan. Use `preview.ignoreHover` for concept appendices or other recall-heavy files where inline `@hash` hover previews should be skipped; numbering, navigation, jumps, definition search, and the current-page symbol panel still work. Patterns may be full relative paths, bare filenames such as `appendix-b-concepts.md`, or globs such as `concept-*.md` and `book/**/appendix-*.md`. `render.pageHeadingStyle` controls page heading display in preview and export: `label-title` is the default, `number-title` uses only the chapter/appendix number prefix, and `title` leaves the source heading title unchanged. `00-introduction.md`, `intro.md`, and `introduction.md` are treated as intro pages, not chapter 0.
 
 Formal references across different `book*` roots are blocked by `verify` unless the source book declares the target book in `lookup.bookDependencies`. This keeps independent books from silently depending on each other while still allowing explicit dependency chains.
 
@@ -205,7 +215,7 @@ npm run formal -- render-pdf dist/book.md --out dist/book.pdf
 
 `export-pdf` runs the same Markdown export and then calls `pandoc` from `PATH` with `--pdf-engine xelatex` by default. `render-pdf` starts from an already compiled ordinary Markdown file and only calls `pandoc`; it does not scan formal source, rerun `export-md`, create `.markdown-formal/config.json`, or apply project-specific hooks. Use it when a release flow needs `export-md -> project postprocess -> render-pdf`.
 
-PDF rendering reads defaults from `.markdown-formal/config.json` `pdf` when present. Without config, it defaults to A4 paper, a 2.5cm margin, a table of contents with depth 2, language-based TOC title (`目录` for Chinese, `Contents` for English), and a separate TOC page. Override these with `--paper`, `--margin`, `--no-toc`, `--toc-depth`, `--lang`, `--toc-title`, `--title`, `--subtitle`, `--author`, `--date`, `--documentclass`, `--title-page`, or `--no-toc-page-break`. No npm PDF dependency is bundled. Use `--pdf-engine lualatex` or another installed engine when needed, pass Pandoc variables with `-V key:value` or `--variable key:value`, and use `export-pdf --md-out dist/book.md --keep-md` if you want to inspect the intermediate Markdown.
+PDF rendering reads defaults from `.markdown-formal/config.json` `pdf` when present. Without config, it defaults to A4 paper, a 2.5cm margin, a table of contents with depth 2, language-based TOC title (`目录` for Chinese, `Contents` for English), and a separate TOC page. When `titlePage` is enabled, the built-in `simple` cover uses larger title/subtitle type and treats `date` as the visible revision line, such as `Revised 2026-06-26`. `releaseVersion` is for local release candidates or other non-DOI builds; it is passed as PDF metadata and is only shown on the cover when `showVersionOnCover` is true. Override these with `--paper`, `--margin`, `--no-toc`, `--toc-depth`, `--lang`, `--toc-title`, `--title`, `--subtitle`, `--author`, `--date`, `--release-version`, `--show-version-on-cover`, `--documentclass`, `--title-page`, `--cover-style`, `--title-size`, `--subtitle-size`, or `--no-toc-page-break`. No npm PDF dependency is bundled. Use `--pdf-engine lualatex` or another installed engine when needed, pass Pandoc variables with `-V key:value` or `--variable key:value`, and use `export-pdf --md-out dist/book.md --keep-md` if you want to inspect the intermediate Markdown.
 
 ## Migrating Existing Text
 

@@ -11,6 +11,7 @@ import {
     displayLabel,
     displayNumber,
     escapeRegExp,
+    formatPageHeading,
     formatPageReference,
     mergeConfig,
     normalizeFormalPagePath,
@@ -642,8 +643,9 @@ function compileFormalMarkerLine(line, state) {
 
     const label = state.labels[marker.id];
     if (isPageLabel(label)) {
-        const headingRe = new RegExp(`^(\\s*#{1,6}\\s+)#${escapeRegExp(marker.id)}\\b\\s*`);
-        return line.replace(headingRe, '$1');
+        const page = pageFromLabel(label, state);
+        const headingRe = new RegExp(`^(\\s*#{1,6}\\s+)#${escapeRegExp(marker.id)}\\b\\s*.*$`);
+        return line.replace(headingRe, `$1${formatPageHeading(page, state.config)}`);
     }
 
     const replacement = displayMarkerDeclaration(marker, state);
@@ -749,6 +751,42 @@ function sortExportFiles(files, state) {
 
 const PDF_TOC_PAGEBREAK_HEADER = '\\let\\markdownFormalOldTableOfContents\\tableofcontents\\renewcommand{\\tableofcontents}{\\clearpage\\markdownFormalOldTableOfContents\\clearpage}';
 
+function latexEscapeText(value) {
+    return String(value || '')
+        .replace(/\\/g, '\\textbackslash{}')
+        .replace(/([#$%&_{}])/g, '\\$1')
+        .replace(/\^/g, '\\textasciicircum{}')
+        .replace(/~/g, '\\textasciitilde{}');
+}
+
+function latexLine(text, size, options: { bold?: boolean } = {}) {
+    const content = latexEscapeText(text);
+    if (!content) return '';
+    const leading = String(size || '').replace(/pt$/i, '');
+    const baseline = Number.isFinite(Number(leading)) ? `${Math.round(Number(leading) * 1.25)}pt` : size;
+    const weight = options.bold ? '\\bfseries ' : '';
+    return `{\\fontsize{${size}}{${baseline}}\\selectfont ${weight}${content}\\par}`;
+}
+
+function simpleTitlePageHeader(options) {
+    if (!options.titlePage || options.coverStyle !== 'simple' || !options.title) return '';
+    const title = latexLine(options.title, options.titleSize, { bold: true });
+    const subtitle = latexLine(options.subtitle, options.subtitleSize);
+    const author = latexLine(options.author, options.authorSize);
+    const date = latexLine(options.date, options.dateSize);
+    const version = options.showVersionOnCover ? latexLine(options.releaseVersion, options.dateSize) : '';
+    const authorBlock = [author, date, version].filter(Boolean).join('\\vspace{0.8em}');
+    return [
+        '\\renewcommand{\\maketitle}{%',
+        '\\begin{titlepage}\\thispagestyle{empty}\\vspace*{0.20\\textheight}\\begin{center}',
+        title,
+        subtitle ? `\\vspace{1.2em}${subtitle}` : '',
+        authorBlock ? `\\vfill${authorBlock}` : '',
+        '\\end{center}\\end{titlepage}%',
+        '}'
+    ].filter(Boolean).join('');
+}
+
 function pdfLanguageDefault(config) {
     return config?.language === 'en' ? 'en-US' : 'zh-CN';
 }
@@ -772,8 +810,15 @@ function pdfConfigDefaults(configInput = DEFAULT_CONFIG) {
         subtitle: pdf.subtitle || '',
         author: pdf.author || '',
         date: pdf.date || '',
+        releaseVersion: pdf.releaseVersion || '',
+        showVersionOnCover: pdf.showVersionOnCover === true,
         documentClass: pdf.documentClass || '',
         titlePage: pdf.titlePage === true,
+        coverStyle: pdf.coverStyle || 'simple',
+        titleSize: pdf.titleSize || '32pt',
+        subtitleSize: pdf.subtitleSize || '18pt',
+        authorSize: pdf.authorSize || '12pt',
+        dateSize: pdf.dateSize || '12pt',
         tocPageBreak: pdf.tocPageBreak !== false,
         variables: Array.isArray(pdf.variables) ? pdf.variables.filter(value => typeof value === 'string' && value) : []
     };
@@ -796,8 +841,15 @@ function parseExportArgs(args, defaultOutput, configInput = DEFAULT_CONFIG) {
         subtitle: string;
         author: string;
         date: string;
+        releaseVersion: string;
+        showVersionOnCover: boolean;
         documentClass: string;
         titlePage: boolean;
+        coverStyle: string;
+        titleSize: string;
+        subtitleSize: string;
+        authorSize: string;
+        dateSize: string;
         tocPageBreak: boolean;
         variables: string[];
         paths: string[];
@@ -816,8 +868,15 @@ function parseExportArgs(args, defaultOutput, configInput = DEFAULT_CONFIG) {
         subtitle: pdfDefaults.subtitle,
         author: pdfDefaults.author,
         date: pdfDefaults.date,
+        releaseVersion: pdfDefaults.releaseVersion,
+        showVersionOnCover: pdfDefaults.showVersionOnCover,
         documentClass: pdfDefaults.documentClass,
         titlePage: pdfDefaults.titlePage,
+        coverStyle: pdfDefaults.coverStyle,
+        titleSize: pdfDefaults.titleSize,
+        subtitleSize: pdfDefaults.subtitleSize,
+        authorSize: pdfDefaults.authorSize,
+        dateSize: pdfDefaults.dateSize,
         tocPageBreak: pdfDefaults.tocPageBreak,
         variables: [...pdfDefaults.variables],
         paths: []
@@ -877,6 +936,14 @@ function parseExportArgs(args, defaultOutput, configInput = DEFAULT_CONFIG) {
             options.date = args[++i] || options.date;
         } else if (arg.startsWith('--date=')) {
             options.date = arg.slice('--date='.length);
+        } else if (arg === '--release-version') {
+            options.releaseVersion = args[++i] || options.releaseVersion;
+        } else if (arg.startsWith('--release-version=')) {
+            options.releaseVersion = arg.slice('--release-version='.length);
+        } else if (arg === '--show-version-on-cover') {
+            options.showVersionOnCover = true;
+        } else if (arg === '--no-show-version-on-cover') {
+            options.showVersionOnCover = false;
         } else if (arg === '--documentclass' || arg === '--document-class') {
             options.documentClass = args[++i] || options.documentClass;
         } else if (arg.startsWith('--documentclass=')) {
@@ -887,6 +954,26 @@ function parseExportArgs(args, defaultOutput, configInput = DEFAULT_CONFIG) {
             options.titlePage = true;
         } else if (arg === '--no-title-page') {
             options.titlePage = false;
+        } else if (arg === '--cover-style') {
+            options.coverStyle = args[++i] || options.coverStyle;
+        } else if (arg.startsWith('--cover-style=')) {
+            options.coverStyle = arg.slice('--cover-style='.length);
+        } else if (arg === '--title-size') {
+            options.titleSize = args[++i] || options.titleSize;
+        } else if (arg.startsWith('--title-size=')) {
+            options.titleSize = arg.slice('--title-size='.length);
+        } else if (arg === '--subtitle-size') {
+            options.subtitleSize = args[++i] || options.subtitleSize;
+        } else if (arg.startsWith('--subtitle-size=')) {
+            options.subtitleSize = arg.slice('--subtitle-size='.length);
+        } else if (arg === '--author-size') {
+            options.authorSize = args[++i] || options.authorSize;
+        } else if (arg.startsWith('--author-size=')) {
+            options.authorSize = arg.slice('--author-size='.length);
+        } else if (arg === '--date-size') {
+            options.dateSize = args[++i] || options.dateSize;
+        } else if (arg.startsWith('--date-size=')) {
+            options.dateSize = arg.slice('--date-size='.length);
         } else if (arg === '--toc-page-break') {
             options.tocPageBreak = true;
         } else if (arg === '--no-toc-page-break') {
@@ -944,6 +1031,7 @@ async function exportMarkdown(args = []) {
 }
 
 function buildPandocPdfArgs(inputMarkdownPath, outputPdfPath, options) {
+    const titlePageHeader = simpleTitlePageHeader(options);
     const variables = [
         `papersize:${options.paper}`,
         `geometry:margin=${options.margin}`,
@@ -954,7 +1042,9 @@ function buildPandocPdfArgs(inputMarkdownPath, outputPdfPath, options) {
         options.subtitle ? `subtitle:${options.subtitle}` : '',
         options.author ? `author:${options.author}` : '',
         options.date ? `date:${options.date}` : '',
+        options.releaseVersion ? `version:${options.releaseVersion}` : '',
         options.titlePage ? 'classoption:titlepage' : '',
+        titlePageHeader ? `header-includes:${titlePageHeader}` : '',
         options.toc && options.tocPageBreak ? `header-includes:${PDF_TOC_PAGEBREAK_HEADER}` : '',
         ...options.variables
     ].filter(Boolean);
@@ -974,7 +1064,7 @@ function buildPandocPdfArgs(inputMarkdownPath, outputPdfPath, options) {
 }
 
 function pdfLayoutSummary(options) {
-    return `paper=${options.paper}, margin=${options.margin}, lang=${options.lang || 'n/a'}, toc=${options.toc ? 'on' : 'off'}, toc-depth=${options.toc ? options.tocDepth : 'n/a'}, toc-title=${options.toc && options.tocTitle ? options.tocTitle : 'n/a'}, title-page=${options.titlePage ? 'on' : 'off'}, toc-page-break=${options.toc && options.tocPageBreak ? 'on' : 'off'}, pdf-engine=${options.pdfEngine}`;
+    return `paper=${options.paper}, margin=${options.margin}, lang=${options.lang || 'n/a'}, toc=${options.toc ? 'on' : 'off'}, toc-depth=${options.toc ? options.tocDepth : 'n/a'}, toc-title=${options.toc && options.tocTitle ? options.tocTitle : 'n/a'}, title-page=${options.titlePage ? 'on' : 'off'}, cover-style=${options.titlePage ? options.coverStyle : 'n/a'}, release-version=${options.releaseVersion || 'n/a'}, show-version-on-cover=${options.showVersionOnCover ? 'on' : 'off'}, toc-page-break=${options.toc && options.tocPageBreak ? 'on' : 'off'}, pdf-engine=${options.pdfEngine}`;
 }
 
 async function renderPdfFile(inputMarkdownPath, outputPdfPath, options) {
@@ -1005,7 +1095,7 @@ async function exportPdf(args = []) {
     const config = await readConfigIfExists();
     const options = parseExportArgs(args, '.markdown-formal/export.pdf', config);
     if (options.paths.length === 0) {
-        console.error('Usage: npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title-page] [-V key:value] [--variable key:value] [--keep-md]');
+        console.error('Usage: npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title-page] [--release-version rc.1] [--show-version-on-cover] [--cover-style simple] [--title-size 32pt] [-V key:value] [--variable key:value] [--keep-md]');
         process.exitCode = 1;
         return;
     }
@@ -1029,7 +1119,7 @@ async function renderPdf(args = []) {
     const config = await readConfigIfExists();
     const options = parseExportArgs(args, '.markdown-formal/render.pdf', config);
     if (options.paths.length !== 1) {
-        console.error('Usage: npm run formal -- render-pdf <compiled.md> --out <book.pdf> [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title-page] [-V key:value] [--variable key:value]');
+        console.error('Usage: npm run formal -- render-pdf <compiled.md> --out <book.pdf> [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title-page] [--release-version rc.1] [--show-version-on-cover] [--cover-style simple] [--title-size 32pt] [-V key:value] [--variable key:value]');
         process.exitCode = 1;
         return;
     }
@@ -2261,8 +2351,8 @@ Advanced commands:
   npm run formal -- graph bridges|isolated|cycles [--where all|statement|proof|body]
   npm run formal -- graph matrix chapter|volume|book [--where all|statement|proof|body]
   npm run formal -- export-md <file-or-dir> [...] --out <compiled.md>
-  npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title "Title"] [--subtitle "Subtitle"] [--author Name] [--date 2026] [--documentclass ctexbook] [--title-page] [--no-title-page] [--toc-page-break] [--no-toc-page-break] [-V key:value] [--variable key:value] [--keep-md]
-  npm run formal -- render-pdf <compiled.md> --out <book.pdf> [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title "Title"] [--subtitle "Subtitle"] [--author Name] [--date 2026] [--documentclass ctexbook] [--title-page] [--no-title-page] [--toc-page-break] [--no-toc-page-break] [-V key:value] [--variable key:value]
+  npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title "Title"] [--subtitle "Subtitle"] [--author Name] [--date "Revised 2026-06-26"] [--release-version rc.1] [--show-version-on-cover] [--documentclass ctexbook] [--title-page] [--no-title-page] [--cover-style simple] [--title-size 32pt] [--subtitle-size 18pt] [--toc-page-break] [--no-toc-page-break] [-V key:value] [--variable key:value] [--keep-md]
+  npm run formal -- render-pdf <compiled.md> --out <book.pdf> [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title "Title"] [--subtitle "Subtitle"] [--author Name] [--date "Revised 2026-06-26"] [--release-version rc.1] [--show-version-on-cover] [--documentclass ctexbook] [--title-page] [--no-title-page] [--cover-style simple] [--title-size 32pt] [--subtitle-size 18pt] [--toc-page-break] [--no-toc-page-break] [-V key:value] [--variable key:value]
   npm run formal -- verify [--strict-chapters]
 
 Advanced:

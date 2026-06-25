@@ -977,6 +977,33 @@ async function testPreviewIgnoreHoverPatterns() {
     assert.equal(shouldIgnorePreviewHover('book1/01-main.md', config), false);
 }
 
+async function testPageHeadingFormatting() {
+    const { formatPageHeading, formatPageHeadingPrefix } = formalCore();
+    const chapter = {
+        kind: 'chapter',
+        filePath: 'book1/01-foundations.md',
+        title: '基础',
+        order: 1,
+        unitLabel: '1',
+        chapter: 1
+    };
+    const appendix = {
+        kind: 'appendix',
+        filePath: 'book1/appendix-a-symbols.md',
+        title: '附录 A 符号表',
+        order: 100001,
+        unitLabel: 'A',
+        appendix: 'A'
+    };
+
+    assert.equal(formatPageHeading(chapter, { language: 'zh' }), '第 1 章 基础');
+    assert.equal(formatPageHeadingPrefix(chapter, { language: 'zh' }), '第 1 章');
+    assert.equal(formatPageHeading({ ...chapter, title: '第 1 章 基础' }, { language: 'zh' }), '第 1 章 基础');
+    assert.equal(formatPageHeading(chapter, { language: 'zh', render: { pageHeadingStyle: 'number-title' } }), '1 基础');
+    assert.equal(formatPageHeading(chapter, { language: 'zh', render: { pageHeadingStyle: 'title' } }), '基础');
+    assert.equal(formatPageHeading(appendix, { language: 'zh' }), '附录 A 符号表');
+}
+
 async function testExportMarkdownCompilesFormalSyntax() {
     const root = await makeWorkspace('export-md');
     await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
@@ -1007,7 +1034,7 @@ async function testExportMarkdownCompilesFormalSyntax() {
         ''
     ].join('\n'));
     await fs.writeFile(path.join(root, 'book1', 'appendix-a-notes.md'), [
-        '# Appendix Notes',
+        '# #h-eeeeeeeeeeeeeeee Appendix Notes',
         '',
         'Appendix page.',
         ''
@@ -1017,7 +1044,7 @@ async function testExportMarkdownCompilesFormalSyntax() {
     assert.equal(exported.status, 0, combinedOutput(exported));
     const compiled = await read(root, 'compiled.md');
     assert.doesNotMatch(compiled, /#h-|@h-/);
-    assert.match(compiled, /^# Chapter One/m);
+    assert.match(compiled, /^# 第 1 章 Chapter One/m);
     assert.match(compiled, /本章见 第 1 章：Chapter One。/);
     assert.match(compiled, /^## 1\.1 Section One/m);
     assert.match(compiled, /命题 1\.1（Main）：Statement uses Section One\./);
@@ -1025,8 +1052,8 @@ async function testExportMarkdownCompilesFormalSyntax() {
     assert.match(compiled, /See 命题 1\.1 and 命题 1\.1（Main）\./);
     assert.match(compiled, /This \*\*bold phrase\*\* must stay bold\./);
     assert.match(compiled, /!\[pic\]\(book1\/figures\/main\.png\)/);
-    assert.ok(compiled.indexOf('# Summary') > compiled.indexOf('# Chapter One'));
-    assert.ok(compiled.indexOf('# Appendix Notes') > compiled.indexOf('# Summary'));
+    assert.ok(compiled.indexOf('# Summary') > compiled.indexOf('# 第 1 章 Chapter One'));
+    assert.ok(compiled.indexOf('# 附录 A Appendix Notes') > compiled.indexOf('# Summary'));
 }
 
 async function makeFakePandoc(root) {
@@ -1069,7 +1096,9 @@ async function testRenderPdfUsesPandocRenderer() {
             title: '算子演化论',
             subtitle: '卷 I：规范空间与算子',
             author: 'GLENZLI',
-            date: '2026',
+            date: 'Revised 2026-06-26',
+            releaseVersion: 'rc.1',
+            showVersionOnCover: true,
             documentClass: 'ctexbook',
             titlePage: true
         }
@@ -1098,7 +1127,8 @@ async function testRenderPdfUsesPandocRenderer() {
 
     assert.equal(rendered.status, 0, combinedOutput(rendered));
     assert.match(combinedOutput(rendered), /OK render-pdf: compiled\.md -> dist\/book\.pdf/);
-    assert.match(combinedOutput(rendered), /paper=letter, margin=1in, lang=zh-CN, toc=on, toc-depth=3, toc-title=目录, title-page=on, toc-page-break=on, pdf-engine=xelatex/);
+    assert.match(combinedOutput(rendered), /paper=letter, margin=1in, lang=zh-CN, toc=on, toc-depth=3, toc-title=目录, title-page=on, cover-style=simple, release-version=rc\.1, show-version-on-cover=on, toc-page-break=on, pdf-engine=xelatex/);
+    const coverHeader = '\\renewcommand{\\maketitle}{%\\begin{titlepage}\\thispagestyle{empty}\\vspace*{0.20\\textheight}\\begin{center}{\\fontsize{32pt}{40pt}\\selectfont \\bfseries 算子演化论\\par}\\vspace{1.2em}{\\fontsize{18pt}{23pt}\\selectfont 卷 I：规范空间与算子\\par}\\vfill{\\fontsize{12pt}{15pt}\\selectfont GLENZLI\\par}\\vspace{0.8em}{\\fontsize{12pt}{15pt}\\selectfont Revised 2026-06-26\\par}\\vspace{0.8em}{\\fontsize{12pt}{15pt}\\selectfont rc.1\\par}\\end{center}\\end{titlepage}%}';
     assert.deepEqual(JSON.parse(await fs.readFile(logPath, 'utf8')), [
         'compiled.md',
         '-o',
@@ -1122,9 +1152,13 @@ async function testRenderPdfUsesPandocRenderer() {
         '-V',
         'author:GLENZLI',
         '-V',
-        'date:2026',
+        'date:Revised 2026-06-26',
+        '-V',
+        'version:rc.1',
         '-V',
         'classoption:titlepage',
+        '-V',
+        `header-includes:${coverHeader}`,
         '-V',
         `header-includes:${'\\let\\markdownFormalOldTableOfContents\\tableofcontents\\renewcommand{\\tableofcontents}{\\clearpage\\markdownFormalOldTableOfContents\\clearpage}'}`,
         '-V',
@@ -1206,6 +1240,7 @@ const tests = [
     ['page title uses unique highest heading', testPageTitleUsesUniqueHighestHeading],
     ['perf-dummy thresholds', testPerfDummyThresholds],
     ['preview ignore hover patterns', testPreviewIgnoreHoverPatterns],
+    ['page heading formatting', testPageHeadingFormatting],
     ['export-md compiles formal syntax', testExportMarkdownCompilesFormalSyntax],
     ['render-pdf uses pandoc renderer', testRenderPdfUsesPandocRenderer],
     ['audit report', testAuditReport]
