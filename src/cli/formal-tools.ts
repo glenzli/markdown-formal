@@ -93,6 +93,11 @@ function relativePath(filePath) {
     return toPosix(path.relative(ROOT, filePath));
 }
 
+function isPathInside(parentPath, candidatePath) {
+    const relative = path.relative(parentPath, candidatePath);
+    return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
 async function readWorkspaceDocuments(files) {
     const documents = [];
     for (const fullPath of files) {
@@ -665,6 +670,8 @@ function rewriteFormalRefsForExport(text, sourceFilePath, state) {
         });
 }
 
+type ExportLinkTargetMode = 'root' | 'preserve';
+
 function normalizeExportLinkTarget(rawTarget, sourceFilePath) {
     const raw = String(rawTarget || '');
     const match = raw.match(/^(\s*<?)([^\s>]+)(>?[\s\S]*)$/);
@@ -680,15 +687,17 @@ function normalizeExportLinkTarget(rawTarget, sourceFilePath) {
     return `${match[1]}${normalized}${match[3]}`;
 }
 
-function rewriteMarkdownLinkTargetsForExport(segment, sourceFilePath) {
+function rewriteMarkdownLinkTargetsForExport(segment, sourceFilePath, mode: ExportLinkTargetMode = 'root') {
+    if (mode === 'preserve') return segment;
     return segment.replace(/(\[[^\]\n]*\]\()([^\)\n]+)(\))/g, (_match, prefix, target, suffix) => {
         return `${prefix}${normalizeExportLinkTarget(target, sourceFilePath)}${suffix}`;
     });
 }
 
-function compileFormalMarkdownContent(content, sourceFilePath, state) {
+function compileFormalMarkdownContent(content, sourceFilePath, state, options: { linkTargetMode?: ExportLinkTargetMode } = {}) {
     const lines = String(content || '').split(/\r?\n/);
     let inFence = false;
+    const linkTargetMode = options.linkTargetMode || 'root';
 
     return lines.map(line => {
         if (/^\s*(```|~~~)/.test(line)) {
@@ -700,18 +709,18 @@ function compileFormalMarkdownContent(content, sourceFilePath, state) {
         const markerCompiled = compileFormalMarkerLine(line, state);
         return splitProtectedInlineSegments(markerCompiled).map(part => {
             if (part.kind === 'code') return part.text;
-            if (part.kind === 'link') return rewriteMarkdownLinkTargetsForExport(part.text, sourceFilePath);
+            if (part.kind === 'link') return rewriteMarkdownLinkTargetsForExport(part.text, sourceFilePath, linkTargetMode);
             return rewriteFormalRefsForExport(part.text, sourceFilePath, state);
         }).join('');
     }).join('\n');
 }
 
-async function compileFormalMarkdownForFiles(files, state) {
+async function compileFormalMarkdownForFiles(files, state, options: { linkTargetMode?: ExportLinkTargetMode } = {}) {
     const chunks = [];
     for (const filePath of files) {
         const relative = relativePath(filePath);
         const content = await fs.readFile(filePath, 'utf8');
-        chunks.push(compileFormalMarkdownContent(content, relative, state).trimEnd());
+        chunks.push(compileFormalMarkdownContent(content, relative, state, options).trimEnd());
     }
     return `${chunks.filter(Boolean).join('\n\n\\pagebreak\n\n')}\n`;
 }
@@ -1265,6 +1274,55 @@ async function exportMarkdown(args = []) {
     await fs.writeFile(outputPath, compiled, 'utf8');
     console.log(`OK export-md: ${files.length} files -> ${relativePath(outputPath)}`);
     return outputPath;
+}
+
+async function exportMarkdownSplit(args = []) {
+    const options = parseExportArgs(args, '.markdown-formal/export-md-split');
+    if (options.paths.length === 0) {
+        console.error('Usage: npm run formal -- export-md-split <file-or-dir> [...] --out <dir>');
+        process.exitCode = 1;
+        return '';
+    }
+
+    const state = await scanWorkspace();
+    await writeArtifacts(state);
+    const errors = state.issues.filter(issue => issue.severity === 'error');
+    if (errors.length > 0) {
+        printSummary('export-md-split', state);
+        process.exitCode = 1;
+        return '';
+    }
+
+    const files = sortExportFiles(await resolveInputMarkdownFiles(options.paths, state.config), state);
+    if (files.length === 0) {
+        console.error('No Markdown files matched export input.');
+        process.exitCode = 1;
+        return '';
+    }
+
+    const outputRoot = path.resolve(ROOT, options.output);
+    if (outputRoot === ROOT) {
+        console.error('Refusing to export split Markdown into the project root because it would overwrite source files. Use --out <dir>.');
+        process.exitCode = 1;
+        return '';
+    }
+
+    for (const filePath of files) {
+        const relative = relativePath(filePath);
+        const outputPath = path.resolve(outputRoot, relative);
+        if (!isPathInside(outputRoot, outputPath)) {
+            console.error(`Refusing to export ${relative} outside output directory ${relativePath(outputRoot)}.`);
+            process.exitCode = 1;
+            return '';
+        }
+        const content = await fs.readFile(filePath, 'utf8');
+        const compiled = `${compileFormalMarkdownContent(content, relative, state, { linkTargetMode: 'preserve' }).trimEnd()}\n`;
+        await fs.mkdir(path.dirname(outputPath), { recursive: true });
+        await fs.writeFile(outputPath, compiled, 'utf8');
+    }
+
+    console.log(`OK export-md-split: ${files.length} files -> ${relativePath(outputRoot)}`);
+    return outputRoot;
 }
 
 function buildPandocPdfArgs(inputMarkdownPath, outputPdfPath, options) {
@@ -2574,6 +2632,7 @@ function printHelp({ all = false } = {}) {
   npm run formal -- graph focus <h-id> [--depth N]
   npm run formal -- graph matrix chapter|volume|book
   npm run formal -- export-md <file-or-dir> [...] --out <compiled.md>
+  npm run formal -- export-md-split <file-or-dir> [...] --out <dir>
   npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--no-toc] [--toc-depth N] [--margin 2.5cm]
   npm run formal -- render-pdf <compiled.md> --out <book.pdf> [--title "Title"] [--toc-title 目录]
   npm run formal -- verify [--strict-chapters]
@@ -2606,6 +2665,7 @@ Advanced commands:
   npm run formal -- graph bridges|isolated|cycles [--where all|statement|proof|body]
   npm run formal -- graph matrix chapter|volume|book [--where all|statement|proof|body]
   npm run formal -- export-md <file-or-dir> [...] --out <compiled.md>
+  npm run formal -- export-md-split <file-or-dir> [...] --out <dir>
   npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title "Title"] [--subtitle "Subtitle"] [--author Name] [--author-native Name] [--author-alias Alias] [--orcid URL] [--repository URL] [--license Name] [--license-url URL] [--preferred-citation Text] [--date "Revised 2026-06-26"] [--release-version rc.1] [--release-tag v1] [--release-commit abc123] [--doi DOI] [--metadata-page] [--front-matter page.md] [--front-matter-title "AI Statement"] [--front-matter-toc] [--show-version-on-cover] [--documentclass ctexbook] [--title-page] [--no-title-page] [--cover-style simple] [--title-size 32pt] [--subtitle-size 18pt] [--toc-page-break] [--no-toc-page-break] [-V key:value] [--variable key:value] [--keep-md]
   npm run formal -- render-pdf <compiled.md> --out <book.pdf> [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title "Title"] [--subtitle "Subtitle"] [--author Name] [--author-native Name] [--author-alias Alias] [--orcid URL] [--repository URL] [--license Name] [--license-url URL] [--preferred-citation Text] [--date "Revised 2026-06-26"] [--release-version rc.1] [--release-tag v1] [--release-commit abc123] [--doi DOI] [--metadata-page] [--front-matter page.md] [--front-matter-title "AI Statement"] [--front-matter-toc] [--show-version-on-cover] [--documentclass ctexbook] [--title-page] [--no-title-page] [--cover-style simple] [--title-size 32pt] [--subtitle-size 18pt] [--toc-page-break] [--no-toc-page-break] [-V key:value] [--variable key:value]
   npm run formal -- verify [--strict-chapters]
@@ -2650,6 +2710,8 @@ async function main() {
         await migrateIds(args);
     } else if (command === 'export-md') {
         await exportMarkdown(args);
+    } else if (command === 'export-md-split') {
+        await exportMarkdownSplit(args);
     } else if (command === 'export-pdf') {
         await exportPdf(args);
     } else if (command === 'render-pdf') {

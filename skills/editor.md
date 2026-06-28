@@ -51,11 +51,12 @@ formal 源文件不能直接交给普通 Markdown/PDF 工具编译，因为其�
 
 ```bash
 npm run formal -- export-md path/to/chapter-or-dir --out dist/book.md
+npm run formal -- export-md-split path/to/chapter-or-dir --out dist/public
 npm run formal -- export-pdf path/to/chapter-or-dir --out dist/book.pdf
 npm run formal -- render-pdf dist/book.md --out dist/book.pdf
 ```
 
-`export-md` 会把 marker 和引用降级成普通 Markdown 文本，并保留原始 LaTeX；目录导出顺序是导读、正文章节、summary、附录。`export-pdf` 在此基础上调用本机 `pandoc`。如果目标项目 release 流程需要在降级后插入签名剥离、metadata、Lean 快照或 witness 等项目级处理，流程应是 `export-md -> 项目后处理 -> render-pdf`；`render-pdf` 只接收已处理好的普通 Markdown，不重新扫描 formal 源，不创建缺失的 config，也不提供任意 shell hook。
+`export-md` 会把 marker 和引用降级成普通 Markdown 文本，并保留原始 LaTeX；目录导出顺序是导读、正文章节、summary、附录。`export-md-split` 使用同一套降级规则，但按源目录结构输出多个 `.md` 文件，不插入合并用的分页符，并保留普通 Markdown 链接相对当前文件的写法。`export-pdf` 在 `export-md` 基础上调用本机 `pandoc`。如果目标项目 release 流程需要在降级后插入签名剥离、metadata、Lean 快照或 witness 等项目级处理，流程应是 `export-md -> 项目后处理 -> render-pdf`；`render-pdf` 只接收已处理好的普通 Markdown，不重新扫描 formal 源，不创建缺失的 config，也不提供任意 shell hook。
 
 PDF 渲染优先读取 `.markdown-formal/config.json` 的 `pdf` 段；没有配置时默认 A4、2.5cm 边距、目录深度 2、按语言选择目录标题（中文为 `目录`，英文为 `Contents`），并让目录独立成页。`pdf.author` 是封面主署名和 PDF 机器 metadata 的作者；中文名、alias、ORCID、仓库、license、DOI、release tag/commit、preferred citation 等完整身份信息写入 `authorNative`、`authorAliases`、`orcid`、`repository`、`license`、`licenseUrl`、`releaseTag`、`releaseCommit`、`doi`、`preferredCitation`，并在 `metadataPage: true` 时由工具在 title page 之后、目录之前生成不进目录的 publication metadata page。AI 声明、许可说明、引用说明等更长声明写入 `pdf.frontMatter`，位于 metadata page 之后、目录之前；每项可用 `source` 或 `content`，默认不进 TOC，默认独立分页。正式书稿封面建议 `pdf.date` 写成可引用的修订行，例如 `Revised 2026-06-26`；rc 或非 DOI 发布可写 `releaseVersion: "rc.1"`，只在需要时打开 `showVersionOnCover`。`titlePage: true` 时默认 `coverStyle: "simple"`，标题 32pt、副标题 18pt，可用 `titleSize` / `subtitleSize` 调整。CLI 可用 `--title`、`--subtitle`、`--author`、`--author-native`、`--author-alias`、`--orcid`、`--repository`、`--license`、`--license-url`、`--preferred-citation`、`--date`、`--release-version`、`--release-tag`、`--release-commit`、`--doi`、`--metadata-page`、`--front-matter`、`--front-matter-title`、`--front-matter-toc`、`--show-version-on-cover`、`--documentclass`、`--title-page`、`--no-title-page`、`--cover-style`、`--title-size`、`--subtitle-size`、`--toc-page-break`、`--no-toc-page-break`、`--margin`、`--no-toc`、`--toc-depth`、`--paper`、`-V key:value` 和 `--variable key:value` 覆盖。仓库不捆绑 PDF 引擎。没有 pandoc 时，先交付 `export-md` 的中间稿，或者由用户安装 pandoc/LaTeX 后再运行 `export-pdf` / `render-pdf`。
 

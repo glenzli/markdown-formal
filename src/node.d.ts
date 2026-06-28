@@ -27,6 +27,7 @@ declare module 'path' {
 declare module 'node:path' {
     export const basename: any;
     export const dirname: any;
+    export const isAbsolute: any;
     export const join: any;
     export const posix: any;
     export const relative: any;

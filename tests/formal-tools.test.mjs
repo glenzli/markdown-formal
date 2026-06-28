@@ -1056,6 +1056,51 @@ async function testExportMarkdownCompilesFormalSyntax() {
     assert.ok(compiled.indexOf('# 附录 A Appendix Notes') > compiled.indexOf('# Summary'));
 }
 
+async function testExportMarkdownSplitCompilesFiles() {
+    const root = await makeWorkspace('export-md-split');
+    await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
+        '# #h-aaaaaaaaaaaaaaaa Chapter One',
+        '',
+        '本章见 @h-aaaaaaaaaaaaaaaa.full。',
+        '',
+        '## #h-bbbbbbbbbbbbbbbb Section One',
+        '',
+        '命题 #h-cccccccccccccccc（Main）：Statement uses @h-bbbbbbbbbbbbbbbb.title.',
+        '',
+        'See @h-cccccccccccccccc and @h-cccccccccccccccc.full.',
+        '',
+        'Read [next](02-b.md).',
+        '',
+        '![pic](figures/main.png)',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', '02-b.md'), [
+        '# #h-dddddddddddddddd Chapter Two',
+        '',
+        'Back to @h-aaaaaaaaaaaaaaaa.title.',
+        ''
+    ].join('\n'));
+
+    const exported = runCli(root, ['export-md-split', 'book1', '--out', 'dist/public']);
+    assert.equal(exported.status, 0, combinedOutput(exported));
+    assert.match(combinedOutput(exported), /OK export-md-split: 2 files -> dist\/public/);
+
+    const chapter1 = await read(root, 'dist/public/book1/01-a.md');
+    const chapter2 = await read(root, 'dist/public/book1/02-b.md');
+    assert.doesNotMatch(chapter1, /#h-|@h-/);
+    assert.doesNotMatch(chapter2, /#h-|@h-/);
+    assert.match(chapter1, /^# 第 1 章 Chapter One/m);
+    assert.match(chapter1, /本章见 第 1 章：Chapter One。/);
+    assert.match(chapter1, /^## 1\.1 Section One/m);
+    assert.match(chapter1, /命题 1\.1（Main）：Statement uses Section One\./);
+    assert.match(chapter1, /See 命题 1\.1 and 命题 1\.1（Main）\./);
+    assert.match(chapter1, /Read \[next\]\(02-b\.md\)\./);
+    assert.match(chapter1, /!\[pic\]\(figures\/main\.png\)/);
+    assert.doesNotMatch(chapter1, /\\pagebreak/);
+    assert.match(chapter2, /^# 第 2 章 Chapter Two/m);
+    assert.match(chapter2, /Back to Chapter One\./);
+}
+
 async function makeFakePandoc(root) {
     const bin = path.join(root, 'bin');
     const logPath = path.join(root, 'pandoc-args.json');
@@ -1363,6 +1408,7 @@ const tests = [
     ['preview ignore hover patterns', testPreviewIgnoreHoverPatterns],
     ['page heading formatting', testPageHeadingFormatting],
     ['export-md compiles formal syntax', testExportMarkdownCompilesFormalSyntax],
+    ['export-md-split compiles files', testExportMarkdownSplitCompilesFiles],
     ['render-pdf uses pandoc renderer', testRenderPdfUsesPandocRenderer],
     ['render-pdf metadata page', testRenderPdfMetadataPage],
     ['audit report', testAuditReport]

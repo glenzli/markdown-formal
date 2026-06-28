@@ -291,6 +291,12 @@ Export formal source to ordinary Markdown:
 npm run formal -- export-md path/to/book --out dist/book.md
 ```
 
+Export formal source to ordinary Markdown while preserving the source file tree:
+
+```bash
+npm run formal -- export-md-split path/to/book --out dist/public
+```
+
 Export formal source directly to PDF:
 
 ```bash
@@ -598,6 +604,12 @@ multi-volume-book/
 
 ```bash
 npm run formal -- export-md path/to/book --out dist/book.md
+```
+
+导出为保留源目录结构的普通 Markdown：
+
+```bash
+npm run formal -- export-md-split path/to/book --out dist/public
 ```
 
 从 formal 源直接导出 PDF：
