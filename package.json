@@ -16,6 +16,18 @@
     "onLanguage:markdown"
   ],
   "main": "./out/extension.js",
+  "bin": {
+    "markdown-formal": "./out/cli/formal-tools.js"
+  },
+  "files": [
+    "out/",
+    "media/",
+    "docs/",
+    "skills/",
+    "vasm-catalog/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "npm run build:extension && npm run build:cli && npm run build:webview",
     "build:extension": "tsc -p tsconfig.json",
@@ -30,6 +42,7 @@
     "test": "npm run check && npm run test:migrations",
     "content:build": "vasmc build",
     "docs:build": "npm run content:build",
+    "prepack": "npm run content:build && npm run build",
     "package:vsix": "npm run build && vsce package --no-dependencies",
     "release:local": "npm run content:build && npm test && node out/cli/release.js"
   },

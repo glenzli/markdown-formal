@@ -39,7 +39,17 @@ import {
 
 const ROOT = process.cwd();
 const CACHE_DIR = path.join(ROOT, '.markdown-formal');
+const PACKAGE_ROOT = path.resolve(__dirname, '..', '..');
 const { spawnSync } = require('node:child_process');
+
+async function pathExists(filePath: string): Promise<boolean> {
+    try {
+        await fs.access(filePath);
+        return true;
+    } catch (_err) {
+        return false;
+    }
+}
 
 async function ensureCacheDir() {
     await fs.mkdir(CACHE_DIR, { recursive: true });
@@ -2635,6 +2645,7 @@ function printHelp({ all = false } = {}) {
   npm run formal -- export-md-split <file-or-dir> [...] --out <dir>
   npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--no-toc] [--toc-depth N] [--margin 2.5cm]
   npm run formal -- render-pdf <compiled.md> --out <book.pdf> [--title "Title"] [--toc-title 目录]
+  npm run formal -- paths
   npm run formal -- verify [--strict-chapters]
 
 Migrations are dry-run by default. Pass --apply to edit files.
@@ -2668,6 +2679,8 @@ Advanced commands:
   npm run formal -- export-md-split <file-or-dir> [...] --out <dir>
   npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title "Title"] [--subtitle "Subtitle"] [--author Name] [--author-native Name] [--author-alias Alias] [--orcid URL] [--repository URL] [--license Name] [--license-url URL] [--preferred-citation Text] [--date "Revised 2026-06-26"] [--release-version rc.1] [--release-tag v1] [--release-commit abc123] [--doi DOI] [--metadata-page] [--front-matter page.md] [--front-matter-title "AI Statement"] [--front-matter-toc] [--show-version-on-cover] [--documentclass ctexbook] [--title-page] [--no-title-page] [--cover-style simple] [--title-size 32pt] [--subtitle-size 18pt] [--toc-page-break] [--no-toc-page-break] [-V key:value] [--variable key:value] [--keep-md]
   npm run formal -- render-pdf <compiled.md> --out <book.pdf> [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title "Title"] [--subtitle "Subtitle"] [--author Name] [--author-native Name] [--author-alias Alias] [--orcid URL] [--repository URL] [--license Name] [--license-url URL] [--preferred-citation Text] [--date "Revised 2026-06-26"] [--release-version rc.1] [--release-tag v1] [--release-commit abc123] [--doi DOI] [--metadata-page] [--front-matter page.md] [--front-matter-title "AI Statement"] [--front-matter-toc] [--show-version-on-cover] [--documentclass ctexbook] [--title-page] [--no-title-page] [--cover-style simple] [--title-size 32pt] [--subtitle-size 18pt] [--toc-page-break] [--no-toc-page-break] [-V key:value] [--variable key:value]
+  npm run formal -- paths
+  npm run formal -- help-ai
   npm run formal -- verify [--strict-chapters]
 
 Advanced:
@@ -2685,6 +2698,26 @@ Agent workflow:
   3. Use tmp-* for new objects and page anchors, then run finish on the edited file or directory.
   4. For old numbered prose, migrate-text-refs <scope> updates target files plus incoming references by default.
   5. If you use finalize directly, run verify before treating generated or migrated content as complete.`);
+}
+
+async function printArtifactPaths() {
+    const rows = [
+        ['package root', PACKAGE_ROOT],
+        ['CLI', path.join(__dirname, 'formal-tools.js')],
+        ['editor skill', path.join(PACKAGE_ROOT, 'skills', 'editor.md')],
+        ['integrator guide', path.join(PACKAGE_ROOT, 'skills', 'integrator.md')],
+        ['VASMC catalog', path.join(PACKAGE_ROOT, 'vasm-catalog', 'vasmc-catalog.yaml')],
+        ['usage doc', path.join(PACKAGE_ROOT, 'docs', 'usage.md')],
+        ['release doc', path.join(PACKAGE_ROOT, 'docs', 'release.md')]
+    ];
+    console.log('markdown-formal paths');
+    for (const [label, filePath] of rows) {
+        const exists = await pathExists(filePath);
+        console.log(`${label}: ${toPosix(filePath)}${exists ? '' : ' (missing)'}`);
+    }
+    console.log('');
+    console.log('AI workflow: review skills/editor.md and skills/integrator.md, then merge the rules into the target project instructions.');
+    console.log('VASMC: vasmc add --catalog <VASMC catalog> --export editor|integrator');
 }
 
 async function main() {
@@ -2716,6 +2749,8 @@ async function main() {
         await exportPdf(args);
     } else if (command === 'render-pdf') {
         await renderPdf(args);
+    } else if (command === 'paths' || command === 'help-ai') {
+        await printArtifactPaths();
     } else if (command === 'audit') {
         await audit(args);
     } else if (command === 'report') {

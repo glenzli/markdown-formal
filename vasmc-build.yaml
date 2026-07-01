@@ -22,7 +22,7 @@ security:
   mode: review
 
 catalog:
-  outDir: "./dist/vasm-catalog"
+  outDir: "./vasm-catalog"
   exports:
     editor:
       source: "skills-src/editor.vasm.md"
@@ -39,6 +39,8 @@ ai:
       - "README.md"
       - "docs/**/*.md"
       - "skills/**/*.md"
+      - "vasm-catalog/**/*.md"
+      - "vasm-catalog/**/*.yaml"
       - "docs-src/**/*.vasm.md"
       - "skills-src/**/*.vasm.md"
 

@@ -1,0 +1,16 @@
+catalogVersion: 1
+exports:
+  editor:
+    name: markdown-formal-editor-skill
+    version: 0.1.0
+    format: executable
+    file: markdown-formal-editor.zh-CN.md
+    hash: sha256:4af195d3507564eb936e0ddd05a51c0c46610e8dfaf131c0e34a5bcbda7aa310
+  integrator:
+    name: markdown-formal-integrator-guide
+    version: 0.1.0
+    format: integrative
+    file: markdown-formal-integrator.md
+    hash: sha256:27917bbcdae5add67d8472803e48a4146fea806abc559a66cdf7d3fc2204c840
+    appliesTo:
+      - sha256:4af195d3507564eb936e0ddd05a51c0c46610e8dfaf131c0e34a5bcbda7aa310

@@ -41,6 +41,7 @@ declare module 'node:crypto' {
 }
 
 declare const require: (module: string) => any;
+declare const __dirname: string;
 declare const process: any;
 declare const console: {
     log: (...args: any[]) => void;

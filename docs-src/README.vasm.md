@@ -29,7 +29,7 @@ vasm:
 - 当前页符号表用于展示项目特有 LaTeX 记号。
 - 从显式 `@h-...` 引用生成命题依赖图。
 - Markdown/PDF 导出，支持封面、出版元数据页和前置声明页。
-- `skills/` 提供给目标项目 AI 指令融合的规则 artifact；`dist/vasm-catalog/` 提供可由 VASMC 锁定消费的 catalog exports。
+- `skills/` 提供给目标项目 AI 指令融合的规则 artifact；`vasm-catalog/` 提供可由 VASMC 锁定消费的 catalog exports。
 
 ### 界面预览
 
@@ -108,6 +108,34 @@ npm run formal -- verify
 
 增强预览是显式启用的。项目必须存在 `.markdown-formal/config.json`，并生成 `.markdown-formal/preview-cache.json`；否则扩展会保持原生 Markdown 预览，不注入增强能力。
 
+如果通过 npm 使用 CLI：
+
+```bash
+npm install -D markdown-formal
+```
+
+```json
+{
+  "scripts": {
+    "formal": "markdown-formal"
+  }
+}
+```
+
+### AI artifacts
+
+`markdown-formal` 不提供自动安装的远端 skill。AI 接入时只读 release 或 npm 包里的可审阅 artifact：
+
+- 裸 AI / 普通项目：读取 `skills/editor.md` 和 `skills/integrator.md`，然后把规则融合进目标项目原生 `AGENTS.md`、写作 skill 或项目指南。
+- VASMC 项目：通过 `vasm-catalog/vasmc-catalog.yaml` 锁定 `editor` 和 `integrator` exports。
+- npm 项目：对应路径是 `node_modules/markdown-formal/skills/` 和 `node_modules/markdown-formal/vasm-catalog/`。
+
+CLI 可以打印当前安装位置：
+
+```bash
+npm run formal -- paths
+```
+
 ### 最小语法
 
 把原本需要手写编号的位置替换成稳定 ID：
@@ -137,7 +165,7 @@ npm run formal -- verify
 
 公开文档的维护源在 `docs-src/**/*.vasm.md`，采用中文优先维护。
 目标项目 AI skill 的维护源在 `skills-src/**/*.vasm.md`。生成产物是
-`README.md`、`docs/*.md` 和 `skills/*.md`。对外给 VASMC 消费的可锁定 artifact 由 `vasmc-build.yaml` 的 `catalog.exports` 生成到 `dist/vasm-catalog/`。
+`README.md`、`docs/*.md`、`skills/*.md` 和 `vasm-catalog/`。对外给 VASMC 消费的可锁定 artifact 由 `vasmc-build.yaml` 的 `catalog.exports` 生成。
 
 修改文档或 skill source 后运行：
 
@@ -152,7 +180,6 @@ npm run content:build
 完成 translate 或 review action，再提交生成后的 Markdown。
 
 - [docs/usage.md](docs/usage.md)：语法、命令、项目结构、配置和 PDF 导出。
-- [docs/ai-integration.md](docs/ai-integration.md)：如何把工作流融合到目标项目 AI 指令中。
 - [docs/release.md](docs/release.md)：release 包结构和发布检查。
 - [skills/editor.md](skills/editor.md)：详细 AI 写作规则。
 - [skills/integrator.md](skills/integrator.md)：AI 组合指导 artifact。
@@ -169,7 +196,7 @@ npm run release:local
 生成产物：
 
 ```text
-dist/markdown-formal-<version>/
+dist/
   markdown-formal-<version>.vsix
   extension/
   cli/
@@ -183,7 +210,7 @@ dist/markdown-formal-<version>/
   checksums.txt
 ```
 
-VSIX 用于编辑器安装，`cli/` 用于目标项目本地 vendoring，`skills/` 包含需要审阅和融合的 AI artifact。通过 VASMC 接入时，优先使用 `vasm-catalog/vasmc-catalog.yaml` 并让 consumer lockfile 固定 hash。
+VSIX 用于编辑器安装，`cli/` 用于目标项目本地 vendoring，npm 包用于 `markdown-formal` CLI 安装，`skills/` 包含需要审阅和融合的 AI artifact。通过 VASMC 接入时，优先使用 `vasm-catalog/vasmc-catalog.yaml` 并让 consumer lockfile 固定 hash。
 
 ### 检查
 

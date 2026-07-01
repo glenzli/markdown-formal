@@ -50,7 +50,7 @@ async function copySelectedOutFiles(destOut: string): Promise<void> {
 }
 
 async function copyPublicDocs(destDocs: string): Promise<void> {
-    const publicDocs = ['usage.md', 'ai-integration.md', 'release.md'];
+    const publicDocs = ['usage.md', 'release.md'];
     for (const fileName of publicDocs) {
         await copyFile(path.join(ROOT, 'docs', fileName), path.join(destDocs, fileName));
     }
@@ -90,6 +90,9 @@ function makeCliPackageJson(pkg: any): any {
         license: pkg.license,
         repository: pkg.repository,
         description: 'CLI artifacts for markdown-formal',
+        bin: {
+            'markdown-formal': 'out/cli/formal-tools.js'
+        },
         scripts: {
             formal: 'node out/cli/formal-tools.js'
         }
@@ -187,7 +190,7 @@ This release bundle contains the editor extension, the CLI runtime, documentatio
 - \`cli/\`: dependency-free CLI runtime for target projects.
 - \`skills/\`: reviewed AI workflow artifacts.
 - \`vasm-catalog/\`: VASMC catalog exports for lockable reuse.
-- \`docs/\`: usage, AI integration, and release documentation.
+- \`docs/\`: usage and release documentation.
 - \`manifest.json\`: machine-readable artifact map.
 - \`checksums.txt\`: SHA-256 checksums.
 
@@ -218,9 +221,9 @@ Then add a project script:
 
 Run \`npm run formal -- prepare\` from the project root that owns \`.markdown-formal/config.json\`.
 
-### AI Integration
+### AI Artifacts
 
-Review \`skills/editor.md\` and \`skills/integrator.md\`, then merge the rules into the target project's native AI instructions together with \`docs/ai-integration.md\`. If the target project uses VASMC, prefer \`vasmc add --catalog path/to/vasm-catalog/vasmc-catalog.yaml --export editor\` and \`--export integrator\` so the consumer lockfile fixes artifact hashes. Do not auto-install or auto-update skills from an untrusted remote source.
+Review \`skills/editor.md\` and \`skills/integrator.md\`, then merge the rules into the target project's native AI instructions. If the target project uses VASMC, prefer \`vasmc add --catalog path/to/vasm-catalog/vasmc-catalog.yaml --export editor\` and \`--export integrator\` so the consumer lockfile fixes artifact hashes. Do not auto-install or auto-update skills from an untrusted remote source.
 
 <a id="中文"></a>
 
@@ -235,7 +238,7 @@ Review \`skills/editor.md\` and \`skills/integrator.md\`, then merge the rules i
 - \`cli/\`：目标项目使用的无运行时依赖 CLI。
 - \`skills/\`：需要审阅和融合的 AI 工作流 artifact。
 - \`vasm-catalog/\`：供 VASMC consumer 锁定复用的 catalog exports。
-- \`docs/\`：使用、AI 集成和 release 文档。
+- \`docs/\`：使用和 release 文档。
 - \`manifest.json\`：机器可读产物表。
 - \`checksums.txt\`：SHA-256 校验和。
 
@@ -266,19 +269,18 @@ cp -R cli/* tools/markdown-formal/
 
 在拥有 \`.markdown-formal/config.json\` 的项目根目录运行 \`npm run formal -- prepare\`。
 
-### AI 集成
+### AI Artifacts
 
-审阅 \`skills/editor.md\` 和 \`skills/integrator.md\`，并结合 \`docs/ai-integration.md\` 把规则融合到目标项目原生 AI 指令中。如果目标项目使用 VASMC，优先用 \`vasmc add --catalog path/to/vasm-catalog/vasmc-catalog.yaml --export editor\` 和 \`--export integrator\` 接入，让 consumer lockfile 固定 artifact hash。不要从不可信远端自动安装或自动更新 skill。
+审阅 \`skills/editor.md\` 和 \`skills/integrator.md\`，并把规则融合到目标项目原生 AI 指令中。如果目标项目使用 VASMC，优先用 \`vasmc add --catalog path/to/vasm-catalog/vasmc-catalog.yaml --export editor\` 和 \`--export integrator\` 接入，让 consumer lockfile 固定 artifact hash。不要从不可信远端自动安装或自动更新 skill。
 `;
 }
 
 async function main(): Promise<void> {
     const pkg = await readJson(path.join(ROOT, 'package.json'));
-    const releaseName = `${pkg.name}-${pkg.version}`;
-    const releaseRoot = path.join(DIST_DIR, releaseName);
+    const releaseRoot = DIST_DIR;
     const extensionRoot = path.join(releaseRoot, 'extension');
     const cliRoot = path.join(releaseRoot, 'cli');
-    const catalogRoot = path.join(DIST_DIR, 'vasm-catalog');
+    const catalogRoot = path.join(ROOT, 'vasm-catalog');
 
     await requiredPath(path.join(ROOT, 'out', 'extension.js'));
     await requiredPath(path.join(ROOT, 'out', 'markdown-it-formal.js'));
@@ -294,7 +296,6 @@ async function main(): Promise<void> {
     await requiredPath(path.join(ROOT, 'README.md'));
     await requiredPath(path.join(ROOT, 'LICENSE'));
     await requiredPath(path.join(ROOT, 'docs', 'usage.md'));
-    await requiredPath(path.join(ROOT, 'docs', 'ai-integration.md'));
     await requiredPath(path.join(ROOT, 'docs', 'release.md'));
 
     await cleanDir(releaseRoot);
@@ -319,6 +320,8 @@ async function main(): Promise<void> {
     await copyFile(path.join(ROOT, 'out', 'cli', 'formal-tools.js'), path.join(cliRoot, 'out', 'cli', 'formal-tools.js'));
     await copyFile(path.join(ROOT, 'out', 'cli', 'release.js'), path.join(cliRoot, 'out', 'cli', 'release.js'));
     await copyDir(path.join(ROOT, 'skills'), path.join(cliRoot, 'skills'));
+    await copyDir(catalogRoot, path.join(cliRoot, 'vasm-catalog'));
+    await copyPublicDocs(path.join(cliRoot, 'docs'));
     await copyFile(path.join(ROOT, 'LICENSE'), path.join(cliRoot, 'LICENSE'));
 
     await writeJson(path.join(releaseRoot, 'manifest.json'), {
@@ -338,6 +341,9 @@ async function main(): Promise<void> {
             cli: {
                 path: 'cli',
                 entry: 'out/cli/formal-tools.js',
+                bin: 'markdown-formal',
+                skillsPath: 'cli/skills',
+                vasmCatalogPath: 'cli/vasm-catalog/vasmc-catalog.yaml',
                 install: 'Copy this directory into tools/markdown-formal and run node tools/markdown-formal/out/cli/formal-tools.js.'
             },
             skills: {

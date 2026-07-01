@@ -172,6 +172,43 @@ Run the strict gate:
 npm run formal -- verify
 ```
 
+### AI Workflow Integration
+
+AI rules no longer live in a separate public documentation page. Target projects should read the AI artifacts shipped with the package:
+
+```text
+skills/editor.md      # writing and migration rules
+skills/integrator.md  # how to merge those rules into native project instructions
+```
+
+For npm installs, the paths are:
+
+```text
+node_modules/markdown-formal/skills/editor.md
+node_modules/markdown-formal/skills/integrator.md
+```
+
+If the target project uses VASMC, lock both artifacts through the catalog:
+
+```bash
+vasmc add --catalog node_modules/markdown-formal/vasm-catalog/vasmc-catalog.yaml --export editor --alias markdown-formal-editor
+vasmc add --catalog node_modules/markdown-formal/vasm-catalog/vasmc-catalog.yaml --export integrator --alias markdown-formal-integrator
+```
+
+For release bundles, use this catalog path instead:
+
+```text
+dist/vasm-catalog/vasmc-catalog.yaml
+```
+
+The CLI can print the key paths for the current installation:
+
+```bash
+npm run formal -- paths
+```
+
+Do not auto-fetch remote skills, and do not append the integrator guide verbatim to a target prompt. Review the artifacts first, then merge the rules into the target project's existing `AGENTS.md`, writing skill, style guide, or release instructions.
+
 ### Migration Workflow
 
 Dry-run text reference migration:
@@ -389,16 +426,16 @@ local engine is installed.
 2. 在正文中使用 `@h-...` 引用。
 3. 由 CLI 生成 hash ID、预览缓存和报告。
 
-### 核心模型
+## 核心模型
 
-* 稳定编号：源码保存稳定 `#h-...`，新增对象先写 `#tmp-*`；正文引用只用 `@h-...`、`@h-....title` 或 `@h-....full`，读者编号由工具渲染。
-* 定义查询：定义不加 hash、不参与 ref；工具自动扫描标准 `定义（术语）：...` / `Definition (Term): ...`，AI 只为非标准定义、别名、中英互查和不可靠边界维护 `.markdown-formal/definitions.json`。
-* 符号表：`.markdown-formal/symbols.json` 只记录项目明确约定的特殊 LaTeX 记号，不索引通用变量、完整推导公式或一次性符号。
-* 依赖图：命题/引理/定理/推论之间的显式依赖来自 `@h-...`，权威数据是 `.markdown-formal/dependency-graph.json`；AI 或证明器推测出的边必须另存为 suggested 数据。
-* 导出：普通 Markdown/PDF 不直接消费 formal 源；先用 `export-md` 或 `export-md-split` 降级 marker/ref，项目级后处理之后再用 `render-pdf`。
-* 工具闭环：写作或迁移前运行 `prepare`，编辑后运行 `finish <file-or-dir>`，提交生成或迁移内容前运行 `verify`。
+- 稳定编号：源码保存稳定 `#h-...`，新增对象先写 `#tmp-*`；正文引用只用 `@h-...`、`@h-....title` 或 `@h-....full`，读者编号由工具渲染。
+- 定义查询：定义不加 hash、不参与 ref；工具自动扫描标准 `定义（术语）：...` / `Definition (Term): ...`，AI 只为非标准定义、别名、中英互查和不可靠边界维护 `.markdown-formal/definitions.json`。
+- 符号表：`.markdown-formal/symbols.json` 只记录项目明确约定的特殊 LaTeX 记号，不索引通用变量、完整推导公式或一次性符号。
+- 依赖图：命题/引理/定理/推论之间的显式依赖来自 `@h-...`，权威数据是 `.markdown-formal/dependency-graph.json`；AI 或证明器推测出的边必须另存为 suggested 数据。
+- 导出：普通 Markdown/PDF 不直接消费 formal 源；先用 `export-md` 或 `export-md-split` 降级 marker/ref，项目级后处理之后再用 `render-pdf`。
+- 工具闭环：写作或迁移前运行 `prepare`，编辑后运行 `finish <file-or-dir>`，提交生成或迁移内容前运行 `verify`。
 
-### 核心语法
+## 核心语法
 
 写作时先使用临时 ID：
 
@@ -434,7 +471,7 @@ local engine is installed.
 
 不要在正文里写声明语法。应写 `由 @h-... 可得`，不要写 `由定理 #h-... 可得`。
 
-### 编号对象
+## 编号对象
 
 支持的声明形式：
 
@@ -475,7 +512,7 @@ Table #tmp-7 (Parameter ranges):
 
 命题类对象会生成 recall 预览。预览只收录陈述部分，并在 `证明` / `Proof` 前停止。
 
-### 定义
+## 定义
 
 定义是查询对象，不是编号对象。
 
@@ -489,11 +526,11 @@ Definition (Bounded operator): A linear map \(T:X\to Y\) is bounded if ...
 
 只有例外情况才写入 `.markdown-formal/definitions.json`：
 
-* 非标准行文定义；
-* 别名；
-* 中英互查；
-* 需要稳定多段预览内容；
-* 自动范围可能不可靠的定义。
+- 非标准行文定义；
+- 别名；
+- 中英互查；
+- 需要稳定多段预览内容；
+- 自动范围可能不可靠的定义。
 
 示例：
 
@@ -508,7 +545,7 @@ Definition (Bounded operator): A linear map \(T:X\to Y\) is bounded if ...
 ]
 ```
 
-### 符号表
+## 符号表
 
 项目特有记号写入 `.markdown-formal/symbols.json`。
 
@@ -525,7 +562,7 @@ Definition (Bounded operator): A linear map \(T:X\to Y\) is bounded if ...
 
 不要索引普通变量、通用记号或完整推导公式。
 
-### 常规流程
+## 常规流程
 
 生成上下文：
 
@@ -545,7 +582,44 @@ npm run formal -- finish path/to/chapter-or-dir
 npm run formal -- verify
 ```
 
-### 迁移流程
+## AI 工作流接入
+
+AI 规则不再放在单独的 public doc 中。目标项目应直接读取随包发布的 AI artifacts：
+
+```text
+skills/editor.md      # 具体写作和迁移规则
+skills/integrator.md  # 如何融合进目标项目原生 AI 指令
+```
+
+如果通过 npm 安装，对应路径是：
+
+```text
+node_modules/markdown-formal/skills/editor.md
+node_modules/markdown-formal/skills/integrator.md
+```
+
+如果目标项目使用 VASMC，使用 catalog 锁定这两个 artifact：
+
+```bash
+vasmc add --catalog node_modules/markdown-formal/vasm-catalog/vasmc-catalog.yaml --export editor --alias markdown-formal-editor
+vasmc add --catalog node_modules/markdown-formal/vasm-catalog/vasmc-catalog.yaml --export integrator --alias markdown-formal-integrator
+```
+
+对于 release bundle，把上面的 catalog 路径替换为：
+
+```text
+dist/vasm-catalog/vasmc-catalog.yaml
+```
+
+CLI 可打印当前安装中的关键路径：
+
+```bash
+npm run formal -- paths
+```
+
+不要自动拉取远端 skill，也不要把 integrator 原样追加到目标 prompt 末尾。应先审阅 artifact，再把规则融合到目标项目已有的 `AGENTS.md`、写作 skill、风格指南或 release 指令中。
+
+## 迁移流程
 
 试运行文字编号引用迁移：
 
@@ -571,7 +645,7 @@ npm run formal -- migrate-ids path/to/chapter-or-volume
 npm run formal -- migrate-ids --apply path/to/chapter-or-volume
 ```
 
-### 依赖图
+## 依赖图
 
 生成依赖图摘要：
 
@@ -605,7 +679,7 @@ npm run formal -- graph matrix chapter
 
 依赖图只记录显式 `@h-...` 引用。AI 或领域工具推测出的数学依赖应由目标项目单独维护，不要混入 canonical graph。
 
-### 项目结构
+## 项目结构
 
 扫描器从路径推断书、卷、章节、导论、总结和附录。
 
@@ -633,7 +707,7 @@ multi-volume-book/
 
 附录采用附录局部编号，例如 `A.1`、`A.2`。
 
-### 配置
+## 配置
 
 常见 `.markdown-formal/config.json`：
 
@@ -667,7 +741,7 @@ multi-volume-book/
 
 跨 book 引用和查询必须在 `lookup.bookDependencies` 中显式声明。
 
-### PDF 导出
+## PDF 导出
 
 先把 formal 源导出为普通 Markdown，再交给其他发布流程处理：
 
@@ -703,16 +777,16 @@ export-md -> project postprocess -> render-pdf
 
 默认 PDF 行为：
 
-* 纸张：`a4`；
-* 页边距：`2.5cm`；
-* 目录：默认开启；
-* 目录深度：`2`；
-* 目录标题：根据 `language` 选择，例如 `Contents` 或 `目录`；
-* 目录独立分页：默认开启；
-* PDF 引擎：`xelatex`；
-* 封面页：可选，默认 `simple` 风格；
-* 出版元数据页：可选，位于封面页之后、目录之前；
-* front matter 声明页：可选，位于 metadata 之后、目录之前。
+- 纸张：`a4`；
+- 页边距：`2.5cm`；
+- 目录：默认开启；
+- 目录深度：`2`；
+- 目录标题：根据 `language` 选择，例如 `Contents` 或 `目录`；
+- 目录独立分页：默认开启；
+- PDF 引擎：`xelatex`；
+- 封面页：可选，默认 `simple` 风格；
+- 出版元数据页：可选，位于封面页之后、目录之前；
+- front matter 声明页：可选，位于 metadata 之后、目录之前。
 
 PDF 选项放在 `.markdown-formal/config.json` 的 `pdf` 字段中：
 

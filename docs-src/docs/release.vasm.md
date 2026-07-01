@@ -9,7 +9,7 @@ vasm:
 
 # Release
 
-`markdown-formal` 的 release 包含三类产物：
+`markdown-formal` 的 release 包含四类产物：
 
 - 编辑器扩展包；
 - 可 vendoring 的 CLI 运行时；
@@ -36,16 +36,18 @@ npm test
 npm run release:local
 ```
 
-release 包输出到：
+release 包直接输出到 `dist/`；该目录代表当前构建版本：
 
 ```text
-dist/markdown-formal-<version>/
+dist/
 ```
+
+`dist/` 只表示当前构建结果，不再额外包一层版本目录。版本号保留在 VSIX 文件名、`manifest.json` 和 npm package metadata 中。`vasm-catalog/` 的源码 checkout / npm 发布面位于仓库根目录；release 发布面位于 `dist/vasm-catalog/`。
 
 ## Release 结构
 
 ```text
-dist/markdown-formal-<version>/
+dist/
   markdown-formal-<version>.vsix
   extension/
   cli/
@@ -73,12 +75,46 @@ dist/markdown-formal-<version>/
 `docs-src/`、`skills-src/`、`.vasmc/`、`vasmc-build-state.yaml` 等仓库内部
 内容源和构建状态不是 release 产物。对外 VASMC 复用必须通过 `vasm-catalog/` 中的 artifact 和 hash，而不是直接扫描这些 source 目录。
 
+## npm 包
+
+npm 包用于安装 CLI、AI artifacts 和 VASMC catalog，不替代 VSIX：
+
+```bash
+npm install -D markdown-formal
+```
+
+目标项目脚本：
+
+```json
+{
+  "scripts": {
+    "formal": "markdown-formal"
+  }
+}
+```
+
+npm 包入口：
+
+- `bin.markdown-formal`：指向 `out/cli/formal-tools.js`。
+- `skills/`：裸 AI 审阅和融合用的 `editor.md` / `integrator.md`。
+- `vasm-catalog/`：VASMC consumer 使用的 catalog exports。
+- `docs/`：面向人的 usage 和 release 文档。
+
+VSIX 和 npm 包都由 `package.json.files` 控制包含范围；不要再同时引入 `.vscodeignore`，VSCE 不支持两套策略并存。
+
+使用 npm 包里的 catalog：
+
+```bash
+vasmc add --catalog node_modules/markdown-formal/vasm-catalog/vasmc-catalog.yaml --export editor --alias markdown-formal-editor
+vasmc add --catalog node_modules/markdown-formal/vasm-catalog/vasmc-catalog.yaml --export integrator --alias markdown-formal-integrator
+```
+
 ## 安装扩展
 
 安装打包扩展：
 
 ```bash
-code --install-extension dist/markdown-formal-<version>/markdown-formal-<version>.vsix
+code --install-extension dist/markdown-formal-<version>.vsix
 ```
 
 本地开发优先使用软链接：
@@ -107,7 +143,7 @@ npm run build
 
 ```bash
 mkdir -p path/to/project/tools/markdown-formal
-cp -R dist/markdown-formal-<version>/cli/* path/to/project/tools/markdown-formal/
+cp -R dist/cli/* path/to/project/tools/markdown-formal/
 ```
 
 目标项目添加脚本：
@@ -140,7 +176,7 @@ npm run formal -- verify
 
 1. 审阅 `skills/editor.md`；
 2. 审阅 `skills/integrator.md`；
-3. 结合 `docs/ai-integration.md` 把规则融合进项目原生 AI 指令；
+3. 把规则融合进项目原生 AI 指令；
 4. 保留目标项目自己的文风和 release 规则。
 
 如果目标项目本身也使用 VASMC，推荐锁定 catalog exports：
@@ -185,8 +221,8 @@ npm run release:local
 
 检查：
 
-- `dist/markdown-formal-<version>/manifest.json`
-- `dist/markdown-formal-<version>/checksums.txt`
+- `dist/manifest.json`
+- `dist/checksums.txt`
 - 如果扩展打包逻辑有变化，检查 VSIX 内容
 
 ## 依赖策略

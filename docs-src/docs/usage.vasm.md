@@ -168,6 +168,43 @@ npm run formal -- finish path/to/chapter-or-dir
 npm run formal -- verify
 ```
 
+## AI 工作流接入
+
+AI 规则不再放在单独的 public doc 中。目标项目应直接读取随包发布的 AI artifacts：
+
+```text
+skills/editor.md      # 具体写作和迁移规则
+skills/integrator.md  # 如何融合进目标项目原生 AI 指令
+```
+
+如果通过 npm 安装，对应路径是：
+
+```text
+node_modules/markdown-formal/skills/editor.md
+node_modules/markdown-formal/skills/integrator.md
+```
+
+如果目标项目使用 VASMC，使用 catalog 锁定这两个 artifact：
+
+```bash
+vasmc add --catalog node_modules/markdown-formal/vasm-catalog/vasmc-catalog.yaml --export editor --alias markdown-formal-editor
+vasmc add --catalog node_modules/markdown-formal/vasm-catalog/vasmc-catalog.yaml --export integrator --alias markdown-formal-integrator
+```
+
+对于 release bundle，把上面的 catalog 路径替换为：
+
+```text
+dist/vasm-catalog/vasmc-catalog.yaml
+```
+
+CLI 可打印当前安装中的关键路径：
+
+```bash
+npm run formal -- paths
+```
+
+不要自动拉取远端 skill，也不要把 integrator 原样追加到目标 prompt 末尾。应先审阅 artifact，再把规则融合到目标项目已有的 `AGENTS.md`、写作 skill、风格指南或 release 指令中。
+
 ## 迁移流程
 
 试运行文字编号引用迁移：
