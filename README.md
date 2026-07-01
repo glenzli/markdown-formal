@@ -28,7 +28,7 @@ The design target is AI-assisted editing:
 - Current-page symbol table for project-specific LaTeX notation.
 - Explicit theorem dependency graph built from `@h-...` references.
 - Markdown and PDF export with title page, publication metadata page, and front matter pages.
-- AI workflow documents under `skills/` for integration into another project.
+- Reviewed AI workflow artifacts in `skills/`, plus VASMC catalog exports for lockable reuse.
 
 ### Preview
 
@@ -136,7 +136,7 @@ Rules:
 
 Public documentation sources live in `docs-src/**/*.vasm.md` and are maintained Chinese-first.
 Target-project AI skill sources live in `skills-src/**/*.vasm.md`. Generated outputs are
-`README.md`, `docs/*.md`, and `skills/*.md`.
+`README.md`, `docs/*.md`, and `skills/*.md`. Lockable artifacts for external VASMC consumers are generated from `vasmc-build.yaml` catalog exports into `dist/vasm-catalog/`.
 
 After changing documentation or skill sources, run:
 
@@ -153,7 +153,7 @@ Before committing, run `npm run content:build`, read `.vasmc/build-report.yaml`,
 - [docs/ai-integration.md](docs/ai-integration.md): how to merge the workflow into another project's AI instructions.
 - [docs/release.md](docs/release.md): release bundle structure and publishing checks.
 - [skills/editor.md](skills/editor.md): detailed AI writing rules.
-- [skills/integrator.md](skills/integrator.md): AI integration source material.
+- [skills/integrator.md](skills/integrator.md): AI composition guidance artifact.
 
 ### Release
 
@@ -172,6 +172,7 @@ dist/markdown-formal-<version>/
   extension/
   cli/
   skills/
+  vasm-catalog/
   docs/
   README.md
   LICENSE
@@ -180,7 +181,7 @@ dist/markdown-formal-<version>/
   checksums.txt
 ```
 
-Use the VSIX for editor installation, `cli/` for repo-local vendoring, and `skills/` as reviewed AI integration material.
+Use the VSIX for editor installation, `cli/` for repo-local vendoring, and `skills/` as reviewed AI workflow artifacts. When consuming through VASMC, prefer `vasm-catalog/vasmc-catalog.yaml` so the consumer lockfile fixes artifact hashes.
 
 ### Checks
 
@@ -224,7 +225,7 @@ The runtime extension and CLI outputs remain dependency-free after build. Develo
 - 当前页符号表用于展示项目特有 LaTeX 记号。
 - 从显式 `@h-...` 引用生成命题依赖图。
 - Markdown/PDF 导出，支持封面、出版元数据页和前置声明页。
-- `skills/` 提供给目标项目 AI 指令融合的规则材料。
+- `skills/` 提供给目标项目 AI 指令融合的规则 artifact；`dist/vasm-catalog/` 提供可由 VASMC 锁定消费的 catalog exports。
 
 ### 界面预览
 
@@ -332,7 +333,7 @@ npm run formal -- verify
 
 公开文档的维护源在 `docs-src/**/*.vasm.md`，采用中文优先维护。
 目标项目 AI skill 的维护源在 `skills-src/**/*.vasm.md`。生成产物是
-`README.md`、`docs/*.md` 和 `skills/*.md`。
+`README.md`、`docs/*.md` 和 `skills/*.md`。对外给 VASMC 消费的可锁定 artifact 由 `vasmc-build.yaml` 的 `catalog.exports` 生成到 `dist/vasm-catalog/`。
 
 修改文档或 skill source 后运行：
 
@@ -350,7 +351,7 @@ npm run content:build
 - [docs/ai-integration.md](docs/ai-integration.md)：如何把工作流融合到目标项目 AI 指令中。
 - [docs/release.md](docs/release.md)：release 包结构和发布检查。
 - [skills/editor.md](skills/editor.md)：详细 AI 写作规则。
-- [skills/integrator.md](skills/integrator.md)：AI 集成规则源材料。
+- [skills/integrator.md](skills/integrator.md)：AI 组合指导 artifact。
 
 ### Release
 
@@ -369,6 +370,7 @@ dist/markdown-formal-<version>/
   extension/
   cli/
   skills/
+  vasm-catalog/
   docs/
   README.md
   LICENSE
@@ -377,7 +379,7 @@ dist/markdown-formal-<version>/
   checksums.txt
 ```
 
-VSIX 用于编辑器安装，`cli/` 用于目标项目本地 vendoring，`skills/` 是需要审阅和融合的 AI 指令材料。
+VSIX 用于编辑器安装，`cli/` 用于目标项目本地 vendoring，`skills/` 包含需要审阅和融合的 AI artifact。通过 VASMC 接入时，优先使用 `vasm-catalog/vasmc-catalog.yaml` 并让 consumer lockfile 固定 hash。
 
 ### 检查
 

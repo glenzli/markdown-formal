@@ -31,7 +31,7 @@
     "content:build": "vasmc build",
     "docs:build": "npm run content:build",
     "package:vsix": "npm run build && vsce package --no-dependencies",
-    "release:local": "npm test && node out/cli/release.js"
+    "release:local": "npm run content:build && npm test && node out/cli/release.js"
   },
   "contributes": {
     "markdown.markdownItPlugins": true,

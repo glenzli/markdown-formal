@@ -17,11 +17,20 @@ compile:
     targetLangs: ["en", "zh-CN"]
   executable:
     targetLangs: ["zh-CN"]
-  integrative:
-    targetLangs: ["zh-CN"]
 
 security:
   mode: review
+
+catalog:
+  outDir: "./dist/vasm-catalog"
+  exports:
+    editor:
+      source: "skills-src/editor.vasm.md"
+      targetLang: "zh-CN"
+      file: "markdown-formal-editor.zh-CN.md"
+    integrator:
+      source: "skills-src/integrator.vasm.md"
+      file: "markdown-formal-integrator.md"
 
 ai:
   projectReview:

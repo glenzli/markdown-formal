@@ -23,7 +23,8 @@
 - `skills-src/**/*.vasm.md`: source for target-project AI skill outputs.
 - `docs-src/fragments/**/*.vasm.md`: shared source fragments used by public docs and skills.
 - `README.md`, `docs/usage.md`, `docs/ai-integration.md`, `docs/release.md`: generated or reviewed public documentation output.
-- `skills/editor.md`, `skills/integrator.md`: generated or reviewed target-project AI integration material.
+- `skills/editor.md`: generated executable target-project AI writing rules.
+- `skills/integrator.md`: generated VASMC integrative composition guide artifact.
 - `package.json`, `.vscodeignore`, `tsconfig*.json`, `vite.*.ts`: build, packaging, and extension boundary configuration.
 - Generated outputs under `out/`, `dist/`, and `.markdown-formal/` are verification artifacts, not durable development guidance.
 
@@ -33,7 +34,7 @@
 - Formal IDs are stable implementation data; reader-facing numbers are rendered or exported from metadata.
 - Definitions and symbols are lookup aids, not theorem-numbering objects.
 - Preview enhancements are opt-in for workspaces with `.markdown-formal/config.json`; ordinary Markdown preview should stay ordinary elsewhere.
-- Release bundles ship runtime artifacts, public docs, and target-project skills only; repository development skeletons, `docs-src/`, and `skills-src/` are source-checkout context.
+- Release bundles ship runtime artifacts, public docs, generated AI artifacts under `skills/`, and VASMC catalog exports for lockable reuse.
 - Built extension and CLI runtimes should remain dependency-free after bundling.
 - Dependency changes require caution and explicit verification because supply-chain risk matters for editor tooling.
 - Entry hints should stay at file or artifact-category level, not function level.
@@ -48,7 +49,7 @@
 
 ## Entry Hints
 
-- Public usage or target-project integration: start with `docs-src/**/*.vasm.md`, `skills-src/**/*.vasm.md`, generated `README.md` / `docs/*.md`, and generated `skills/*.md`.
+- Public usage or target-project integration: start with `docs-src/**/*.vasm.md`, `skills-src/**/*.vasm.md`, generated `README.md` / `docs/*.md`, generated `skills/*.md`, and catalog artifacts under `dist/vasm-catalog/`.
 - Writing-rule details: start with `skills-src/editor.vasm.md` and generated `skills/editor.md`.
 - CLI or syntax behavior changes: start with `src/cli/formal-tools.ts`, `src/core/formal-core.ts`, and `tests/formal-tools.test.mjs`.
 - Preview behavior changes: start with the markdown extension entrypoints, preview script, styles, and the relevant tests or examples.

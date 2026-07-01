@@ -13,7 +13,8 @@ vasm:
 
 - 编辑器扩展包；
 - 可 vendoring 的 CLI 运行时；
-- 需要融合到目标项目的 AI 工作流文档。
+- 需要融合到目标项目的 AI 工作流 artifact；
+- 可由 VASMC 锁定消费的 catalog exports。
 
 ## 构建
 
@@ -49,6 +50,7 @@ dist/markdown-formal-<version>/
   extension/
   cli/
   skills/
+  vasm-catalog/
   docs/
   README.md
   LICENSE
@@ -62,13 +64,14 @@ dist/markdown-formal-<version>/
 - `markdown-formal-<version>.vsix`：VS Code 兼容扩展安装包。
 - `extension/`：用于本地编辑器扩展目录的解包版本。
 - `cli/`：目标项目使用的无运行时依赖 CLI。
-- `skills/`：AI 集成规则源材料。
+- `skills/`：AI 规则与组合指导 artifact，目前包含 `skills/editor.md` 和 `skills/integrator.md`。
+- `vasm-catalog/`：面向 VASMC consumer 的 catalog，包含 `vasmc-catalog.yaml`、`editor` export 和 `integrator` export。
 - `docs/`：面向人的文档。
 - `manifest.json`：机器可读产物表。
 - `checksums.txt`：SHA-256 校验和。
 
 `docs-src/`、`skills-src/`、`.vasmc/`、`vasmc-build-state.yaml` 等仓库内部
-内容源和构建状态不是 release 产物。
+内容源和构建状态不是 release 产物。对外 VASMC 复用必须通过 `vasm-catalog/` 中的 artifact 和 hash，而不是直接扫描这些 source 目录。
 
 ## 安装扩展
 
@@ -131,14 +134,23 @@ npm run formal -- verify
 
 ## AI Skill 分发
 
-`skills/` 是文档，不是远程安装器。
+`skills/` 是可审阅的 AI artifact，不是远程安装器。通过 VASMC 使用时，优先使用 release catalog。
 
 目标项目应该：
 
 1. 审阅 `skills/editor.md`；
 2. 审阅 `skills/integrator.md`；
-3. 把规则融合进项目原生 AI 指令；
+3. 结合 `docs/ai-integration.md` 把规则融合进项目原生 AI 指令；
 4. 保留目标项目自己的文风和 release 规则。
+
+如果目标项目本身也使用 VASMC，推荐锁定 catalog exports：
+
+```bash
+vasmc add --catalog path/to/vasm-catalog/vasmc-catalog.yaml --export editor --alias markdown-formal-editor
+vasmc add --catalog path/to/vasm-catalog/vasmc-catalog.yaml --export integrator --alias markdown-formal-integrator
+```
+
+consumer 的 `vasmc-lock.yaml` 会固定 artifact hash；integrative export 的 `appliesTo` 也会被解析为 editor artifact 的 hash。这样目标项目不需要扫描远端仓库，也不需要信任未锁定路径。
 
 ## Release 检查
 

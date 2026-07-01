@@ -4,8 +4,8 @@
 
 - Preserve source-first behavior: skeletons and skills orient agents, but source and tests decide facts.
 - Protect stable-ID, reference, numbering, preview, migration, graph, and export invariants.
-- Keep target-project AI material clear enough to merge into existing project instructions.
-- Keep release artifacts narrow: runtime files, public docs, and target-project skills only.
+- Keep target-project AI material clear enough to merge into existing project instructions; executable and integrative AI artifacts belong in `skills/`, while VASMC consumers should prefer catalog exports.
+- Keep release artifacts narrow: runtime files, public docs, generated AI artifacts, and VASMC catalog exports only.
 - Prefer small deterministic checks over persistent implementation summaries.
 - Challenge dependency additions unless they clearly reduce maintenance risk and are pinned and verified.
 

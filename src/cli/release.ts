@@ -178,14 +178,15 @@ Language: [English](#english) | [中文](#中文)
 
 ## English
 
-This release bundle contains the editor extension, the CLI runtime, documentation, and AI-facing workflow files.
+This release bundle contains the editor extension, the CLI runtime, documentation, AI workflow artifacts, and a VASMC catalog for lockable reuse.
 
 ### Artifacts
 
 - \`${vsixName}\`: VS Code-compatible extension package.
 - \`extension/\`: unpacked extension directory for local editor extension folders.
 - \`cli/\`: dependency-free CLI runtime for target projects.
-- \`skills/\`: reviewed AI integration source material.
+- \`skills/\`: reviewed AI workflow artifacts.
+- \`vasm-catalog/\`: VASMC catalog exports for lockable reuse.
 - \`docs/\`: usage, AI integration, and release documentation.
 - \`manifest.json\`: machine-readable artifact map.
 - \`checksums.txt\`: SHA-256 checksums.
@@ -219,20 +220,21 @@ Run \`npm run formal -- prepare\` from the project root that owns \`.markdown-fo
 
 ### AI Integration
 
-Review \`skills/editor.md\` and \`skills/integrator.md\`, then merge the rules into the target project's native AI instructions. Do not auto-install or auto-update skills from an untrusted remote source.
+Review \`skills/editor.md\` and \`skills/integrator.md\`, then merge the rules into the target project's native AI instructions together with \`docs/ai-integration.md\`. If the target project uses VASMC, prefer \`vasmc add --catalog path/to/vasm-catalog/vasmc-catalog.yaml --export editor\` and \`--export integrator\` so the consumer lockfile fixes artifact hashes. Do not auto-install or auto-update skills from an untrusted remote source.
 
 <a id="中文"></a>
 
 ## 中文
 
-这个 release 包包含编辑器扩展、CLI 运行时、文档和面向 AI 的工作流规则。
+这个 release 包包含编辑器扩展、CLI 运行时、文档、面向 AI 的工作流 artifact，以及可锁定复用的 VASMC catalog。
 
 ### 产物
 
 - \`${vsixName}\`：VS Code 兼容扩展安装包。
 - \`extension/\`：可复制到本地编辑器扩展目录的解包版本。
 - \`cli/\`：目标项目使用的无运行时依赖 CLI。
-- \`skills/\`：需要审阅和融合的 AI 集成规则材料。
+- \`skills/\`：需要审阅和融合的 AI 工作流 artifact。
+- \`vasm-catalog/\`：供 VASMC consumer 锁定复用的 catalog exports。
 - \`docs/\`：使用、AI 集成和 release 文档。
 - \`manifest.json\`：机器可读产物表。
 - \`checksums.txt\`：SHA-256 校验和。
@@ -266,7 +268,7 @@ cp -R cli/* tools/markdown-formal/
 
 ### AI 集成
 
-审阅 \`skills/editor.md\` 和 \`skills/integrator.md\`，再把规则融合到目标项目原生 AI 指令中。不要从不可信远端自动安装或自动更新 skill。
+审阅 \`skills/editor.md\` 和 \`skills/integrator.md\`，并结合 \`docs/ai-integration.md\` 把规则融合到目标项目原生 AI 指令中。如果目标项目使用 VASMC，优先用 \`vasmc add --catalog path/to/vasm-catalog/vasmc-catalog.yaml --export editor\` 和 \`--export integrator\` 接入，让 consumer lockfile 固定 artifact hash。不要从不可信远端自动安装或自动更新 skill。
 `;
 }
 
@@ -276,6 +278,7 @@ async function main(): Promise<void> {
     const releaseRoot = path.join(DIST_DIR, releaseName);
     const extensionRoot = path.join(releaseRoot, 'extension');
     const cliRoot = path.join(releaseRoot, 'cli');
+    const catalogRoot = path.join(DIST_DIR, 'vasm-catalog');
 
     await requiredPath(path.join(ROOT, 'out', 'extension.js'));
     await requiredPath(path.join(ROOT, 'out', 'markdown-it-formal.js'));
@@ -287,6 +290,7 @@ async function main(): Promise<void> {
     await requiredPath(path.join(ROOT, 'media', 'styles.css'));
     await requiredPath(path.join(ROOT, 'skills', 'editor.md'));
     await requiredPath(path.join(ROOT, 'skills', 'integrator.md'));
+    await requiredPath(path.join(catalogRoot, 'vasmc-catalog.yaml'));
     await requiredPath(path.join(ROOT, 'README.md'));
     await requiredPath(path.join(ROOT, 'LICENSE'));
     await requiredPath(path.join(ROOT, 'docs', 'usage.md'));
@@ -301,6 +305,7 @@ async function main(): Promise<void> {
     await copyFile(path.join(ROOT, 'LICENSE'), path.join(releaseRoot, 'LICENSE'));
     await copyDir(path.join(ROOT, 'media', 'readme'), path.join(releaseRoot, 'media', 'readme'));
     await copyDir(path.join(ROOT, 'skills'), path.join(releaseRoot, 'skills'));
+    await copyDir(catalogRoot, path.join(releaseRoot, 'vasm-catalog'));
     await copyPublicDocs(path.join(releaseRoot, 'docs'));
     await writeText(path.join(releaseRoot, 'INSTALL.md'), releaseInstallDoc(pkg, vsixName));
 
@@ -339,7 +344,12 @@ async function main(): Promise<void> {
                 path: 'skills',
                 extensionPath: 'extension/skills',
                 cliPath: 'cli/skills',
-                mode: 'AI integration source; merge into the target project instructions instead of auto-installing from remote sources'
+                mode: 'Reviewed AI workflow artifacts; merge into the target project instructions instead of auto-installing from remote sources'
+            },
+            vasmCatalog: {
+                path: 'vasm-catalog',
+                index: 'vasm-catalog/vasmc-catalog.yaml',
+                mode: 'VASMC catalog exports; consume with vasmc add --catalog and commit the consumer lockfile.'
             },
             docs: {
                 path: 'docs'

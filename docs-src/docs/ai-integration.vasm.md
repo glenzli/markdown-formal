@@ -11,7 +11,7 @@ vasm:
 
 `markdown-formal` 应该融合到目标项目已有的 AI 写作流程中。
 
-`skills/` 里的文件不是可执行安装器，而是给目标项目审阅和整合的规则材料。
+`skills/` 里的文件不是可执行安装器，而是给目标项目审阅和整合的 AI artifact。通过 VASMC 使用时，应优先从 release 的 `vasm-catalog/vasmc-catalog.yaml` 锁定 `editor` 和 `integrator` exports。
 
 ## 融合原则
 
@@ -105,7 +105,7 @@ npm run formal -- verify
 1. 审阅 release 包。
 2. 校验 `checksums.txt`。
 3. 把新的 `cli/` 复制到 `tools/markdown-formal/`。
-4. 把变化后的 `skills/` 规则融合进项目原生 AI 指令。
+4. 把变化后的 `skills/` artifact 融合进项目原生 AI 指令；如果项目使用 VASMC，则通过 catalog dependency 和 lockfile 接入。
 5. 运行 `npm run formal -- prepare`。
 6. 运行 `npm run formal -- verify`。
 7. 运行项目自己的 release 检查。

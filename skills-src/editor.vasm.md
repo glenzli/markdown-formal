@@ -1,6 +1,7 @@
 ---
 vasm:
   alias: markdown-formal-editor-skill
+  version: "0.1.0"
   intent: "Executable AI writing and migration rules for markdown-formal projects."
   compile:
     format: executable
