@@ -1,6 +1,9 @@
 .git/**
 .gitignore
 .markdown-formal/**
+AGENTS.md
+DEV_SKELETON.md
+REVIEW_SKELETON.md
 dist/**
 node_modules/**
 src/**

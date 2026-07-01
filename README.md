@@ -125,7 +125,6 @@ Rules:
 - [docs/release.md](docs/release.md): release bundle structure and publishing checks.
 - [skills/editor.md](skills/editor.md): detailed AI writing rules.
 - [skills/integrator.md](skills/integrator.md): AI integration source material.
-- [skills/development.md](skills/development.md): development and dependency policy for this repository.
 
 ### Release
 
@@ -293,7 +292,6 @@ npm run formal -- verify
 - [docs/release.md](docs/release.md)：release 包结构和发布检查。
 - [skills/editor.md](skills/editor.md)：详细 AI 写作规则。
 - [skills/integrator.md](skills/integrator.md)：AI 集成规则源材料。
-- [skills/development.md](skills/development.md)：本仓库开发与依赖策略。
 
 ### Release
 

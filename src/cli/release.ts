@@ -42,17 +42,18 @@ async function copyDir(src: string, dest: string): Promise<void> {
     }
 }
 
-async function copyDirIfExists(src: string, dest: string): Promise<void> {
-    if (await pathExists(src)) {
-        await copyDir(src, dest);
-    }
-}
-
 async function copySelectedOutFiles(destOut: string): Promise<void> {
     await copyFile(path.join(ROOT, 'out', 'extension.js'), path.join(destOut, 'extension.js'));
     await copyFile(path.join(ROOT, 'out', 'markdown-it-formal.js'), path.join(destOut, 'markdown-it-formal.js'));
     await copyFile(path.join(ROOT, 'out', 'core', 'debug-log.js'), path.join(destOut, 'core', 'debug-log.js'));
     await copyFile(path.join(ROOT, 'out', 'core', 'formal-core.js'), path.join(destOut, 'core', 'formal-core.js'));
+}
+
+async function copyPublicDocs(destDocs: string): Promise<void> {
+    const publicDocs = ['usage.md', 'ai-integration.md', 'release.md'];
+    for (const fileName of publicDocs) {
+        await copyFile(path.join(ROOT, 'docs', fileName), path.join(destDocs, fileName));
+    }
 }
 
 async function writeText(filePath: string, content: string): Promise<void> {
@@ -288,6 +289,9 @@ async function main(): Promise<void> {
     await requiredPath(path.join(ROOT, 'skills', 'integrator.md'));
     await requiredPath(path.join(ROOT, 'README.md'));
     await requiredPath(path.join(ROOT, 'LICENSE'));
+    await requiredPath(path.join(ROOT, 'docs', 'usage.md'));
+    await requiredPath(path.join(ROOT, 'docs', 'ai-integration.md'));
+    await requiredPath(path.join(ROOT, 'docs', 'release.md'));
 
     await cleanDir(releaseRoot);
 
@@ -296,7 +300,7 @@ async function main(): Promise<void> {
     await copyFile(path.join(ROOT, 'README.md'), path.join(releaseRoot, 'README.md'));
     await copyFile(path.join(ROOT, 'LICENSE'), path.join(releaseRoot, 'LICENSE'));
     await copyDir(path.join(ROOT, 'skills'), path.join(releaseRoot, 'skills'));
-    await copyDirIfExists(path.join(ROOT, 'docs'), path.join(releaseRoot, 'docs'));
+    await copyPublicDocs(path.join(releaseRoot, 'docs'));
     await writeText(path.join(releaseRoot, 'INSTALL.md'), releaseInstallDoc(pkg, vsixName));
 
     await writeJson(path.join(extensionRoot, 'package.json'), makeExtensionPackageJson(pkg));

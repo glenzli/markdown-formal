@@ -1,6 +1,6 @@
 # markdown-formal AI 能力融合指南
 
-这个文件用于让目标项目的 AI 把 `markdown-formal` 融合进已有写作、改稿和迁移流程。它不是单纯安装说明；本仓库开发、构建、软链接调试和依赖安全见 [development.md](development.md)，日常写作细则见 [editor.md](editor.md)。
+这个文件用于让目标项目的 AI 把 `markdown-formal` 融合进已有写作、改稿和迁移流程。它不是单纯安装说明；日常写作细则见 [editor.md](editor.md)。
 
 ## 融合目标
 
@@ -170,6 +170,5 @@ npm run formal -- migrate-ids --apply path/to/chapter-or-volume
 ## 项目约定
 
 - 写作细则和语法约束放在 [editor.md](editor.md)。
-- 本仓库开发、调试和构建细节放在 [development.md](development.md)。
 - `.markdown-formal/` 中只有 `config.json`、`definitions.json`、`symbols.json` 是人工维护入口；其他文件均为生成缓存或报告。
 - 如果 `npm run formal -- prepare` 不存在或失败，先修复工具入口，不要让 AI 手写替代流程。
