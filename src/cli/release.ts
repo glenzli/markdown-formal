@@ -299,6 +299,7 @@ async function main(): Promise<void> {
 
     await copyFile(path.join(ROOT, 'README.md'), path.join(releaseRoot, 'README.md'));
     await copyFile(path.join(ROOT, 'LICENSE'), path.join(releaseRoot, 'LICENSE'));
+    await copyDir(path.join(ROOT, 'media', 'readme'), path.join(releaseRoot, 'media', 'readme'));
     await copyDir(path.join(ROOT, 'skills'), path.join(releaseRoot, 'skills'));
     await copyPublicDocs(path.join(releaseRoot, 'docs'));
     await writeText(path.join(releaseRoot, 'INSTALL.md'), releaseInstallDoc(pkg, vsixName));

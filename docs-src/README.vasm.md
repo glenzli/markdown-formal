@@ -9,6 +9,8 @@ vasm:
 
 # markdown-formal
 
+![markdown-formal banner](media/readme/banner.png)
+
 `markdown-formal` 是一个兼容 VS Code Markdown Preview 的扩展和本地 CLI，用于长期维护数学或技术类 Markdown 书稿。
 
 它让源码保存稳定的 hash ID，再由工具渲染面向读者的编号、引用、导航、定义查询、符号表、依赖图和发布产物。
@@ -19,7 +21,7 @@ vasm:
 - CLI 会把临时 ID 固化为稳定的 `h-*` hash。
 - 校验工具会检查断裂引用、残留临时 ID 和迁移遗留问题。
 
-## 主要能力
+### 主要能力
 
 - 章节、页面、小节、命题类对象、公式、图、表的稳定编号。
 - `@h-...` 引用可承受插入、删除和章节重排。
@@ -29,7 +31,17 @@ vasm:
 - Markdown/PDF 导出，支持封面、出版元数据页和前置声明页。
 - `skills/` 提供给目标项目 AI 指令融合的规则材料。
 
-## 本地开发安装
+### 界面预览
+
+![多卷章节导航](media/readme/navigation.png)
+
+预览工具栏提供返回、章节导航、目录、当前页符号表和定义搜索。多卷结构会自然折叠成卷到章的导航层级。
+
+![引用 recall 预览](media/readme/recall-preview.png)
+
+正文里的 `@h-...` 引用会渲染为当前编号，并支持就地 recall 预览，保留数学 Markdown 和 LaTeX 的可读性。
+
+### 本地开发安装
 
 安装依赖并构建：
 
@@ -52,7 +64,7 @@ ln -s "$PWD" ~/.antigravity-ide/extensions/markdown-formal
 
 重新构建后 reload editor window。
 
-## 在写作项目中使用
+### 在写作项目中使用
 
 目标项目通常 vendoring CLI，并自己维护 `.markdown-formal/` 数据：
 
@@ -96,7 +108,7 @@ npm run formal -- verify
 
 增强预览是显式启用的。项目必须存在 `.markdown-formal/config.json`，并生成 `.markdown-formal/preview-cache.json`；否则扩展会保持原生 Markdown 预览，不注入增强能力。
 
-## 最小语法
+### 最小语法
 
 把原本需要手写编号的位置替换成稳定 ID：
 
@@ -121,7 +133,7 @@ npm run formal -- verify
 - AI 只为例外定义维护 `.markdown-formal/definitions.json`。
 - 只有项目特有符号约定进入 `.markdown-formal/symbols.json`。
 
-## 文档入口
+### 文档入口
 
 公开文档的维护源在 `docs-src/**/*.vasm.md`，采用中文优先维护。
 目标项目 AI skill 的维护源在 `skills-src/**/*.vasm.md`。生成产物是
@@ -145,7 +157,7 @@ npm run content:build
 - [skills/editor.md](skills/editor.md)：详细 AI 写作规则。
 - [skills/integrator.md](skills/integrator.md)：AI 集成规则源材料。
 
-## Release
+### Release
 
 构建并验证：
 
@@ -172,7 +184,7 @@ dist/markdown-formal-<version>/
 
 VSIX 用于编辑器安装，`cli/` 用于目标项目本地 vendoring，`skills/` 是需要审阅和融合的 AI 指令材料。
 
-## 检查
+### 检查
 
 ```bash
 npm test

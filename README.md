@@ -8,6 +8,8 @@
 
 ## 🌍 English
 
+![markdown-formal banner](media/readme/banner.png)
+
 `markdown-formal` is a VS Code-compatible Markdown preview extension and local CLI for long-form mathematical and technical writing.
 
 It keeps stable hash IDs in source Markdown, then renders human-facing numbering, references, navigation, definition lookup, symbol tables, dependency graphs, and publication exports from generated metadata.
@@ -27,6 +29,16 @@ The design target is AI-assisted editing:
 - Explicit theorem dependency graph built from `@h-...` references.
 - Markdown and PDF export with title page, publication metadata page, and front matter pages.
 - AI workflow documents under `skills/` for integration into another project.
+
+### Preview
+
+![Multi-volume chapter navigation](media/readme/navigation.png)
+
+The preview toolbar provides back navigation, chapter navigation, a table of contents, the current-page symbol table, and definition search. Multi-volume projects fold naturally into volume-to-chapter navigation.
+
+![Reference recall preview](media/readme/recall-preview.png)
+
+Inline `@h-...` references render as current reader-facing numbers and support local recall previews while preserving readable mathematical Markdown and LaTeX.
 
 ### Development Install
 
@@ -192,6 +204,8 @@ The runtime extension and CLI outputs remain dependency-free after build. Develo
 
 ## 🇨🇳 中文
 
+![markdown-formal banner](media/readme/banner.png)
+
 `markdown-formal` 是一个兼容 VS Code Markdown Preview 的扩展和本地 CLI，用于长期维护数学或技术类 Markdown 书稿。
 
 它让源码保存稳定的 hash ID，再由工具渲染面向读者的编号、引用、导航、定义查询、符号表、依赖图和发布产物。
@@ -211,6 +225,16 @@ The runtime extension and CLI outputs remain dependency-free after build. Develo
 - 从显式 `@h-...` 引用生成命题依赖图。
 - Markdown/PDF 导出，支持封面、出版元数据页和前置声明页。
 - `skills/` 提供给目标项目 AI 指令融合的规则材料。
+
+### 界面预览
+
+![多卷章节导航](media/readme/navigation.png)
+
+预览工具栏提供返回、章节导航、目录、当前页符号表和定义搜索。多卷结构会自然折叠成卷到章的导航层级。
+
+![引用 recall 预览](media/readme/recall-preview.png)
+
+正文里的 `@h-...` 引用会渲染为当前编号，并支持就地 recall 预览，保留数学 Markdown 和 LaTeX 的可读性。
 
 ### 本地开发安装
 
