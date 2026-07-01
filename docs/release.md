@@ -1,10 +1,12 @@
 # Release
 
-Language: [English](#english) | [中文](#中文)
+[🌍 English](#en) | [🇨🇳 中文](#zh-cn)
 
-<a id="english"></a>
+---
 
-## English
+<a name="en"></a>
+
+## 🌍 English
 
 `markdown-formal` releases include three surfaces:
 
@@ -63,6 +65,9 @@ Artifact roles:
 - `docs/`: human-facing documentation.
 - `manifest.json`: machine-readable artifact map.
 - `checksums.txt`: SHA-256 checksums.
+
+`docs-src/`, `skills-src/`, `.vasmc/`, `vasmc-build-state.yaml`, and other
+repository-internal content sources or build state files are not release artifacts.
 
 ### Install Extension
 
@@ -136,6 +141,16 @@ Target projects should:
 
 ### Release Checks
 
+If public docs or skills changed, generate VASMC outputs first:
+
+```bash
+npm run content:build -- --dry-run
+npm run content:build
+```
+
+`--plan` is an alias for `--dry-run`; both only inspect the plan and do not write generated outputs, build-state, or the default report.
+Before release, run `npm run content:build`, read `.vasmc/build-report.yaml`, complete pending translate or review actions, and then continue release checks.
+
 Run npm audit against the official registry:
 
 ```bash
@@ -179,9 +194,11 @@ Rules:
 - do not add postinstall hooks or runtime remote loaders;
 - keep project-specific release hooks outside `markdown-formal`.
 
-<a id="中文"></a>
+---
 
-## 中文
+<a name="zh-cn"></a>
+
+## 🇨🇳 中文
 
 `markdown-formal` 的 release 包含三类产物：
 
@@ -240,6 +257,9 @@ dist/markdown-formal-<version>/
 - `docs/`：面向人的文档。
 - `manifest.json`：机器可读产物表。
 - `checksums.txt`：SHA-256 校验和。
+
+`docs-src/`、`skills-src/`、`.vasmc/`、`vasmc-build-state.yaml` 等仓库内部
+内容源和构建状态不是 release 产物。
 
 ### 安装扩展
 
@@ -312,6 +332,17 @@ npm run formal -- verify
 4. 保留目标项目自己的文风和 release 规则。
 
 ### Release 检查
+
+如果修改了 public docs 或 skill，先生成 VASMC 输出：
+
+```bash
+npm run content:build -- --dry-run
+npm run content:build
+```
+
+`--plan` 是 `--dry-run` 的别名；二者只查看计划，不写生成物、build-state 或默认 report；真正 release
+前再运行 `npm run content:build`，读取 `.vasmc/build-report.yaml`，完成 pending
+的 translate 或 review action，再继续 release 检查。
 
 使用官方 registry 做 npm audit：
 

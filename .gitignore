@@ -3,6 +3,8 @@ out/
 dist/
 .vscode-test/
 *.vsix
+.vasmc/
+vasmc-build-state.yaml
 .markdown-formal/*
 !.markdown-formal/
 !.markdown-formal/config.json

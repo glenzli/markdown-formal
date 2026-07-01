@@ -13,6 +13,7 @@
 
 - Long-lived implementation KBs, source indexes, call graphs, or architecture mirrors.
 - Release inclusion of repository-only development context such as `DEV_SKELETON.md`, `REVIEW_SKELETON.md`, or `AGENTS.md`.
+- Release or VSIX inclusion of `docs-src/`, `skills-src/`, `.vasmc/`, or VASMC build-state files.
 - Changes that damage math, LaTeX, Markdown, or PDF export fidelity for formal writing content.
 - Changes that make enhanced preview affect workspaces without formal configuration.
 - Changes that make definitions or symbols participate in theorem-like numbering by default.
@@ -27,11 +28,14 @@
 - Migration tools that rewrite more than the requested scope or lose incoming references.
 - Performance fixes that hide content or disable math rendering instead of reducing injected data.
 - Documentation updates that describe current implementation details as durable truth.
+- Public documentation or skill edits made only to generated Markdown when the corresponding `docs-src/**/*.vasm.md` or `skills-src/**/*.vasm.md` source should change.
 
 ## Verification Expectations
 
 - Run `npm test` for behavior, scanner, CLI, migration, export, or release-sensitive changes.
 - Run `npm run release:local` when changing packaging, release docs, `.vscodeignore`, skills, or public docs copied to release.
+- Use `npm run content:build -- --dry-run` or `npm run content:build -- --plan` to inspect documentation or skill-source build plans without writes.
+- Run `npm run content:build` after changing public documentation or skill sources, then handle any `.vasmc/build-report.yaml` actions before committing generated outputs.
 - Run focused manual preview checks when changing webview UI, preview scripts, styles, navigation, search, hover, symbol panels, or Markdown-It rendering.
 - Run dependency review commands before introducing or upgrading package dependencies.
 - Use `git diff --check` before finalizing documentation-heavy edits.

@@ -19,8 +19,11 @@
 - `src/**`: implementation source for the extension, CLI, scanner, export, and release tooling.
 - `tests/formal-tools.test.mjs`: regression coverage for formal syntax, migration, export, graph, and audit behavior.
 - `examples/**`: fixtures and sample writing projects used to exercise behavior.
-- `docs/usage.md`, `docs/ai-integration.md`, `docs/release.md`: maintained public documentation.
-- `skills/editor.md`, `skills/integrator.md`: reviewed target-project AI integration material.
+- `docs-src/**/*.vasm.md`: source for maintained public documentation.
+- `skills-src/**/*.vasm.md`: source for target-project AI skill outputs.
+- `docs-src/fragments/**/*.vasm.md`: shared source fragments used by public docs and skills.
+- `README.md`, `docs/usage.md`, `docs/ai-integration.md`, `docs/release.md`: generated or reviewed public documentation output.
+- `skills/editor.md`, `skills/integrator.md`: generated or reviewed target-project AI integration material.
 - `package.json`, `.vscodeignore`, `tsconfig*.json`, `vite.*.ts`: build, packaging, and extension boundary configuration.
 - Generated outputs under `out/`, `dist/`, and `.markdown-formal/` are verification artifacts, not durable development guidance.
 
@@ -30,10 +33,12 @@
 - Formal IDs are stable implementation data; reader-facing numbers are rendered or exported from metadata.
 - Definitions and symbols are lookup aids, not theorem-numbering objects.
 - Preview enhancements are opt-in for workspaces with `.markdown-formal/config.json`; ordinary Markdown preview should stay ordinary elsewhere.
-- Release bundles ship runtime artifacts, public docs, and target-project skills only; repository development skeletons are source-checkout context.
+- Release bundles ship runtime artifacts, public docs, and target-project skills only; repository development skeletons, `docs-src/`, and `skills-src/` are source-checkout context.
 - Built extension and CLI runtimes should remain dependency-free after bundling.
 - Dependency changes require caution and explicit verification because supply-chain risk matters for editor tooling.
 - Entry hints should stay at file or artifact-category level, not function level.
+- For no-side-effect VASMC checks, run `npm run content:build -- --dry-run` or the alias `npm run content:build -- --plan`, optionally with `--report-out /tmp/report.yaml`; use `vasmc expand <source> --target-lang <lang>` for single-source import expansion without workspace routing, build-state, or default report writes.
+- `vasmc build --out-dir` is not a dry-run substitute: workspace routing still controls matched output paths.
 
 ## Domain Assumptions
 
@@ -43,11 +48,11 @@
 
 ## Entry Hints
 
-- Public usage or target-project integration: start with `README.md`, `docs/usage.md`, `docs/ai-integration.md`, and `skills/integrator.md`.
-- Writing-rule details: start with `skills/editor.md`.
+- Public usage or target-project integration: start with `docs-src/**/*.vasm.md`, `skills-src/**/*.vasm.md`, generated `README.md` / `docs/*.md`, and generated `skills/*.md`.
+- Writing-rule details: start with `skills-src/editor.vasm.md` and generated `skills/editor.md`.
 - CLI or syntax behavior changes: start with `src/cli/formal-tools.ts`, `src/core/formal-core.ts`, and `tests/formal-tools.test.mjs`.
 - Preview behavior changes: start with the markdown extension entrypoints, preview script, styles, and the relevant tests or examples.
-- Release boundary changes: start with `src/cli/release.ts`, `.vscodeignore`, `docs/release.md`, and `npm run release:local`.
+- Release boundary changes: start with `src/cli/release.ts`, `.vscodeignore`, `docs-src/docs/release.vasm.md`, generated `docs/release.md`, and `npm run release:local`.
 
 ## Refresh Triggers
 

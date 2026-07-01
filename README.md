@@ -1,10 +1,12 @@
 # markdown-formal
 
-Language: [English](#english) | [中文](#中文)
+[🌍 English](#en) | [🇨🇳 中文](#zh-cn)
 
-<a id="english"></a>
+---
 
-## English
+<a name="en"></a>
+
+## 🌍 English
 
 `markdown-formal` is a VS Code-compatible Markdown preview extension and local CLI for long-form mathematical and technical writing.
 
@@ -120,6 +122,21 @@ Rules:
 
 ### Documentation
 
+Public documentation sources live in `docs-src/**/*.vasm.md` and are maintained Chinese-first.
+Target-project AI skill sources live in `skills-src/**/*.vasm.md`. Generated outputs are
+`README.md`, `docs/*.md`, and `skills/*.md`.
+
+After changing documentation or skill sources, run:
+
+```bash
+npm run content:build -- --dry-run
+npm run content:build
+```
+
+`--plan` is an alias for `--dry-run`; both only inspect the plan and do not write generated outputs, build-state, or the default report.
+For single-file expansion, use `vasmc expand <source> --target-lang zh-CN`; it does not use workspace routing.
+Before committing, run `npm run content:build`, read `.vasmc/build-report.yaml`, complete translate or review actions, and commit the generated Markdown.
+
 - [docs/usage.md](docs/usage.md): syntax, commands, project structure, configuration, and PDF export.
 - [docs/ai-integration.md](docs/ai-integration.md): how to merge the workflow into another project's AI instructions.
 - [docs/release.md](docs/release.md): release bundle structure and publishing checks.
@@ -169,9 +186,11 @@ npm audit --registry=https://registry.npmjs.org --omit=optional
 
 The runtime extension and CLI outputs remain dependency-free after build. Development dependencies are pinned for TypeScript, Vite bundling, and VSIX packaging.
 
-<a id="中文"></a>
+---
 
-## 中文
+<a name="zh-cn"></a>
+
+## 🇨🇳 中文
 
 `markdown-formal` 是一个兼容 VS Code Markdown Preview 的扩展和本地 CLI，用于长期维护数学或技术类 Markdown 书稿。
 
@@ -286,6 +305,22 @@ npm run formal -- verify
 - 只有项目特有符号约定进入 `.markdown-formal/symbols.json`。
 
 ### 文档入口
+
+公开文档的维护源在 `docs-src/**/*.vasm.md`，采用中文优先维护。
+目标项目 AI skill 的维护源在 `skills-src/**/*.vasm.md`。生成产物是
+`README.md`、`docs/*.md` 和 `skills/*.md`。
+
+修改文档或 skill source 后运行：
+
+```bash
+npm run content:build -- --dry-run
+npm run content:build
+```
+
+`--plan` 是 `--dry-run` 的别名；二者只查看计划，不写生成物、build-state 或默认 report。需要单文件展开时可用
+`vasmc expand <source> --target-lang zh-CN`，它不走 workspace routing。
+真正提交前再运行 `npm run content:build`，读取 `.vasmc/build-report.yaml`，
+完成 translate 或 review action，再提交生成后的 Markdown。
 
 - [docs/usage.md](docs/usage.md)：语法、命令、项目结构、配置和 PDF 导出。
 - [docs/ai-integration.md](docs/ai-integration.md)：如何把工作流融合到目标项目 AI 指令中。

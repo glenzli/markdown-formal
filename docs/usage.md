@@ -1,10 +1,12 @@
 # Usage
 
-Language: [English](#english) | [中文](#中文)
+[🌍 English](#en) | [🇨🇳 中文](#zh-cn)
 
-<a id="english"></a>
+---
 
-## English
+<a name="en"></a>
+
+## 🌍 English
 
 This guide explains the source syntax and normal command workflow for `markdown-formal`.
 
@@ -13,6 +15,15 @@ The short version:
 1. Write stable markers where human numbering would normally appear.
 2. Use `@h-...` references in prose.
 3. Let the CLI generate hash IDs, preview metadata, and reports.
+
+### Core Model
+
+- Stable numbering: source stores stable `#h-...` markers, new objects start as `#tmp-*`, prose references use only `@h-...`, `@h-....title`, or `@h-....full`, and reader-facing numbers are rendered by the tool.
+- Definition lookup: definitions do not get hash IDs or refs; the tool scans standard `定义（术语）：...` / `Definition (Term): ...` entries, and AI maintains `.markdown-formal/definitions.json` only for nonstandard definitions, aliases, bilingual lookup, and unreliable boundaries.
+- Symbol table: `.markdown-formal/symbols.json` records only project-defined special LaTeX notation, not generic variables, complete derivations, or one-off symbols.
+- Dependency graph: explicit theorem-like dependencies come from `@h-...`; the canonical data is `.markdown-formal/dependency-graph.json`; AI- or prover-suggested edges must be stored separately as suggested data.
+- Export: ordinary Markdown/PDF does not consume formal source directly; use `export-md` or `export-md-split` to lower markers/refs first, then run project-specific postprocessing and `render-pdf`.
+- Tool loop: run `prepare` before writing or migration, `finish <file-or-dir>` after editing, and `verify` before committing generated or migrated content.
 
 ### Core Syntax
 
@@ -285,19 +296,19 @@ Cross-book references and lookup require explicit dependencies in `lookup.bookDe
 
 ### PDF Export
 
-Export formal source to ordinary Markdown:
+Export formal source to ordinary Markdown before using other publication tools:
 
 ```bash
 npm run formal -- export-md path/to/book --out dist/book.md
 ```
 
-Export formal source to ordinary Markdown while preserving the source file tree:
+Export formal source while preserving the source file tree:
 
 ```bash
 npm run formal -- export-md-split path/to/book --out dist/public
 ```
 
-Export formal source directly to PDF:
+Export formal source directly to PDF with the local Pandoc/LaTeX engine:
 
 ```bash
 npm run formal -- export-pdf path/to/book --out dist/book.pdf
@@ -309,17 +320,66 @@ Render an already compiled Markdown file:
 npm run formal -- render-pdf dist/book.md --out dist/book.pdf
 ```
 
-Use `render-pdf` when a project needs this release flow:
+`render-pdf` does not scan formal source, rewrite `#h-*`, or resolve `@h-*`.
+It only renders an already compiled Markdown file with the shared Pandoc
+layout options. Use it when a project needs this release flow:
 
 ```text
 export-md -> project postprocess -> render-pdf
 ```
 
-PDF settings live under the `pdf` key in `.markdown-formal/config.json`.
+Default PDF behavior:
 
-<a id="中文"></a>
+- paper: `a4`;
+- margin: `2.5cm`;
+- table of contents: enabled;
+- TOC depth: `2`;
+- TOC title: selected from `language`, such as `Contents` or `目录`;
+- TOC page break: enabled;
+- PDF engine: `xelatex`;
+- title page: optional, with the `simple` cover style;
+- publication metadata page: optional, after the title page and before the TOC;
+- front matter pages: optional, after metadata and before the TOC.
 
-## 中文
+PDF settings live under the `pdf` key in `.markdown-formal/config.json`:
+
+```json
+{
+  "language": "en",
+  "pdf": {
+    "title": "Book Title",
+    "subtitle": "Volume I: Foundations",
+    "author": "Author Name",
+    "date": "Revised 2026-06-26",
+    "titlePage": true,
+    "metadataPage": true,
+    "license": "CC BY 4.0",
+    "repository": "https://example.com/project",
+    "frontMatter": [
+      {
+        "title": "AI Assistance Statement",
+        "source": "AI-PARTICIPATION.short.md",
+        "toc": false
+      }
+    ]
+  }
+}
+```
+
+CLI flags can override config values, including `--pdf-engine`, `--paper`,
+`--margin`, `--toc-depth`, `--title`, `--subtitle`, `--author`, `--date`,
+`--metadata-page`, `--front-matter`, `--title-page`, `--cover-style`, and
+`-V key:value`.
+
+The repository does not bundle Pandoc or a LaTeX distribution. If the PDF
+engine is missing, produce `export-md` first and run PDF rendering after the
+local engine is installed.
+
+---
+
+<a name="zh-cn"></a>
+
+## 🇨🇳 中文
 
 这份文档说明 `markdown-formal` 的源码语法和常用命令流程。
 
@@ -328,6 +388,15 @@ PDF settings live under the `pdf` key in `.markdown-formal/config.json`.
 1. 在原本需要人工维护编号的位置写稳定 marker。
 2. 在正文中使用 `@h-...` 引用。
 3. 由 CLI 生成 hash ID、预览缓存和报告。
+
+### 核心模型
+
+* 稳定编号：源码保存稳定 `#h-...`，新增对象先写 `#tmp-*`；正文引用只用 `@h-...`、`@h-....title` 或 `@h-....full`，读者编号由工具渲染。
+* 定义查询：定义不加 hash、不参与 ref；工具自动扫描标准 `定义（术语）：...` / `Definition (Term): ...`，AI 只为非标准定义、别名、中英互查和不可靠边界维护 `.markdown-formal/definitions.json`。
+* 符号表：`.markdown-formal/symbols.json` 只记录项目明确约定的特殊 LaTeX 记号，不索引通用变量、完整推导公式或一次性符号。
+* 依赖图：命题/引理/定理/推论之间的显式依赖来自 `@h-...`，权威数据是 `.markdown-formal/dependency-graph.json`；AI 或证明器推测出的边必须另存为 suggested 数据。
+* 导出：普通 Markdown/PDF 不直接消费 formal 源；先用 `export-md` 或 `export-md-split` 降级 marker/ref，项目级后处理之后再用 `render-pdf`。
+* 工具闭环：写作或迁移前运行 `prepare`，编辑后运行 `finish <file-or-dir>`，提交生成或迁移内容前运行 `verify`。
 
 ### 核心语法
 
@@ -420,11 +489,11 @@ Definition (Bounded operator): A linear map \(T:X\to Y\) is bounded if ...
 
 只有例外情况才写入 `.markdown-formal/definitions.json`：
 
-- 非标准行文定义；
-- 别名；
-- 中英互查；
-- 需要稳定多段预览内容；
-- 自动范围可能不可靠的定义。
+* 非标准行文定义；
+* 别名；
+* 中英互查；
+* 需要稳定多段预览内容；
+* 自动范围可能不可靠的定义。
 
 示例：
 
@@ -600,19 +669,19 @@ multi-volume-book/
 
 ### PDF 导出
 
-导出为普通 Markdown：
+先把 formal 源导出为普通 Markdown，再交给其他发布流程处理：
 
 ```bash
 npm run formal -- export-md path/to/book --out dist/book.md
 ```
 
-导出为保留源目录结构的普通 Markdown：
+导出时保留源目录结构：
 
 ```bash
 npm run formal -- export-md-split path/to/book --out dist/public
 ```
 
-从 formal 源直接导出 PDF：
+使用本机 Pandoc/LaTeX 引擎从 formal 源直接导出 PDF：
 
 ```bash
 npm run formal -- export-pdf path/to/book --out dist/book.pdf
@@ -624,10 +693,56 @@ npm run formal -- export-pdf path/to/book --out dist/book.pdf
 npm run formal -- render-pdf dist/book.md --out dist/book.pdf
 ```
 
-当目标项目需要自己的 release 后处理时，使用：
+`render-pdf` 不扫描 formal 源，不重写 `#h-*`，也不解析 `@h-*`。
+它只用共享的 Pandoc 版式参数渲染已经编译好的 Markdown。目标项目
+需要自己的 release 后处理时，应使用：
 
 ```text
 export-md -> project postprocess -> render-pdf
 ```
 
-PDF 选项放在 `.markdown-formal/config.json` 的 `pdf` 字段中。
+默认 PDF 行为：
+
+* 纸张：`a4`；
+* 页边距：`2.5cm`；
+* 目录：默认开启；
+* 目录深度：`2`；
+* 目录标题：根据 `language` 选择，例如 `Contents` 或 `目录`；
+* 目录独立分页：默认开启；
+* PDF 引擎：`xelatex`；
+* 封面页：可选，默认 `simple` 风格；
+* 出版元数据页：可选，位于封面页之后、目录之前；
+* front matter 声明页：可选，位于 metadata 之后、目录之前。
+
+PDF 选项放在 `.markdown-formal/config.json` 的 `pdf` 字段中：
+
+```json
+{
+  "language": "zh-CN",
+  "pdf": {
+    "title": "书名",
+    "subtitle": "卷 I：基础",
+    "author": "Author Name",
+    "date": "Revised 2026-06-26",
+    "titlePage": true,
+    "metadataPage": true,
+    "license": "CC BY 4.0",
+    "repository": "https://example.com/project",
+    "frontMatter": [
+      {
+        "title": "AI 辅助声明",
+        "source": "AI-PARTICIPATION.short.md",
+        "toc": false
+      }
+    ]
+  }
+}
+```
+
+CLI 可以覆盖配置，包括 `--pdf-engine`、`--paper`、`--margin`、
+`--toc-depth`、`--title`、`--subtitle`、`--author`、`--date`、
+`--metadata-page`、`--front-matter`、`--title-page`、`--cover-style`
+和 `-V key:value`。
+
+本仓库不捆绑 Pandoc 或 LaTeX 发行版。如果本地缺少 PDF 引擎，先交付
+`export-md` 中间稿，等本机引擎安装完成后再运行 PDF 渲染。

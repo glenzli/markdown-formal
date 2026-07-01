@@ -1,9 +1,12 @@
 .git/**
 .gitignore
 .markdown-formal/**
+.vasmc/**
 AGENTS.md
 DEV_SKELETON.md
 REVIEW_SKELETON.md
+docs-src/**
+skills-src/**
 dist/**
 node_modules/**
 src/**
@@ -15,5 +18,7 @@ out/webview/**
 *.ts
 tsconfig*.json
 vite.*.ts
+vasmc-build.yaml
+vasmc-build-state.yaml
 package-lock.json
 .DS_Store

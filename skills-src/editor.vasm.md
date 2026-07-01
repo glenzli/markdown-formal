@@ -1,15 +1,19 @@
+---
+vasm:
+  alias: markdown-formal-editor-skill
+  intent: "Executable AI writing and migration rules for markdown-formal projects."
+  compile:
+    format: executable
+    targetLangs: ["zh-CN"]
+---
+
 # markdown-formal AI 写作规范
 
 这个 skill 用于让 AI 编写和迁移可长期维护的数学 Markdown。它不是单纯的编号规则；日常写作必须同时维护下面的核心模型。
 
 ## 核心能力契约
 
-- 稳定编号：源码保存稳定 `#h-...`，新增对象先写 `#tmp-*`；正文引用只用 `@h-...`、`@h-....title` 或 `@h-....full`，读者编号由工具渲染。
-- 定义查询：定义不加 hash、不参与 ref；工具自动扫描标准 `定义（术语）：...` / `Definition (Term): ...`，AI 只为非标准定义、别名、中英互查和不可靠边界维护 `.markdown-formal/definitions.json`。
-- 符号表：`.markdown-formal/symbols.json` 只记录项目明确约定的特殊 LaTeX 记号，不索引通用变量、完整推导公式或一次性符号。
-- 依赖图：命题/引理/定理/推论之间的显式依赖来自 `@h-...`，权威数据是 `.markdown-formal/dependency-graph.json`；AI 或证明器推测出的边必须另存为 suggested 数据。
-- 导出：普通 Markdown/PDF 不直接消费 formal 源；先用 `export-md` 或 `export-md-split` 降级 marker/ref，项目级后处理之后再用 `render-pdf`。
-- 工具闭环：写作或迁移前运行 `prepare`，编辑后运行 `finish <file-or-dir>`，提交生成或迁移内容前运行 `verify`。
+[核心模型](../docs-src/fragments/formal-core-model.vasm.md "@import:inline")
 
 ## 标准流程
 

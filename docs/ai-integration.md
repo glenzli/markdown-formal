@@ -1,10 +1,12 @@
 # AI Integration
 
-Language: [English](#english) | [中文](#中文)
+[🌍 English](#en) | [🇨🇳 中文](#zh-cn)
 
-<a id="english"></a>
+---
 
-## English
+<a name="en"></a>
+
+## 🌍 English
 
 `markdown-formal` should be integrated into a project's existing AI writing workflow.
 
@@ -27,35 +29,12 @@ The target project should still sound like itself. `markdown-formal` only suppli
 
 ### What Must Be Preserved
 
-Stable numbering:
-
-- declarations use `#h-...` or `#tmp-*`;
-- prose references use `@h-...`, `@h-....title`, or `@h-....full`;
-- AI drafts with `tmp-*`;
-- `finish` creates stable hash IDs.
-
-Definition lookup:
-
-- definitions do not get hash IDs;
-- the tool scans standard definitions;
-- AI maintains `.markdown-formal/definitions.json` only for exceptions, aliases, bilingual lookup, or unreliable boundaries.
-
-Symbol table:
-
-- `.markdown-formal/symbols.json` records project-specific LaTeX notation;
-- generic symbols and whole formulas are not indexed.
-
-Dependency graph:
-
-- explicit theorem dependencies come from `@h-...`;
-- the canonical graph is `.markdown-formal/dependency-graph.json`;
-- inferred or suggested dependencies must remain separate.
-
-Verification:
-
-- run `prepare` before writing or migration;
-- run `finish` after editing;
-- run `verify` before committing generated or migrated content.
+- Stable numbering: source stores stable `#h-...` markers, new objects start as `#tmp-*`, prose references use only `@h-...`, `@h-....title`, or `@h-....full`, and reader-facing numbers are rendered by the tool.
+- Definition lookup: definitions do not get hash IDs or refs; the tool scans standard `定义（术语）：...` / `Definition (Term): ...` entries, and AI maintains `.markdown-formal/definitions.json` only for nonstandard definitions, aliases, bilingual lookup, and unreliable boundaries.
+- Symbol table: `.markdown-formal/symbols.json` records only project-defined special LaTeX notation, not generic variables, complete derivations, or one-off symbols.
+- Dependency graph: explicit theorem-like dependencies come from `@h-...`; the canonical data is `.markdown-formal/dependency-graph.json`; AI- or prover-suggested edges must be stored separately as suggested data.
+- Export: ordinary Markdown/PDF does not consume formal source directly; use `export-md` or `export-md-split` to lower markers/refs first, then run project-specific postprocessing and `render-pdf`.
+- Tool loop: run `prepare` before writing or migration, `finish <file-or-dir>` after editing, and `verify` before committing generated or migrated content.
 
 ### Minimal Project Prompt
 
@@ -137,9 +116,11 @@ When upgrading `markdown-formal` in a target project:
 
 Do not silently fetch or execute remote skill updates.
 
-<a id="中文"></a>
+---
 
-## 中文
+<a name="zh-cn"></a>
+
+## 🇨🇳 中文
 
 `markdown-formal` 应该融合到目标项目已有的 AI 写作流程中。
 
@@ -151,46 +132,23 @@ Do not silently fetch or execute remote skill updates.
 
 更好的方式是把规则融合进项目原生入口：
 
-- `AGENTS.md`
-- `CLAUDE.md`
-- `GEMINI.md`
-- 项目写作 skill
-- 项目风格指南
-- 仓库 release 指令
+* `AGENTS.md`
+* `CLAUDE.md`
+* `GEMINI.md`
+* 项目写作 skill
+* 项目风格指南
+* 仓库 release 指令
 
 目标项目的文风和证明组织仍应保持原样。`markdown-formal` 只提供编号、查询、符号表、依赖图和校验流程。
 
 ### 必须保留的能力
 
-稳定编号：
-
-- 声明使用 `#h-...` 或 `#tmp-*`；
-- 正文引用使用 `@h-...`、`@h-....title` 或 `@h-....full`；
-- AI 起草时写 `tmp-*`；
-- `finish` 生成正式 hash ID。
-
-定义查询：
-
-- 定义不加 hash；
-- 工具扫描标准定义；
-- AI 只为例外定义、别名、中英互查或不可靠边界维护 `.markdown-formal/definitions.json`。
-
-符号表：
-
-- `.markdown-formal/symbols.json` 记录项目特有 LaTeX 记号；
-- 不索引通用符号和完整公式。
-
-依赖图：
-
-- 显式命题依赖来自 `@h-...`；
-- canonical graph 是 `.markdown-formal/dependency-graph.json`；
-- 推测或建议依赖必须单独保存。
-
-校验闭环：
-
-- 写作或迁移前运行 `prepare`；
-- 编辑后运行 `finish`；
-- 提交生成或迁移内容前运行 `verify`。
+* 稳定编号：源码保存稳定 `#h-...`，新增对象先写 `#tmp-*`；正文引用只用 `@h-...`、`@h-....title` 或 `@h-....full`，读者编号由工具渲染。
+* 定义查询：定义不加 hash、不参与 ref；工具自动扫描标准 `定义（术语）：...` / `Definition (Term): ...`，AI 只为非标准定义、别名、中英互查和不可靠边界维护 `.markdown-formal/definitions.json`。
+* 符号表：`.markdown-formal/symbols.json` 只记录项目明确约定的特殊 LaTeX 记号，不索引通用变量、完整推导公式或一次性符号。
+* 依赖图：命题/引理/定理/推论之间的显式依赖来自 `@h-...`，权威数据是 `.markdown-formal/dependency-graph.json`；AI 或证明器推测出的边必须另存为 suggested 数据。
+* 导出：普通 Markdown/PDF 不直接消费 formal 源；先用 `export-md` 或 `export-md-split` 降级 marker/ref，项目级后处理之后再用 `render-pdf`。
+* 工具闭环：写作或迁移前运行 `prepare`，编辑后运行 `finish <file-or-dir>`，提交生成或迁移内容前运行 `verify`。
 
 ### 最小项目提示
 

@@ -28,6 +28,8 @@
     "check": "npm run build && npm run formal -- verify",
     "test:migrations": "node tests/formal-tools.test.mjs",
     "test": "npm run check && npm run test:migrations",
+    "content:build": "vasmc build",
+    "docs:build": "npm run content:build",
     "package:vsix": "npm run build && vsce package --no-dependencies",
     "release:local": "npm test && node out/cli/release.js"
   },
