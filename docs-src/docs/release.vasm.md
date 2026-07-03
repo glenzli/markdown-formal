@@ -225,6 +225,57 @@ npm run release:local
 - `dist/checksums.txt`
 - 如果扩展打包逻辑有变化，检查 VSIX 内容
 
+## 发布编排
+
+`release:local` 只构建本地产物。真正发布到平台时使用发布编排脚本：
+
+```bash
+npm run release -- --dry-run
+npm run release -- --only github,npm
+npm run release -- --skip gitlab
+```
+
+快捷命令：
+
+```bash
+npm run release:github
+npm run release:gitlab
+npm run release:npm
+```
+
+发布前门禁：
+
+```bash
+npm run release:check
+```
+
+`release:check` 会检查发布脚本语法、运行 `release:local`、执行 npm pack dry-run，并运行 `git diff --check`。
+
+默认发布目标是：
+
+- `npm`：发布 `markdown-formal` npm 包，包内包含 CLI、public docs、`skills/` 与 `vasm-catalog/`。
+- `github`：推送当前 branch 和 release tag 到 `github` remote，并用 `gh` 创建 GitHub release。
+- `gitlab`：推送当前 branch 和 release tag 到 `gitlab` remote，并用 `glab` 创建 GitLab release。
+
+GitHub/GitLab release 会附带：
+
+- `dist/markdown-formal-<version>.vsix`
+- `dist/manifest.json`
+- `dist/checksums.txt`
+- `dist/INSTALL.md`
+
+常用参数：
+
+```bash
+npm run release -- --tag v0.1.0
+npm run release -- --npm-tag latest
+npm run release -- --otp 123456
+npm run release -- --github-repo glenzli/markdown-formal
+npm run release -- --gitlab-repo glenzli/markdown-formal
+```
+
+真实发布会要求 Git worktree 干净。`--dry-run` 允许在 dirty worktree 下预览命令，但会提示真实发布会停止。
+
 ## 依赖策略
 
 构建后的扩展和 CLI 应保持无 npm 运行时依赖。

@@ -44,7 +44,12 @@
     "docs:build": "npm run content:build",
     "prepack": "npm run content:build && npm run build",
     "package:vsix": "npm run build && vsce package --no-dependencies",
-    "release:local": "npm run content:build && npm test && node out/cli/release.js"
+    "release:local": "npm run content:build && npm run build && node out/cli/formal-tools.js verify && npm run test:migrations && node out/cli/release.js",
+    "release:check": "node --check scripts/publish-release.js && npm run release:local && npm_config_cache=/private/tmp/markdown-formal-npm-cache npm pack --dry-run --ignore-scripts && git diff --check",
+    "release": "node scripts/publish-release.js",
+    "release:github": "node scripts/publish-release.js --only github",
+    "release:gitlab": "node scripts/publish-release.js --only gitlab",
+    "release:npm": "node scripts/publish-release.js --only npm"
   },
   "contributes": {
     "markdown.markdownItPlugins": true,

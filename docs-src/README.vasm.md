@@ -191,6 +191,7 @@ npm run content:build
 ```bash
 npm test
 npm run release:local
+npm run release:check
 ```
 
 生成产物：
@@ -211,6 +212,18 @@ dist/
 ```
 
 VSIX 用于编辑器安装，`cli/` 用于目标项目本地 vendoring，npm 包用于 `markdown-formal` CLI 安装，`skills/` 包含需要审阅和融合的 AI artifact。通过 VASMC 接入时，优先使用 `vasm-catalog/vasmc-catalog.yaml` 并让 consumer lockfile 固定 hash。
+
+发布编排：
+
+```bash
+npm run release -- --dry-run
+npm run release -- --only github,npm
+npm run release:github
+npm run release:gitlab
+npm run release:npm
+```
+
+`release:local` 只构建 `dist/`；`release:check` 是发布前门禁；`release` 负责 GitHub/GitLab/npm 的混合发布编排。
 
 ### 检查
 
