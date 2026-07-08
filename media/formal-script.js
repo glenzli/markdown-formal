@@ -904,6 +904,19 @@
       if (symbol.index === void 0) return void 0;
       return Array.from(document.querySelectorAll("#formal-symbol-templates template[data-symbol-meaning-index]")).find((template) => Number(template.getAttribute("data-symbol-meaning-index")) === symbol.index);
     }
+    function getTitleTemplate(kind, key) {
+      if (!key) return void 0;
+      return Array.from(document.querySelectorAll("#formal-title-templates template[data-title-kind][data-title-key]")).find((template) => template.getAttribute("data-title-kind") === kind && template.getAttribute("data-title-key") === key);
+    }
+    function appendRenderedTitle(container, fallback, candidates) {
+      for (const candidate of candidates) {
+        const template = getTitleTemplate(candidate.kind, candidate.key);
+        if (!template) continue;
+        container.appendChild(document.importNode(template.content, true));
+        return;
+      }
+      container.textContent = fallback;
+    }
     function removeDefinitionPopover() {
       document.getElementById("formal-definition-popover")?.remove();
     }
@@ -1457,7 +1470,10 @@
         number.textContent = getUnitBadge(chapter, config);
         const title = document.createElement("span");
         title.className = "formal-chapter-title";
-        title.textContent = chapter.title;
+        appendRenderedTitle(title, chapter.title, [
+          { kind: "label", key: chapter.targetId?.replace(/^formal-/, "") },
+          { kind: "page", key: chapter.filePath }
+        ]);
         link.append(number, title);
         return link;
       };
@@ -1507,7 +1523,9 @@
         }
         const title = document.createElement("span");
         title.className = "formal-toc-title";
-        title.textContent = item.title || item.display || item.id;
+        appendRenderedTitle(title, item.title || item.display || item.id, [
+          { kind: "label", key: item.id.replace(/^formal-/, "") }
+        ]);
         link.appendChild(title);
         tocMenu.appendChild(link);
       });

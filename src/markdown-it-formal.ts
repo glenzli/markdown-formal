@@ -509,6 +509,38 @@ function renderSymbolTemplates(md: any, symbols: RuntimeSymbolData[], env: any, 
         }).join('\n');
 }
 
+function renderInlineTitle(md: any, title: string, env: any): string {
+    const rendered = typeof md.renderInline === 'function'
+        ? md.renderInline(title, { ...env, tooltipDepth: 1 })
+        : md.render(title, { ...env, tooltipDepth: 1 });
+    return inlineSafeRenderedMarkdown(rendered).replace(/<\/template/gi, '&lt;/template');
+}
+
+function renderTitleTemplates(md: any, labels: Record<string, LabelData>, pages: PageData[], env: any): string {
+    const entries: Array<{ kind: 'label' | 'page'; key: string; title: string }> = [];
+    Object.entries(labels || {}).forEach(([id, label]) => {
+        if (label?.title) entries.push({ kind: 'label', key: id, title: label.title });
+    });
+    (pages || []).forEach(page => {
+        const key = normalizePreviewFilePath(page.filePath);
+        if (key && page.title) entries.push({ kind: 'page', key, title: page.title });
+    });
+
+    const seen = new Set<string>();
+    return entries
+        .filter(entry => {
+            const key = `${entry.kind}:${entry.key}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        })
+        .map(entry => {
+            const safeHtml = renderInlineTitle(md, entry.title, env);
+            return `<template data-title-kind="${entry.kind}" data-title-key="${escapeHtml(entry.key)}">${safeHtml}</template>`;
+        })
+        .join('\n');
+}
+
 function normalizeLatexSymbolForMatch(value: string): string {
     return String(value || '')
         .trim()
@@ -1082,16 +1114,18 @@ export = function formalPlugin(md: any, options: any) {
             const currentDefinitionTemplateIndexes = definitionTemplateIndexesForFile(cachedDefinitions || [], rawCurrentFilePath);
             const definitionTemplates = renderDefinitionTemplates(md, cachedDefinitions || [], state.env || {}, currentDefinitionTemplateIndexes);
             const symbolTemplates = renderSymbolTemplates(md, cachedSymbols || [], state.env || {}, currentSymbolTemplateIndexSet);
+            const titleTemplates = renderTitleTemplates(md, clientLabelData || {}, cachedPages || [], state.env || {});
             appendPreviewDebugLog(rootPath, cachedConfig, 'render:inject:templates', {
                 filePath: rawCurrentFilePath || '(unknown)',
                 definitionTemplateChars: definitionTemplates.length,
                 definitionTemplateCount: currentDefinitionTemplateIndexes.size,
                 symbolTemplateChars: symbolTemplates.length,
                 symbolTemplateCount: currentSymbolTemplateIndexes.length,
+                titleTemplateChars: titleTemplates.length,
                 elapsedMs: elapsedMs(templatesStartedAt)
             });
 
-            token.content = `<div id="formal-render-data" style="display:none;" data-render-signature="${renderSignature}"></div>\n<div id="formal-labels-data" style="display:none;" data-labels="${dataStr}"></div>\n<div id="formal-pages-data" style="display:none;" data-pages="${pagesStr}" data-current-file="${currentFilePath}"></div>\n<div id="formal-definitions-data" style="display:none;" data-definitions="${definitionsStr}"></div>\n<div id="formal-symbols-data" style="display:none;" data-symbols="${symbolsStr}" data-current-symbol-indexes="${currentSymbolIndexesStr}"></div>\n<div id="formal-definition-templates" style="display:none;">${definitionTemplates}</div>\n<div id="formal-symbol-templates" style="display:none;">${symbolTemplates}</div>\n<div id="formal-config-data" style="display:none;" data-config="${configStr}"></div>\n`;
+            token.content = `<div id="formal-render-data" style="display:none;" data-render-signature="${renderSignature}"></div>\n<div id="formal-labels-data" style="display:none;" data-labels="${dataStr}"></div>\n<div id="formal-pages-data" style="display:none;" data-pages="${pagesStr}" data-current-file="${currentFilePath}"></div>\n<div id="formal-definitions-data" style="display:none;" data-definitions="${definitionsStr}"></div>\n<div id="formal-symbols-data" style="display:none;" data-symbols="${symbolsStr}" data-current-symbol-indexes="${currentSymbolIndexesStr}"></div>\n<div id="formal-definition-templates" style="display:none;">${definitionTemplates}</div>\n<div id="formal-symbol-templates" style="display:none;">${symbolTemplates}</div>\n<div id="formal-title-templates" style="display:none;">${titleTemplates}</div>\n<div id="formal-config-data" style="display:none;" data-config="${configStr}"></div>\n`;
             state.tokens.push(token);
             appendPreviewDebugLog(rootPath, cachedConfig, 'render:inject:end', {
                 filePath: rawCurrentFilePath || '(unknown)',

@@ -821,3 +821,8 @@ blockquote:has(.formal-block.formal-remark) .formal-block.formal-remark {
     white-space: nowrap !important;
     font-size: 0.9em !important;
 }
+
+.formal-toc-title .katex,
+.formal-chapter-title .katex {
+    font-size: 0.98em !important;
+}
