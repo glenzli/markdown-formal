@@ -7,7 +7,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/glenzli/markdown-formal.git"
+    "url": "git+https://gitlab.com/glenzli/markdown-formal.git"
   },
   "engines": {
     "vscode": "^1.80.0"
