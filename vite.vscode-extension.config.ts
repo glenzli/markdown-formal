@@ -15,21 +15,21 @@ export default defineConfig({
         ]
     },
     build: {
-        outDir: 'out/cli',
-        emptyOutDir: false,
+        outDir: 'packages/vscode-extension/out',
+        emptyOutDir: true,
         target: 'es2022',
         sourcemap: false,
         minify: false,
         lib: {
-            entry: {
-                'formal-tools': 'src/cli/formal-tools.ts',
-                release: 'src/cli/release.ts'
-            },
+            entry: 'packages/vscode-extension/src/extension.ts',
             formats: ['cjs'],
-            fileName: (_format, entryName) => `${entryName}.js`
+            fileName: () => 'extension.js'
         },
         rollupOptions: {
-            external: [/^node:/]
+            external: [
+                /^(?:node:)?(?:assert|buffer|child_process|crypto|events|fs|http|module|os|path|stream|url|util|zlib)(?:\/.*)?$/,
+                'vscode'
+            ]
         }
     }
 });

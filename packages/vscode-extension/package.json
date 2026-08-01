@@ -1,0 +1,40 @@
+{
+  "name": "markdown-formal-vscode-extension",
+  "displayName": "Markdown Formal",
+  "description": "Legacy VS Code-compatible preview integration for markdown-formal",
+  "version": "0.1.0",
+  "publisher": "glenzli",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitlab.com/glenzli/markdown-formal.git"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "activationEvents": [
+    "onLanguage:markdown"
+  ],
+  "main": "./out/extension.js",
+  "files": [
+    "out/",
+    "media/",
+    "README.md",
+    "LICENSE"
+  ],
+  "contributes": {
+    "markdown.markdownItPlugins": true,
+    "markdown.previewStyles": [
+      "./media/styles.css"
+    ],
+    "markdown.previewScripts": [
+      "./media/formal-script.js"
+    ],
+    "commands": [
+      {
+        "command": "markdown-formal.refreshIndex",
+        "title": "Markdown Formal: Refresh References"
+      }
+    ]
+  }
+}

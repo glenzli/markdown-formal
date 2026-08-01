@@ -2,9 +2,9 @@
 
 ## Purpose
 
-- Support long-form mathematical and technical Markdown writing with stable source IDs, generated reader-facing numbering, reference checks, enhanced preview, and publication exports.
+- Support long-form mathematical and technical Markdown writing with stable source IDs, generated reader-facing numbering, reference checks, a local enhanced Reader, and publication exports.
 - Make AI-assisted editing safer by letting agents draft with temporary markers while deterministic tooling finalizes IDs and verifies generated state.
-- Keep the extension and CLI usable as local, reviewable tooling that can be vendored into writing projects.
+- Keep the Reader and CLI usable as local, reviewable tooling that can be vendored into writing projects; retain VS Code only as an optional compatibility package.
 
 ## Non-Goals
 
@@ -16,7 +16,9 @@
 
 ## Source Of Truth
 
-- `src/**`: implementation source for the extension, CLI, scanner, export, and release tooling.
+- `packages/core/src/**`: shared formal scanner, numbering, references, lookup, and dependency analysis.
+- `src/cli/**`, `src/reader/**`: primary CLI and localhost Reader implementation.
+- `packages/vscode-extension/**`: optional legacy VS Code compatibility implementation.
 - `tests/formal-tools.test.mjs`: regression coverage for formal syntax, migration, export, graph, and audit behavior.
 - `examples/**`: fixtures and sample writing projects used to exercise behavior.
 - `docs-src/**/*.vasm.md`: source for maintained public documentation.
@@ -33,9 +35,9 @@
 - Source Markdown should stay readable to humans and AI; generated numbering must not require broad manual rewrite.
 - Formal IDs are stable implementation data; reader-facing numbers are rendered or exported from metadata.
 - Definitions and symbols are lookup aids, not theorem-numbering objects.
-- Preview enhancements are opt-in for workspaces with `.markdown-formal/config.json`; ordinary Markdown preview should stay ordinary elsewhere.
+- The local Reader is opt-in for workspaces with `.markdown-formal/config.json`, binds only to loopback, and must remain read-only; ordinary Markdown preview should stay ordinary elsewhere.
 - Release bundles and npm packages ship runtime artifacts, public docs, generated AI artifacts under `skills/`, and VASMC catalog exports for lockable reuse.
-- Built extension and CLI runtimes should remain dependency-free after bundling.
+- Built Reader, extension, and CLI runtimes should remain dependency-free after bundling.
 - Dependency changes require caution and explicit verification because supply-chain risk matters for editor tooling.
 - Entry hints should stay at file or artifact-category level, not function level.
 - For no-side-effect VASMC checks, run `npm run content:build -- --dry-run` or the alias `npm run content:build -- --plan`, optionally with `--report-out /tmp/report.yaml`; use `vasmc expand <source> --target-lang <lang>` for single-source import expansion without workspace routing, build-state, or default report writes.
@@ -51,8 +53,9 @@
 
 - Public usage or target-project integration: start with `docs-src/**/*.vasm.md`, `skills-src/**/*.vasm.md`, generated `README.md` / `docs/*.md`, generated `skills/*.md`, and catalog artifacts under `vasm-catalog/`.
 - Writing-rule details: start with `skills-src/editor.vasm.md` and generated `skills/editor.md`.
-- CLI or syntax behavior changes: start with `src/cli/formal-tools.ts`, `src/core/formal-core.ts`, and `tests/formal-tools.test.mjs`.
-- Preview behavior changes: start with the markdown extension entrypoints, preview script, styles, and the relevant tests or examples.
+- CLI or syntax behavior changes: start with `src/cli/formal-tools.ts`, `packages/core/src/formal-core.ts`, and `tests/formal-tools.test.mjs`.
+- Reader behavior changes: start with `src/reader/server.ts`, `src/reader/web/**`, `packages/core/src/formal-core.ts`, and the relevant tests or examples.
+- Legacy VS Code behavior changes: start with `packages/vscode-extension/**`; do not make core or Reader design concessions solely for this package.
 - Release boundary changes: start with `package.json`, `src/cli/release.ts`, `docs-src/docs/release.vasm.md`, generated `docs/release.md`, and `npm run release:local`.
 
 ## Refresh Triggers

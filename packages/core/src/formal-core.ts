@@ -105,6 +105,17 @@ export interface RuntimeSymbolData {
     sourceLine?: number;
 }
 
+export interface LatexFormula {
+    latex: string;
+    display: boolean;
+}
+
+export interface FormalSymbolMatch {
+    index: number;
+    symbol: RuntimeSymbolData;
+    formulaIndex: number;
+}
+
 export interface FormalReference {
     id: string;
     file: string;
@@ -737,6 +748,129 @@ export function compileSymbolPattern(pattern: string): { normalizedPattern: stri
     regex += escapeRegex(normalizedPattern.slice(cursor));
     regex += '$';
     return { normalizedPattern, regex, captures };
+}
+
+function isEscapedMarkdownCharacter(value: string, index: number): boolean {
+    let slashes = 0;
+    for (let cursor = index - 1; cursor >= 0 && value[cursor] === '\\'; cursor--) slashes++;
+    return slashes % 2 === 1;
+}
+
+function findInlineDollarEnd(value: string, start: number): number {
+    for (let cursor = start; cursor < value.length; cursor++) {
+        if (value[cursor] === '$' && value[cursor + 1] !== '$' && !isEscapedMarkdownCharacter(value, cursor)) return cursor;
+    }
+    return -1;
+}
+
+function collectInlineLatex(value: string, formulas: LatexFormula[]): void {
+    for (let cursor = 0; cursor < value.length; cursor++) {
+        if (value[cursor] === '\\' && value[cursor + 1] === '(' && !isEscapedMarkdownCharacter(value, cursor)) {
+            const end = value.indexOf('\\)', cursor + 2);
+            if (end >= 0) {
+                formulas.push({ latex: value.slice(cursor + 2, end).trim(), display: false });
+                cursor = end + 1;
+            }
+            continue;
+        }
+
+        if (value[cursor] !== '$' || value[cursor + 1] === '$' || isEscapedMarkdownCharacter(value, cursor)) continue;
+        const end = findInlineDollarEnd(value, cursor + 1);
+        if (end >= 0) {
+            formulas.push({ latex: value.slice(cursor + 1, end).trim(), display: false });
+            cursor = end;
+        }
+    }
+}
+
+/** Extract only author-written LaTeX from Markdown; code fences are deliberately ignored. */
+export function extractLatexFormulas(content: string): LatexFormula[] {
+    const formulas: LatexFormula[] = [];
+    let inFence = false;
+    let blockDelimiter = '';
+    let blockBuffer: string[] = [];
+
+    for (const line of String(content || '').split(/\r?\n/)) {
+        if (/^\s*(```|~~~)/.test(line)) {
+            inFence = !inFence;
+            continue;
+        }
+        if (inFence) continue;
+
+        if (blockDelimiter) {
+            const close = line.indexOf(blockDelimiter);
+            if (close < 0) {
+                blockBuffer.push(line);
+                continue;
+            }
+            const delimiter = blockDelimiter;
+            blockBuffer.push(line.slice(0, close));
+            formulas.push({ latex: blockBuffer.join('\n').trim(), display: true });
+            blockDelimiter = '';
+            blockBuffer = [];
+            collectInlineLatex(line.slice(close + delimiter.length), formulas);
+            continue;
+        }
+
+        const blockStart = line.search(/(?:\$\$|\\\[)/);
+        if (blockStart < 0) {
+            collectInlineLatex(line, formulas);
+            continue;
+        }
+
+        const delimiter = line.slice(blockStart, blockStart + 2);
+        const closeDelimiter = delimiter === '$$' ? '$$' : '\\]';
+        const close = line.indexOf(closeDelimiter, blockStart + 2);
+        collectInlineLatex(line.slice(0, blockStart), formulas);
+        if (close >= 0) {
+            formulas.push({ latex: line.slice(blockStart + 2, close).trim(), display: true });
+            collectInlineLatex(line.slice(close + 2), formulas);
+            continue;
+        }
+        blockDelimiter = closeDelimiter;
+        blockBuffer = [line.slice(blockStart + 2)];
+    }
+
+    return formulas.filter(formula => formula.latex);
+}
+
+function makeUnanchoredSymbolRegex(symbol: RuntimeSymbolData): RegExp | undefined {
+    const source = String(symbol.regex || '').replace(/^\^/, '').replace(/\$$/, '');
+    if (!source || source === '(.+?)') return undefined;
+    try {
+        return new RegExp(source);
+    } catch (_err) {
+        return undefined;
+    }
+}
+
+function symbolMatchesLatex(symbol: RuntimeSymbolData, latex: string): boolean {
+    const normalized = normalizeLatexSymbol(latex);
+    if (!normalized) return false;
+    const regex = makeUnanchoredSymbolRegex(symbol);
+    if (regex?.test(normalized)) return true;
+
+    const pattern = normalizeLatexSymbol(symbol.pattern);
+    if (pattern && !pattern.includes('${') && normalized.includes(pattern)) return true;
+
+    const display = normalizeLatexSymbol(symbol.display);
+    return Boolean(display && normalized.includes(display));
+}
+
+/** Return project-defined notation that actually occurs in the supplied Markdown page. */
+export function findSymbolsInMarkdown(content: string, symbols: RuntimeSymbolData[]): FormalSymbolMatch[] {
+    const formulas = extractLatexFormulas(content);
+    const matches = symbols.map((symbol, index) => ({
+        index,
+        symbol,
+        formulaIndex: formulas.findIndex(formula => symbolMatchesLatex(symbol, formula.latex))
+    })).filter(match => match.formulaIndex >= 0);
+
+    return matches.sort((left, right) => (
+        left.formulaIndex - right.formulaIndex
+        || `${left.symbol.sourceFilePath || ''}:${left.symbol.sourceLine || 0}`.localeCompare(`${right.symbol.sourceFilePath || ''}:${right.symbol.sourceLine || 0}`)
+        || left.symbol.pattern.localeCompare(right.symbol.pattern)
+    ));
 }
 
 function hasBalancedSymbolDelimiters(value: string): boolean {

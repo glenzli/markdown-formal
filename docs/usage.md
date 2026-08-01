@@ -172,6 +172,27 @@ Run the strict gate:
 npm run formal -- verify
 ```
 
+### Local Reader
+
+The Reader is the primary reading interface. It scans a project with an existing formal configuration in memory and never writes source files or `.markdown-formal/` artifacts:
+
+```bash
+npm run formal -- serve /path/to/project
+```
+
+The command prints a URL bound only to `127.0.0.1`. Open it in Codex's local browser side panel or a normal browser. The Reader provides:
+
+- multi-book, multi-volume, and chapter navigation;
+- current-page contents;
+- theorem-like recall loaded only when needed;
+- project-wide definition search and current-page symbols;
+- dependency summaries;
+- live refresh after source changes.
+
+The project needs `.markdown-formal/config.json`; run `prepare` once to create it. The Reader does not require `preview-cache.json`.
+
+The VS Code package remains available as a legacy compatibility integration, but new features target the Reader first.
+
 ### AI Workflow Integration
 
 AI rules no longer live in a separate public documentation page. Target projects should read the AI artifacts shipped with the package:
@@ -581,6 +602,27 @@ npm run formal -- finish path/to/chapter-or-dir
 ```bash
 npm run formal -- verify
 ```
+
+## 本地 Reader
+
+Reader 是 `markdown-formal` 的主阅读界面。它在内存中扫描已经存在 formal 配置的项目，不写入源码或 `.markdown-formal/` 产物：
+
+```bash
+npm run formal -- serve /path/to/project
+```
+
+命令会打印一个仅绑定 `127.0.0.1` 的本地 URL。可在 Codex 的本地浏览器侧栏或普通浏览器中打开。Reader 提供：
+
+- 多书/多卷/章节导航；
+- 当前页目录；
+- 仅在需要时加载的命题类 recall；
+- 全书定义查找与当前页符号表；
+- 依赖摘要；
+- 源文件改动后的实时刷新。
+
+项目需要先有 `.markdown-formal/config.json`；首次使用可运行 `prepare`。Reader 不要求预先生成 `preview-cache.json`。
+
+VS Code 包仍可作为 legacy compatibility integration 使用，但新功能以 Reader 为优先目标。
 
 ## AI 工作流接入
 

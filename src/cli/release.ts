@@ -4,6 +4,7 @@ import * as crypto from 'node:crypto';
 
 const ROOT = process.cwd();
 const DIST_DIR = path.join(ROOT, 'dist');
+const VSCODE_EXTENSION_DIR = path.join(ROOT, 'packages', 'vscode-extension');
 const { spawnSync } = require('node:child_process');
 
 async function readJson(filePath: string): Promise<any> {
@@ -42,13 +43,6 @@ async function copyDir(src: string, dest: string): Promise<void> {
     }
 }
 
-async function copySelectedOutFiles(destOut: string): Promise<void> {
-    await copyFile(path.join(ROOT, 'out', 'extension.js'), path.join(destOut, 'extension.js'));
-    await copyFile(path.join(ROOT, 'out', 'markdown-it-formal.js'), path.join(destOut, 'markdown-it-formal.js'));
-    await copyFile(path.join(ROOT, 'out', 'core', 'debug-log.js'), path.join(destOut, 'core', 'debug-log.js'));
-    await copyFile(path.join(ROOT, 'out', 'core', 'formal-core.js'), path.join(destOut, 'core', 'formal-core.js'));
-}
-
 async function copyPublicDocs(destDocs: string): Promise<void> {
     const publicDocs = ['usage.md', 'release.md'];
     for (const fileName of publicDocs) {
@@ -66,22 +60,6 @@ async function writeJson(filePath: string, value: any): Promise<void> {
     await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
-function makeExtensionPackageJson(pkg: any): any {
-    return {
-        name: pkg.name,
-        displayName: pkg.displayName,
-        description: pkg.description,
-        version: pkg.version,
-        publisher: pkg.publisher,
-        license: pkg.license,
-        repository: pkg.repository,
-        engines: pkg.engines,
-        activationEvents: pkg.activationEvents,
-        main: pkg.main,
-        contributes: pkg.contributes
-    };
-}
-
 function makeCliPackageJson(pkg: any): any {
     return {
         name: `${pkg.name}-cli`,
@@ -89,7 +67,7 @@ function makeCliPackageJson(pkg: any): any {
         private: true,
         license: pkg.license,
         repository: pkg.repository,
-        description: 'CLI artifacts for markdown-formal',
+        description: 'CLI and local Reader artifacts for markdown-formal',
         bin: {
             'markdown-formal': 'out/cli/formal-tools.js'
         },
@@ -163,17 +141,17 @@ function runCommand(command: string, args: string[], cwd: string): void {
     }
 }
 
-async function packageVsix(releaseRoot: string, pkg: any): Promise<string> {
+async function packageVsix(releaseRoot: string, extensionPackage: any): Promise<string> {
     const vsceBin = localBin('vsce');
     await requiredPath(vsceBin);
-    const vsixName = `${pkg.name}-${pkg.version}.vsix`;
+    const vsixName = `${extensionPackage.name}-${extensionPackage.version}.vsix`;
     const vsixPath = path.join(releaseRoot, vsixName);
-    runCommand(vsceBin, ['package', '--no-dependencies', '--out', vsixPath], ROOT);
+    runCommand(vsceBin, ['package', '--no-dependencies', '--out', vsixPath], VSCODE_EXTENSION_DIR);
     return vsixName;
 }
 
 function releaseInstallDoc(pkg: any, vsixName: string): string {
-    return `# ${pkg.displayName || pkg.name} ${pkg.version}
+    return `# ${pkg.name} ${pkg.version}
 
 Language: [English](#english) | [中文](#中文)
 
@@ -181,26 +159,34 @@ Language: [English](#english) | [中文](#中文)
 
 ## English
 
-This release bundle contains the editor extension, the CLI runtime, documentation, AI workflow artifacts, and a VASMC catalog for lockable reuse.
+This release bundle contains the local Reader, CLI runtime, documentation, AI workflow artifacts, a VASMC catalog for lockable reuse, and a legacy VS Code compatibility package.
 
 ### Artifacts
 
-- \`${vsixName}\`: VS Code-compatible extension package.
-- \`extension/\`: unpacked extension directory for local editor extension folders.
-- \`cli/\`: dependency-free CLI runtime for target projects.
+- \`cli/\`: dependency-free CLI runtime and bundled local Reader for target projects.
+- \`${vsixName}\`: optional legacy VS Code-compatible extension package.
+- \`vscode-extension/\`: unpacked legacy extension directory for local editor extension folders.
 - \`skills/\`: reviewed AI workflow artifacts.
 - \`vasm-catalog/\`: VASMC catalog exports for lockable reuse.
 - \`docs/\`: usage and release documentation.
 - \`manifest.json\`: machine-readable artifact map.
 - \`checksums.txt\`: SHA-256 checksums.
 
-### Install Extension
+### Run the Reader
+
+\`\`\`bash
+node cli/out/cli/formal-tools.js serve /path/to/project
+\`\`\`
+
+Open the printed localhost URL in your preferred browser or local side panel. The Reader is read-only and binds only to \`127.0.0.1\`.
+
+### Optional Legacy VS Code Extension
 
 \`\`\`bash
 code --install-extension ${vsixName}
 \`\`\`
 
-For local development, prefer a symlink to the repository or copy \`extension/\` into the editor extension directory. Then run \`Developer: Reload Window\`.
+For local development, copy \`vscode-extension/\` into the editor extension directory. Then run \`Developer: Reload Window\`. New capabilities target the local Reader first.
 
 ### Vendor CLI
 
@@ -229,26 +215,34 @@ Review \`skills/editor.md\` and \`skills/integrator.md\`, then merge the rules i
 
 ## 中文
 
-这个 release 包包含编辑器扩展、CLI 运行时、文档、面向 AI 的工作流 artifact，以及可锁定复用的 VASMC catalog。
+这个 release 包包含本地 Reader、CLI 运行时、文档、面向 AI 的工作流 artifact、可锁定复用的 VASMC catalog，以及一个 legacy VS Code 兼容包。
 
 ### 产物
 
-- \`${vsixName}\`：VS Code 兼容扩展安装包。
-- \`extension/\`：可复制到本地编辑器扩展目录的解包版本。
-- \`cli/\`：目标项目使用的无运行时依赖 CLI。
+- \`cli/\`：目标项目使用的无运行时依赖 CLI 与内置本地 Reader。
+- \`${vsixName}\`：可选的 legacy VS Code 兼容扩展安装包。
+- \`vscode-extension/\`：可复制到本地编辑器扩展目录的 legacy 解包版本。
 - \`skills/\`：需要审阅和融合的 AI 工作流 artifact。
 - \`vasm-catalog/\`：供 VASMC consumer 锁定复用的 catalog exports。
 - \`docs/\`：使用和 release 文档。
 - \`manifest.json\`：机器可读产物表。
 - \`checksums.txt\`：SHA-256 校验和。
 
-### 安装扩展
+### 启动 Reader
+
+\`\`\`bash
+node cli/out/cli/formal-tools.js serve /path/to/project
+\`\`\`
+
+在浏览器或本地侧栏中打开命令输出的 localhost URL。Reader 只读，并且只绑定 \`127.0.0.1\`。
+
+### 可选 Legacy VS Code 扩展
 
 \`\`\`bash
 code --install-extension ${vsixName}
 \`\`\`
 
-本地开发优先使用软链接，或把 \`extension/\` 复制到编辑器扩展目录。之后执行 \`Developer: Reload Window\`。
+本地开发可把 \`vscode-extension/\` 复制到编辑器扩展目录。之后执行 \`Developer: Reload Window\`。新能力会优先进入本地 Reader。
 
 ### Vendoring CLI
 
@@ -277,19 +271,20 @@ cp -R cli/* tools/markdown-formal/
 
 async function main(): Promise<void> {
     const pkg = await readJson(path.join(ROOT, 'package.json'));
+    const extensionPackage = await readJson(path.join(VSCODE_EXTENSION_DIR, 'package.json'));
     const releaseRoot = DIST_DIR;
-    const extensionRoot = path.join(releaseRoot, 'extension');
+    const extensionRoot = path.join(releaseRoot, 'vscode-extension');
     const cliRoot = path.join(releaseRoot, 'cli');
     const catalogRoot = path.join(ROOT, 'vasm-catalog');
 
-    await requiredPath(path.join(ROOT, 'out', 'extension.js'));
-    await requiredPath(path.join(ROOT, 'out', 'markdown-it-formal.js'));
-    await requiredPath(path.join(ROOT, 'out', 'core', 'debug-log.js'));
-    await requiredPath(path.join(ROOT, 'out', 'core', 'formal-core.js'));
+    await requiredPath(path.join(VSCODE_EXTENSION_DIR, 'out', 'extension.js'));
+    await requiredPath(path.join(VSCODE_EXTENSION_DIR, 'media', 'formal-script.js'));
+    await requiredPath(path.join(VSCODE_EXTENSION_DIR, 'media', 'styles.css'));
+    await requiredPath(path.join(VSCODE_EXTENSION_DIR, 'README.md'));
+    await requiredPath(path.join(VSCODE_EXTENSION_DIR, 'LICENSE'));
     await requiredPath(path.join(ROOT, 'out', 'cli', 'formal-tools.js'));
     await requiredPath(path.join(ROOT, 'out', 'cli', 'release.js'));
-    await requiredPath(path.join(ROOT, 'media', 'formal-script.js'));
-    await requiredPath(path.join(ROOT, 'media', 'styles.css'));
+    await requiredPath(path.join(ROOT, 'out', 'reader', 'index.html'));
     await requiredPath(path.join(ROOT, 'skills', 'editor.md'));
     await requiredPath(path.join(ROOT, 'skills', 'integrator.md'));
     await requiredPath(path.join(catalogRoot, 'vasmc-catalog.yaml'));
@@ -300,7 +295,7 @@ async function main(): Promise<void> {
 
     await cleanDir(releaseRoot);
 
-    const vsixName = await packageVsix(releaseRoot, pkg);
+    const vsixName = await packageVsix(releaseRoot, extensionPackage);
 
     await copyFile(path.join(ROOT, 'README.md'), path.join(releaseRoot, 'README.md'));
     await copyFile(path.join(ROOT, 'LICENSE'), path.join(releaseRoot, 'LICENSE'));
@@ -310,15 +305,16 @@ async function main(): Promise<void> {
     await copyPublicDocs(path.join(releaseRoot, 'docs'));
     await writeText(path.join(releaseRoot, 'INSTALL.md'), releaseInstallDoc(pkg, vsixName));
 
-    await writeJson(path.join(extensionRoot, 'package.json'), makeExtensionPackageJson(pkg));
-    await copySelectedOutFiles(path.join(extensionRoot, 'out'));
-    await copyDir(path.join(ROOT, 'media'), path.join(extensionRoot, 'media'));
-    await copyDir(path.join(ROOT, 'skills'), path.join(extensionRoot, 'skills'));
-    await copyFile(path.join(ROOT, 'LICENSE'), path.join(extensionRoot, 'LICENSE'));
+    await copyFile(path.join(VSCODE_EXTENSION_DIR, 'package.json'), path.join(extensionRoot, 'package.json'));
+    await copyFile(path.join(VSCODE_EXTENSION_DIR, 'README.md'), path.join(extensionRoot, 'README.md'));
+    await copyDir(path.join(VSCODE_EXTENSION_DIR, 'out'), path.join(extensionRoot, 'out'));
+    await copyDir(path.join(VSCODE_EXTENSION_DIR, 'media'), path.join(extensionRoot, 'media'));
+    await copyFile(path.join(VSCODE_EXTENSION_DIR, 'LICENSE'), path.join(extensionRoot, 'LICENSE'));
 
     await writeJson(path.join(cliRoot, 'package.json'), makeCliPackageJson(pkg));
     await copyFile(path.join(ROOT, 'out', 'cli', 'formal-tools.js'), path.join(cliRoot, 'out', 'cli', 'formal-tools.js'));
     await copyFile(path.join(ROOT, 'out', 'cli', 'release.js'), path.join(cliRoot, 'out', 'cli', 'release.js'));
+    await copyDir(path.join(ROOT, 'out', 'reader'), path.join(cliRoot, 'out', 'reader'));
     await copyDir(path.join(ROOT, 'skills'), path.join(cliRoot, 'skills'));
     await copyDir(catalogRoot, path.join(cliRoot, 'vasm-catalog'));
     await copyPublicDocs(path.join(cliRoot, 'docs'));
@@ -333,10 +329,15 @@ async function main(): Promise<void> {
                 path: vsixName,
                 install: `code --install-extension ${vsixName}`
             },
-            extension: {
-                path: 'extension',
+            reader: {
+                path: 'cli/out/reader',
+                serve: 'node cli/out/cli/formal-tools.js serve /path/to/project',
+                mode: 'Primary local read-only interface, bound to 127.0.0.1'
+            },
+            vscodeExtension: {
+                path: 'vscode-extension',
                 entry: 'out/extension.js',
-                install: 'Copy this directory to the editor extensions directory for local development.'
+                install: 'Optional legacy compatibility package. Copy this directory to the editor extensions directory for local development.'
             },
             cli: {
                 path: 'cli',
@@ -348,7 +349,6 @@ async function main(): Promise<void> {
             },
             skills: {
                 path: 'skills',
-                extensionPath: 'extension/skills',
                 cliPath: 'cli/skills',
                 mode: 'Reviewed AI workflow artifacts; merge into the target project instructions instead of auto-installing from remote sources'
             },

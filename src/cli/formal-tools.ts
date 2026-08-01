@@ -35,7 +35,8 @@ import {
     unique,
     type DependencyGraphMatrixScope,
     type DependencyGraphWhereFilter
-} from '../core/formal-core';
+} from '@markdown-formal/core';
+import { startReaderServer } from '../reader/server';
 
 const ROOT = process.cwd();
 const CACHE_DIR = path.join(ROOT, '.markdown-formal');
@@ -2641,6 +2642,7 @@ function printHelp({ all = false } = {}) {
   npm run formal -- graph impact <h-id>
   npm run formal -- graph focus <h-id> [--depth N]
   npm run formal -- graph matrix chapter|volume|book
+  npm run formal -- serve [project-dir] [--port 0]
   npm run formal -- export-md <file-or-dir> [...] --out <compiled.md>
   npm run formal -- export-md-split <file-or-dir> [...] --out <dir>
   npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--no-toc] [--toc-depth N] [--margin 2.5cm]
@@ -2675,6 +2677,7 @@ Advanced commands:
   npm run formal -- graph upstream <h-id> [--where all|statement|proof|body]
   npm run formal -- graph bridges|isolated|cycles [--where all|statement|proof|body]
   npm run formal -- graph matrix chapter|volume|book [--where all|statement|proof|body]
+  npm run formal -- serve [project-dir] [--port 0]
   npm run formal -- export-md <file-or-dir> [...] --out <compiled.md>
   npm run formal -- export-md-split <file-or-dir> [...] --out <dir>
   npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title "Title"] [--subtitle "Subtitle"] [--author Name] [--author-native Name] [--author-alias Alias] [--orcid URL] [--repository URL] [--license Name] [--license-url URL] [--preferred-citation Text] [--date "Revised 2026-06-26"] [--release-version rc.1] [--release-tag v1] [--release-commit abc123] [--doi DOI] [--metadata-page] [--front-matter page.md] [--front-matter-title "AI Statement"] [--front-matter-toc] [--show-version-on-cover] [--documentclass ctexbook] [--title-page] [--no-title-page] [--cover-style simple] [--title-size 32pt] [--subtitle-size 18pt] [--toc-page-break] [--no-toc-page-break] [-V key:value] [--variable key:value] [--keep-md]
@@ -2704,6 +2707,7 @@ async function printArtifactPaths() {
     const rows = [
         ['package root', PACKAGE_ROOT],
         ['CLI', path.join(__dirname, 'formal-tools.js')],
+        ['reader UI', path.join(PACKAGE_ROOT, 'out', 'reader', 'index.html')],
         ['editor skill', path.join(PACKAGE_ROOT, 'skills', 'editor.md')],
         ['integrator guide', path.join(PACKAGE_ROOT, 'skills', 'integrator.md')],
         ['VASMC catalog', path.join(PACKAGE_ROOT, 'vasm-catalog', 'vasmc-catalog.yaml')],
@@ -2720,6 +2724,59 @@ async function printArtifactPaths() {
     console.log('VASMC: vasmc add --catalog <VASMC catalog> --export editor|integrator');
 }
 
+function parseReaderArgs(args: string[]): { rootPath: string; port: number } {
+    let inputPath = '.';
+    let port = 0;
+    let hasPath = false;
+
+    for (let index = 0; index < args.length; index++) {
+        const arg = args[index];
+        if (arg === '--port') {
+            port = Number(args[++index]);
+            continue;
+        }
+        if (arg.startsWith('--port=')) {
+            port = Number(arg.slice('--port='.length));
+            continue;
+        }
+        if (arg === '--help' || arg === 'help') {
+            console.log('Usage: npm run formal -- serve [project-dir] [--port 0]');
+            process.exitCode = 0;
+            return { rootPath: '', port: 0 };
+        }
+        if (arg.startsWith('-') || hasPath) {
+            throw new Error(`Unknown reader option: ${arg}`);
+        }
+        inputPath = arg;
+        hasPath = true;
+    }
+
+    if (!Number.isInteger(port) || port < 0 || port > 65535) {
+        throw new Error(`Invalid reader port: ${port}`);
+    }
+    return { rootPath: path.resolve(ROOT, inputPath), port };
+}
+
+async function serveReader(args: string[]): Promise<void> {
+    const options = parseReaderArgs(args);
+    if (!options.rootPath) return;
+
+    const reader = await startReaderServer(options);
+    console.log(`Markdown Formal Reader: ${reader.url}`);
+    console.log(`Bound project: ${reader.rootPath}`);
+    console.log('The reader is local-only and read-only. Source changes refresh the current view automatically.');
+
+    let closing = false;
+    const close = async () => {
+        if (closing) return;
+        closing = true;
+        await reader.close();
+        process.exit(0);
+    };
+    process.once('SIGINT', close);
+    process.once('SIGTERM', close);
+}
+
 async function main() {
     const [command, ...args] = process.argv.slice(2);
 
@@ -2731,6 +2788,8 @@ async function main() {
         await lint();
     } else if (command === 'graph') {
         await graph(args);
+    } else if (command === 'serve' || command === 'reader') {
+        await serveReader(args);
     } else if (command === 'verify') {
         await verify(args);
     } else if (command === 'finalize') {

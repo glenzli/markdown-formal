@@ -10,10 +10,9 @@ import {
     scanExcludePatterns,
     shouldExcludeScanPath,
     toPosix
-} from './core/formal-core';
-import { appendPreviewDebugLog } from './core/debug-log';
-
-const formalPlugin = require('./markdown-it-formal');
+} from '@markdown-formal/core';
+import { appendPreviewDebugLog } from '@markdown-formal/core/debug-log';
+import formalPlugin from './markdown-it-formal';
 
 let scanInProgress = false;
 let scanAgain = false;

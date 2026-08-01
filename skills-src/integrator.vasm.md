@@ -152,17 +152,17 @@ npm run formal -- verify
 - `npm run formal` 应从拥有 `.markdown-formal/` 的 formal root 执行。
 - 根目录扫描时，构建产物、上下文目录、草稿目录、外部证明工程等必须写入 `scan.exclude`。
 - 定义搜索和当前页符号表默认只在当前 book 内生效；跨 book 查询和跨 book 正文引用必须显式配置依赖。
-- `preview.ignoreHover` 只关闭正文 `@hash` 悬浮 recall，保留编号、导航、跳转、定义搜索和当前页符号表。
-- 排查空白预览时，可临时启用 `debug.previewLog: true` 并读取 `.markdown-formal/preview-debug.log`。
+- 本地 Reader 是主阅读界面：用 `npm run formal -- serve .` 启动；它只绑定 `127.0.0.1`、只读、内存扫描，不依赖 `preview-cache.json`。
+- `preview.ignoreHover` 和 `debug.previewLog` 只属于旧 VS Code 兼容扩展；不要让这些兼容项约束 core、CLI 或 Reader。
 
 ## Release 和 vendoring 边界
 
 如果目标项目从 `markdown-formal` release 接入，应把这段逻辑放进目标项目的工具升级流程：
 
 1. 在 `markdown-formal` 源仓库运行 `npm run release:local`。
-2. 核对 `dist/markdown-formal-<version>/checksums.txt`。
+2. 核对 `dist/checksums.txt`。
 3. 把 release 包里的 `cli/` vendored 到目标项目 `tools/markdown-formal/`。
-4. 如需编辑器扩展，用 release 包里的 `.vsix` 安装；本地开发可以用软链接。
+4. 日常阅读优先使用 `node tools/markdown-formal/out/cli/formal-tools.js serve .`；如仍需要编辑器内嵌预览，再安装 release 包里的 legacy `.vsix`。
 5. 把 release 包里的 `skills/editor.md` 作为 executable 规则输入，不要替代目标项目原生 AI 指令。
 6. 在目标项目运行 `npm run formal -- prepare` 和 `npm run formal -- verify`。
 

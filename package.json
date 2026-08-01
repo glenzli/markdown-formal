@@ -1,7 +1,6 @@
 {
   "name": "markdown-formal",
-  "displayName": "Markdown Formal",
-  "description": "Agent-native, runtime-zero-dependency formal mathematics markdown assistant",
+  "description": "Agent-native local reader and CLI for formal mathematics Markdown",
   "version": "0.1.0",
   "publisher": "glenzli",
   "license": "MIT",
@@ -9,65 +8,56 @@
     "type": "git",
     "url": "git+https://gitlab.com/glenzli/markdown-formal.git"
   },
-  "engines": {
-    "vscode": "^1.80.0"
-  },
-  "activationEvents": [
-    "onLanguage:markdown"
-  ],
-  "main": "./out/extension.js",
   "bin": {
     "markdown-formal": "out/cli/formal-tools.js"
   },
   "files": [
     "out/",
-    "media/",
     "docs/",
     "skills/",
     "vasm-catalog/",
     "README.md",
     "LICENSE"
   ],
+  "overrides": {
+    "brace-expansion": "5.0.8",
+    "fast-uri": "3.1.4",
+    "js-yaml": "4.3.0",
+    "linkify-it": "5.0.2",
+    "postcss": "8.5.18"
+  },
   "scripts": {
-    "build": "npm run build:extension && npm run build:cli && npm run build:webview",
-    "build:extension": "tsc -p tsconfig.json",
+    "build": "node scripts/clean-build-output.js && npm run build:core && npm run build:cli && npm run build:reader",
+    "build:all": "npm run build && npm run build:vscode-extension",
+    "build:core": "npm run typecheck:cli && vite build --config vite.core.config.ts",
     "typecheck:cli": "tsc -p tsconfig.cli.json",
     "build:cli": "npm run typecheck:cli && vite build --config vite.cli.config.ts",
     "build:cli:quiet": "npm run --silent typecheck:cli && vite build --config vite.cli.config.ts --logLevel warn",
-    "typecheck:webview": "tsc -p tsconfig.webview.json",
-    "build:webview": "npm run typecheck:webview && vite build --config vite.webview.config.ts",
-    "formal": "npm run --silent build:cli:quiet && node out/cli/formal-tools.js",
+    "typecheck:vscode-extension": "tsc -p tsconfig.vscode-extension.json",
+    "build:vscode-extension": "npm run typecheck:vscode-extension && vite build --config vite.vscode-extension.config.ts && vite build --config vite.vscode-webview.config.ts",
+    "typecheck:reader": "tsc -p tsconfig.reader.json",
+    "build:reader": "npm run typecheck:reader && vite build --config vite.reader.config.ts",
+    "build:reader:quiet": "vite build --config vite.reader.config.ts --logLevel warn",
+    "formal": "npm run --silent build:cli:quiet && npm run --silent build:reader:quiet && node out/cli/formal-tools.js",
     "check": "npm run build && npm run formal -- verify",
     "test:migrations": "node tests/formal-tools.test.mjs",
     "test": "npm run check && npm run test:migrations",
     "content:build": "vasmc build",
     "docs:build": "npm run content:build",
     "prepack": "npm run content:build && npm run build",
-    "package:vsix": "npm run build && vsce package --no-dependencies",
-    "release:local": "npm run content:build && npm run build && node out/cli/formal-tools.js verify && npm run test:migrations && node out/cli/release.js",
+    "package:vsix": "npm run build:vscode-extension && cd packages/vscode-extension && vsce package --no-dependencies",
+    "release:local": "npm run content:build && npm run build:all && node out/cli/formal-tools.js verify && npm run test:migrations && node out/cli/release.js",
     "release:check": "node --check scripts/publish-release.js && npm run release:local && npm_config_cache=/private/tmp/markdown-formal-npm-cache npm pack --dry-run --ignore-scripts && git diff --check",
     "release": "node scripts/publish-release.js",
     "release:github": "node scripts/publish-release.js --only github",
     "release:gitlab": "node scripts/publish-release.js --only gitlab",
     "release:npm": "node scripts/publish-release.js --only npm"
   },
-  "contributes": {
-    "markdown.markdownItPlugins": true,
-    "markdown.previewStyles": [
-      "./media/styles.css"
-    ],
-    "markdown.previewScripts": [
-      "./media/formal-script.js"
-    ],
-    "commands": [
-      {
-        "command": "markdown-formal.refreshIndex",
-        "title": "Markdown Formal: Refresh References"
-      }
-    ]
-  },
   "devDependencies": {
+    "@types/markdown-it": "14.1.2",
     "@vscode/vsce": "3.9.2",
+    "katex": "0.16.47",
+    "markdown-it": "14.2.0",
     "typescript": "^6.0.3",
     "vite": "6.4.3"
   }

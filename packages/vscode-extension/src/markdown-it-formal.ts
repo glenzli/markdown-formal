@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
     DEFAULT_CONFIG,
+    findSymbolsInMarkdown,
     formatPageHeadingPrefix,
     formatPageReference,
     formatDisplayNumber,
@@ -12,8 +13,8 @@ import {
     shouldIgnorePreviewHover,
     type RuntimeDefinitionData,
     type RuntimeSymbolData
-} from './core/formal-core';
-import { appendPreviewDebugLog } from './core/debug-log';
+} from '@markdown-formal/core';
+import { appendPreviewDebugLog } from '@markdown-formal/core/debug-log';
 
 interface LabelData {
     type: string;
@@ -59,25 +60,7 @@ interface PageData {
     level?: number;
 }
 
-interface FormulaData {
-    latex: string;
-    display: boolean;
-}
-
-interface SymbolFormulaMatch {
-    index: number;
-    formulaIndex: number;
-}
-
 type FormalInlineMode = 'default' | 'title' | 'full';
-
-interface CompiledSymbolMatcher {
-    index: number;
-    symbol: RuntimeSymbolData;
-    regex?: RegExp;
-    pattern: string;
-    display: string;
-}
 
 interface TooltipRenderStats {
     refCount: number;
@@ -541,160 +524,6 @@ function renderTitleTemplates(md: any, labels: Record<string, LabelData>, pages:
         .join('\n');
 }
 
-function normalizeLatexSymbolForMatch(value: string): string {
-    return String(value || '')
-        .trim()
-        .replace(/^\$+|\$+$/g, '')
-        .replace(/\\left\s*/g, '')
-        .replace(/\\right\s*/g, '')
-        .replace(/\\operatorname\s*\{([^{}]+)\}/g, '\\$1')
-        .replace(/\\([A-Za-z]+)\s+\{([^{}]+)\}/g, '\\$1{$2}')
-        .replace(/\s+/g, '')
-        .replace(/([_^])([A-Za-z0-9\\])(?![A-Za-z0-9{])/g, '$1{$2}');
-}
-
-function makeUnanchoredSymbolRegex(symbol: RuntimeSymbolData): RegExp | undefined {
-    const source = String(symbol.regex || '')
-        .replace(/^\^/, '')
-        .replace(/\$$/, '');
-    if (!source || source === '(.+?)') return undefined;
-
-    try {
-        return new RegExp(source);
-    } catch (_err) {
-        return undefined;
-    }
-}
-
-function compileSymbolMatcher(symbol: RuntimeSymbolData, index: number): CompiledSymbolMatcher {
-    return {
-        index,
-        symbol,
-        regex: makeUnanchoredSymbolRegex(symbol),
-        pattern: normalizeLatexSymbolForMatch(symbol.pattern),
-        display: normalizeLatexSymbolForMatch(symbol.display)
-    };
-}
-
-function symbolMatcherMatchesLatex(matcher: CompiledSymbolMatcher, latex: string): boolean {
-    if (!latex) return false;
-    if (matcher.regex && matcher.regex.test(latex)) return true;
-    if (matcher.pattern && !matcher.pattern.includes('${') && latex.includes(matcher.pattern)) return true;
-    return Boolean(matcher.display && latex.includes(matcher.display));
-}
-
-function symbolTemplateIndexesForFormulas(symbols: RuntimeSymbolData[], formulas: FormulaData[]): number[] {
-    const normalizedFormulas = formulas
-        .map(formula => normalizeLatexSymbolForMatch(formula.latex))
-        .filter(Boolean);
-    if (normalizedFormulas.length === 0) return [];
-
-    const matches: SymbolFormulaMatch[] = [];
-    symbols.map((symbol, index) => compileSymbolMatcher(symbol, index))
-        .forEach(matcher => {
-            const formulaIndex = normalizedFormulas.findIndex(latex => symbolMatcherMatchesLatex(matcher, latex));
-            if (formulaIndex >= 0) {
-                matches.push({ index: matcher.index, formulaIndex });
-            }
-        });
-
-    return matches
-        .sort((a, b) => {
-            if (a.formulaIndex !== b.formulaIndex) return a.formulaIndex - b.formulaIndex;
-            const aSymbol = symbols[a.index];
-            const bSymbol = symbols[b.index];
-            const location = `${aSymbol?.sourceFilePath || ''}:${aSymbol?.sourceLine || 0}`
-                .localeCompare(`${bSymbol?.sourceFilePath || ''}:${bSymbol?.sourceLine || 0}`);
-            return location || String(aSymbol?.pattern || '').localeCompare(String(bSymbol?.pattern || ''));
-        })
-        .map(match => match.index);
-}
-
-function isEscaped(src: string, index: number): boolean {
-    let slashes = 0;
-    for (let i = index - 1; i >= 0 && src[i] === '\\'; i--) slashes++;
-    return slashes % 2 === 1;
-}
-
-function extractLatexFormulas(src: string): FormulaData[] {
-    const formulas: FormulaData[] = [];
-    let inFence = false;
-    let blockDelimiter = '';
-    let blockBuffer: string[] = [];
-
-    const lines = String(src || '').split(/\r?\n/);
-    for (const line of lines) {
-        if (/^\s*(```|~~~)/.test(line)) {
-            inFence = !inFence;
-            continue;
-        }
-        if (inFence) continue;
-
-        if (blockDelimiter) {
-            const close = line.indexOf(blockDelimiter);
-            if (close >= 0) {
-                const delimiter = blockDelimiter;
-                blockBuffer.push(line.slice(0, close));
-                formulas.push({ latex: blockBuffer.join('\n').trim(), display: true });
-                blockDelimiter = '';
-                blockBuffer = [];
-                scanInlineMath(line.slice(close + delimiter.length), formulas);
-            } else {
-                blockBuffer.push(line);
-            }
-            continue;
-        }
-
-        const blockStart = line.search(/(?:\$\$|\\\[)/);
-        if (blockStart >= 0) {
-            const delimiter = line.slice(blockStart, blockStart + 2);
-            const closeDelimiter = delimiter === '$$' ? '$$' : '\\]';
-            const close = line.indexOf(closeDelimiter, blockStart + 2);
-            if (close >= 0) {
-                scanInlineMath(line.slice(0, blockStart), formulas);
-                formulas.push({ latex: line.slice(blockStart + 2, close).trim(), display: true });
-                scanInlineMath(line.slice(close + 2), formulas);
-            } else {
-                scanInlineMath(line.slice(0, blockStart), formulas);
-                blockDelimiter = closeDelimiter;
-                blockBuffer = [line.slice(blockStart + 2)];
-            }
-            continue;
-        }
-
-        scanInlineMath(line, formulas);
-    }
-
-    return formulas.filter(formula => formula.latex);
-}
-
-function scanInlineMath(line: string, formulas: FormulaData[]) {
-    for (let i = 0; i < line.length; i++) {
-        if (line[i] === '\\' && line[i + 1] === '(' && !isEscaped(line, i)) {
-            const end = line.indexOf('\\)', i + 2);
-            if (end >= 0) {
-                formulas.push({ latex: line.slice(i + 2, end).trim(), display: false });
-                i = end + 1;
-            }
-            continue;
-        }
-
-        if (line[i] !== '$' || line[i + 1] === '$' || isEscaped(line, i)) continue;
-        const end = findInlineDollarEnd(line, i + 1);
-        if (end >= 0) {
-            formulas.push({ latex: line.slice(i + 1, end).trim(), display: false });
-            i = end;
-        }
-    }
-}
-
-function findInlineDollarEnd(line: string, start: number): number {
-    for (let i = start; i < line.length; i++) {
-        if (line[i] === '$' && line[i + 1] !== '$' && !isEscaped(line, i)) return i;
-    }
-    return -1;
-}
-
 function applyLightweightMarker(tokens: any[], inlineIndex: number, labels: Record<string, LabelData>, definitions: RuntimeDefinitionData[], currentFilePath: string, config: any): MarkerApplyResult {
     const inlineToken = tokens[inlineIndex];
     const openToken = tokens[inlineIndex - 1];
@@ -870,7 +699,7 @@ function getCurrentFilePath(rootPath: string, env: any, src: string, pages: Page
         || inferCurrentFilePathFromSource(rootPath, src, pages);
 }
 
-export = function formalPlugin(md: any, options: any) {
+function formalPlugin(md: any, options: any) {
     const requestedRootPath = options ? options.rootPath : '';
     const rootPath = findFormalPreviewRoot(requestedRootPath) || requestedRootPath;
     let cachedLabels: Record<string, LabelData> = {};
@@ -1055,11 +884,8 @@ export = function formalPlugin(md: any, options: any) {
             const token = new state.Token('html_block', '', 0);
             const clientLabelData = clientLabels(cachedLabels || {});
             const clientDefinitionData = clientDefinitions(cachedDefinitions || [], rawCurrentFilePath);
-            const formulasStartedAt = Date.now();
-            const formulas = extractLatexFormulas(state.src || '');
-            const formulasElapsedMs = elapsedMs(formulasStartedAt);
             const symbolMatchStartedAt = Date.now();
-            const currentSymbolTemplateIndexes = symbolTemplateIndexesForFormulas(cachedSymbols || [], formulas);
+            const currentSymbolTemplateIndexes = findSymbolsInMarkdown(state.src || '', cachedSymbols || []).map(match => match.index);
             const currentSymbolTemplateIndexSet = new Set(currentSymbolTemplateIndexes);
             const symbolMatchElapsedMs = elapsedMs(symbolMatchStartedAt);
             const serializeStartedAt = Date.now();
@@ -1084,15 +910,12 @@ export = function formalPlugin(md: any, options: any) {
                 pages: (cachedPages || []).length,
                 definitions: (cachedDefinitions || []).length,
                 symbols: (cachedSymbols || []).length,
-                formulas: formulas.length,
                 clientLabelsChars: objectChars(clientLabelData),
                 clientDefinitionsChars: objectChars(clientDefinitionData),
                 symbolsChars: objectChars(cachedSymbols || []),
-                formulasChars: objectChars(formulas),
                 currentSymbolIndexesChars: objectChars(currentSymbolTemplateIndexes),
                 hoverIgnored: state.env.ignoreFormalTooltips,
                 ignoreReason,
-                formulasElapsedMs,
                 symbolMatchElapsedMs,
                 serializeElapsedMs,
                 elapsedMs: elapsedMs(dataStartedAt),
@@ -1427,4 +1250,6 @@ export = function formalPlugin(md: any, options: any) {
         const uri = normalizePageHref(page.filePath || '');
         return `<a class="formal-page-ref" href="${escapeHtml(uri)}" data-href="${escapeHtml(uri)}" title="${escapeHtml(titleAttr)}" style="color: inherit; text-decoration: none;">${escapeHtml(text)}</a>`;
     };
-};
+}
+
+export default formalPlugin;

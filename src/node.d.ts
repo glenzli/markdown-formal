@@ -17,9 +17,20 @@ declare module 'node:fs/promises' {
     export const writeFile: any;
 }
 
+declare module 'node:fs' {
+    export const watch: any;
+    export const createReadStream: any;
+    export const existsSync: any;
+}
+
+declare module 'node:http' {
+    export const createServer: any;
+}
+
 declare module 'path' {
     export const join: any;
     export const basename: any;
+    export const extname: any;
     export const dirname: any;
     export const relative: any;
 }
@@ -27,6 +38,7 @@ declare module 'path' {
 declare module 'node:path' {
     export const basename: any;
     export const dirname: any;
+    export const extname: any;
     export const isAbsolute: any;
     export const join: any;
     export const posix: any;
@@ -42,6 +54,9 @@ declare module 'node:crypto' {
 
 declare const require: (module: string) => any;
 declare const __dirname: string;
+declare const Buffer: any;
+declare function setTimeout(callback: (...args: any[]) => void, delay?: number): any;
+declare function clearTimeout(handle?: any): void;
 declare const process: any;
 declare const console: {
     log: (...args: any[]) => void;

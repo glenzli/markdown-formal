@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
@@ -11,7 +11,7 @@ const cliPath = path.join(repoRoot, 'out', 'cli', 'formal-tools.js');
 const require = createRequire(import.meta.url);
 
 function formalCore() {
-    return require(path.join(repoRoot, 'out', 'core', 'formal-core.js'));
+    return require(path.join(repoRoot, 'packages', 'core', 'out', 'formal-core.js'));
 }
 
 async function makeWorkspace(name) {
@@ -37,6 +37,72 @@ function runCliWithEnv(cwd, args, env) {
 
 function combinedOutput(result) {
     return `${result.stdout}\n${result.stderr}`;
+}
+
+function waitFor(condition, timeoutMs = 3000) {
+    const startedAt = Date.now();
+    return new Promise((resolve, reject) => {
+        const check = async () => {
+            try {
+                const value = await condition();
+                if (value) {
+                    resolve(value);
+                    return;
+                }
+                if (Date.now() - startedAt >= timeoutMs) {
+                    reject(new Error('Timed out while waiting for Reader state.'));
+                    return;
+                }
+                setTimeout(check, 50);
+            } catch (error) {
+                if (Date.now() - startedAt >= timeoutMs) {
+                    reject(error);
+                    return;
+                }
+                setTimeout(check, 50);
+            }
+        };
+        void check();
+    });
+}
+
+async function startReader(root) {
+    const child = spawn('node', [cliPath, 'serve', root, '--port', '0'], {
+        cwd: root,
+        stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let output = '';
+    const ready = new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Reader did not report a localhost URL.\n' + output)), 5000);
+        const receive = chunk => {
+            output += String(chunk);
+            const match = output.match(/Markdown Formal Reader: (http:\/\/127\.0\.0\.1:\d+)/);
+            if (!match) return;
+            clearTimeout(timeout);
+            resolve(match[1]);
+        };
+        child.stdout.on('data', receive);
+        child.stderr.on('data', receive);
+        child.once('error', error => {
+            clearTimeout(timeout);
+            reject(error);
+        });
+        child.once('exit', code => {
+            if (output.includes('Markdown Formal Reader:')) return;
+            clearTimeout(timeout);
+            reject(new Error('Reader exited before startup with code ' + code + '.\n' + output));
+        });
+    });
+    const url = await ready;
+    return { child, url };
+}
+
+async function stopReader(child) {
+    if (child.exitCode !== null) return;
+    const done = new Promise(resolve => child.once('exit', resolve));
+    child.kill('SIGTERM');
+    await Promise.race([done, new Promise(resolve => setTimeout(resolve, 2000))]);
+    if (child.exitCode === null) child.kill('SIGKILL');
 }
 
 async function read(root, filePath) {
@@ -959,7 +1025,7 @@ async function testPerfDummyThresholds() {
 }
 
 async function testPreviewIgnoreHoverPatterns() {
-    const { shouldIgnorePreviewHover } = require('../out/core/formal-core.js');
+    const { shouldIgnorePreviewHover } = formalCore();
     const config = {
         preview: {
             ignoreHover: [
@@ -975,6 +1041,52 @@ async function testPreviewIgnoreHoverPatterns() {
     assert.equal(shouldIgnorePreviewHover('book3/appendix-c.md', config), true);
     assert.equal(shouldIgnorePreviewHover('book4/01-main.md', config), false);
     assert.equal(shouldIgnorePreviewHover('book1/01-main.md', config), false);
+}
+
+async function testReaderServer() {
+    const root = await makeWorkspace('reader');
+    const chapterPath = path.join(root, 'book1', '01-foundations.md');
+    await fs.writeFile(chapterPath, [
+        '# #h-1111111111111111 Foundations',
+        '',
+        '## #h-2222222222222222 Compactness',
+        '',
+        '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
+        '',
+        'Proof: direct.',
+        '',
+        'By @h-3333333333333333, the conclusion follows.',
+        ''
+    ].join('\n'));
+    const prepare = runCli(root, ['prepare']);
+    assert.equal(prepare.status, 0, combinedOutput(prepare));
+
+    const reader = await startReader(root);
+    try {
+        const state = await (await fetch(reader.url + '/api/state')).json();
+        assert.equal(state.pages.length, 1);
+        assert.equal(state.pages[0].filePath, 'book1/01-foundations.md');
+        assert.equal('labels' in state, false);
+
+        const page = await (await fetch(reader.url + '/api/page?path=book1%2F01-foundations.md')).json();
+        assert.match(page.content, /Finite cover/);
+        assert.equal(page.page.displayHeading, '第 1 章 Foundations');
+        assert.equal(page.labels['h-3333333333333333'].content, undefined);
+
+        const recall = await (await fetch(reader.url + '/api/recall?id=h-3333333333333333')).json();
+        assert.match(recall.content, /Finite cover/);
+        assert.equal(recall.display, '定理 1.1');
+
+        const initialRevision = state.revision;
+        await fs.appendFile(chapterPath, '\nA live update.\n');
+        const refreshed = await waitFor(async () => {
+            const next = await (await fetch(reader.url + '/api/state')).json();
+            return next.revision > initialRevision ? next : undefined;
+        });
+        assert.ok(refreshed.revision > initialRevision);
+    } finally {
+        await stopReader(reader.child);
+    }
 }
 
 async function testPageHeadingFormatting() {
@@ -1406,6 +1518,7 @@ const tests = [
     ['page title uses unique highest heading', testPageTitleUsesUniqueHighestHeading],
     ['perf-dummy thresholds', testPerfDummyThresholds],
     ['preview ignore hover patterns', testPreviewIgnoreHoverPatterns],
+    ['local Reader server', testReaderServer],
     ['page heading formatting', testPageHeadingFormatting],
     ['export-md compiles formal syntax', testExportMarkdownCompilesFormalSyntax],
     ['export-md-split compiles files', testExportMarkdownSplitCompilesFiles],
