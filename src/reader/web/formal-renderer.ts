@@ -28,6 +28,27 @@ export interface FormalRenderOptions {
     language: 'zh' | 'en';
 }
 
+export interface ReaderFormula {
+    id: string;
+    latex: string;
+    source: string;
+    display: boolean;
+    sourceStartLine?: number;
+    sourceEndLine?: number;
+}
+
+export interface RenderedFormalDocument {
+    html: string;
+    formulas: ReaderFormula[];
+}
+
+interface MathTokenMeta {
+    display: boolean;
+    source: string;
+    sourceStartLine?: number;
+    sourceEndLine?: number;
+}
+
 function escapeHtml(value: string): string {
     return String(value || '')
         .replace(/&/g, '&amp;')
@@ -63,6 +84,12 @@ function installMathRules(markdown: MarkdownIt): void {
             token.block = true;
             token.content = singleLineContent.trim();
             token.map = [startLine, startLine + 1];
+            token.meta = {
+                display: true,
+                source: line,
+                sourceStartLine: startLine + 1,
+                sourceEndLine: startLine + 1
+            } satisfies MathTokenMeta;
             state.line = startLine + 1;
             return true;
         }
@@ -84,6 +111,12 @@ function installMathRules(markdown: MarkdownIt): void {
         token.block = true;
         token.content = state.getLines(startLine + 1, nextLine, state.blkIndent, false).trim();
         token.map = [startLine, nextLine + 1];
+        token.meta = {
+            display: true,
+            source: state.getLines(startLine, nextLine + 1, state.blkIndent, false).trim(),
+            sourceStartLine: startLine + 1,
+            sourceEndLine: nextLine + 1
+        } satisfies MathTokenMeta;
         state.line = nextLine + 1;
         return true;
     }, { alt: ['paragraph', 'reference', 'blockquote', 'list'] });
@@ -113,23 +146,39 @@ function installMathRules(markdown: MarkdownIt): void {
         if (!silent) {
             const token = state.push('formal_math_inline', 'math', 0);
             token.content = source.slice(start + offset, close);
+            token.meta = {
+                display: false,
+                source: source.slice(start, close + offset)
+            } satisfies MathTokenMeta;
         }
         state.pos = close + offset;
         return true;
     });
 
-    markdown.renderer.rules.formal_math_block = (tokens: any[], index: number) => katex.renderToString(tokens[index].content, {
-        displayMode: true,
-        throwOnError: false,
-        strict: 'ignore',
-        trust: false
-    });
-    markdown.renderer.rules.formal_math_inline = (tokens: any[], index: number) => katex.renderToString(tokens[index].content, {
-        displayMode: false,
-        throwOnError: false,
-        strict: 'ignore',
-        trust: false
-    });
+    const renderMath = (tokens: any[], index: number, env: any, display: boolean) => {
+        const token = tokens[index];
+        const metadata = (token.meta || {}) as Partial<MathTokenMeta>;
+        const rendered = katex.renderToString(token.content, {
+            displayMode: display,
+            throwOnError: false,
+            strict: 'ignore',
+            trust: false
+        });
+        const formulas = env.readerFormulas as ReaderFormula[] | undefined;
+        if (!formulas) return rendered;
+        const formula: ReaderFormula = {
+            id: 'formula-' + formulas.length,
+            latex: token.content,
+            source: metadata.source || token.content,
+            display,
+            sourceStartLine: metadata.sourceStartLine,
+            sourceEndLine: metadata.sourceEndLine
+        };
+        formulas.push(formula);
+        return '<span class="reader-formula' + (display ? ' is-display' : '') + '" data-reader-formula="' + formula.id + '">' + rendered + '</span>';
+    };
+    markdown.renderer.rules.formal_math_block = (tokens: any[], index: number, _options: any, env: any) => renderMath(tokens, index, env, true);
+    markdown.renderer.rules.formal_math_inline = (tokens: any[], index: number, _options: any, env: any) => renderMath(tokens, index, env, false);
 }
 
 function normalizePath(value: string): string {
@@ -263,6 +312,8 @@ function installFormalRules(markdown: MarkdownIt): void {
             if (!open || !open.map || open.nesting !== 1) continue;
             const line = token.map[0];
             open.attrSet('data-source-line', String(line + 1));
+            open.attrSet('data-source-start-line', String(line + 1));
+            open.attrSet('data-source-end-line', String(token.map[1]));
             const markerId = markers[line];
             if (!markerId) continue;
             open.attrSet('id', 'formal-' + markerId);
@@ -315,22 +366,30 @@ export function createFormalRenderer(): MarkdownIt {
     return markdown;
 }
 
-export function renderFormalMarkdown(markdown: MarkdownIt, source: string, options: FormalRenderOptions): string {
-    const prepared = prepareFormalMarkdown(source, options);
-    return markdown.render(prepared.source, {
+function renderEnvironment(options: FormalRenderOptions, markersByLine: Record<number, string>, formulas?: ReaderFormula[]): Record<string, unknown> {
+    return {
         readerCurrentFilePath: options.currentFilePath,
         readerLabels: options.labels,
         readerPagesByPath: Object.fromEntries(options.pages.map(page => [page.filePath, page])),
-        readerMarkersByLine: prepared.markersByLine,
-        readerLanguage: options.language
-    });
+        readerMarkersByLine: markersByLine,
+        readerLanguage: options.language,
+        readerFormulas: formulas
+    };
+}
+
+export function renderFormalDocument(markdown: MarkdownIt, source: string, options: FormalRenderOptions): RenderedFormalDocument {
+    const prepared = prepareFormalMarkdown(source, options);
+    const formulas: ReaderFormula[] = [];
+    return {
+        html: markdown.render(prepared.source, renderEnvironment(options, prepared.markersByLine, formulas)),
+        formulas
+    };
+}
+
+export function renderFormalMarkdown(markdown: MarkdownIt, source: string, options: FormalRenderOptions): string {
+    return renderFormalDocument(markdown, source, options).html;
 }
 
 export function renderFormalInline(markdown: MarkdownIt, source: string, options: FormalRenderOptions): string {
-    return markdown.renderInline(source, {
-        readerCurrentFilePath: options.currentFilePath,
-        readerLabels: options.labels,
-        readerPagesByPath: Object.fromEntries(options.pages.map(page => [page.filePath, page])),
-        readerLanguage: options.language
-    });
+    return markdown.renderInline(source, renderEnvironment(options, {}));
 }

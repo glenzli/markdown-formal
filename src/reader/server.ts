@@ -23,6 +23,17 @@ const { URL } = require('node:url');
 const STATIC_CACHE_CONTROL = 'no-cache';
 const API_CACHE_CONTROL = 'no-store';
 const REFRESH_DELAY_MS = 160;
+const READER_CONTENT_SECURITY_POLICY = [
+    "default-src 'self'",
+    "connect-src 'self'",
+    "img-src 'self' data: https:",
+    "style-src 'self'",
+    // KaTeX positions scripts and extensible glyphs with generated style attributes.
+    "style-src-attr 'unsafe-inline'",
+    "script-src 'self'",
+    "base-uri 'none'",
+    "frame-ancestors 'self'"
+].join('; ');
 const MIME_TYPES: Record<string, string> = {
     '.css': 'text/css; charset=utf-8',
     '.gif': 'image/gif',
@@ -313,7 +324,7 @@ async function sendStaticFile(response: any, staticRoot: string, requestPath: st
         'cache-control': STATIC_CACHE_CONTROL,
         'content-type': mimeType(absolutePath),
         'content-length': body.length,
-        'content-security-policy': "default-src 'self'; connect-src 'self'; img-src 'self' data: https:; style-src 'self'; script-src 'self'; base-uri 'none'; frame-ancestors 'self'"
+        'content-security-policy': READER_CONTENT_SECURITY_POLICY
     });
     response.end(body);
 }

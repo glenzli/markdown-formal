@@ -1063,6 +1063,11 @@ async function testReaderServer() {
 
     const reader = await startReader(root);
     try {
+        const readerDocumentResponse = await fetch(reader.url + '/');
+        const contentSecurityPolicy = readerDocumentResponse.headers.get('content-security-policy') || '';
+        assert.match(contentSecurityPolicy, /style-src-attr 'unsafe-inline'/);
+        assert.doesNotMatch(contentSecurityPolicy, /script-src[^;]*'unsafe-inline'/);
+
         const state = await (await fetch(reader.url + '/api/state')).json();
         assert.equal(state.pages.length, 1);
         assert.equal(state.pages[0].filePath, 'book1/01-foundations.md');

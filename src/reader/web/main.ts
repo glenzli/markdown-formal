@@ -1,11 +1,18 @@
 import './styles.css';
 import {
     createFormalRenderer,
+    renderFormalDocument,
     renderFormalInline,
     renderFormalMarkdown,
+    type ReaderFormula,
     type ReaderLabel,
     type ReaderPage
 } from './formal-renderer';
+import {
+    ReaderSourceActions,
+    type ReaderDefinitionMatch
+} from './source-actions';
+import { ReaderRecallPopover } from './recall-popover';
 
 type Language = 'zh' | 'en';
 
@@ -33,6 +40,7 @@ interface ReaderPagePayload {
     page?: ReaderPage;
     content: string;
     labels: Record<string, ReaderLabel>;
+    formulas?: ReaderFormula[];
     symbols: Array<{
         index: number;
         pattern: string;
@@ -48,37 +56,61 @@ const words = {
         contents: '目录',
         definitions: '定义',
         symbols: '符号',
+        formulas: '公式',
         graph: '依赖',
         back: '返回',
         forward: '前进',
         search: '筛选章节',
         searchDefinitions: '搜索定义',
+        searchFormulas: '搜索当前页公式',
         noDefinitions: '没有匹配的定义',
         noSymbols: '当前页没有已索引的项目符号',
+        noFormulas: '当前页没有可搜索的公式',
         source: '来源',
         jump: '定位',
         recall: '引用回溯',
         live: '实时同步',
         noContents: '当前页面没有标题',
-        close: '关闭'
+        close: '关闭',
+        copyLatex: '复制 LaTeX',
+        copyMarkdown: '复制 Markdown',
+        copySource: '复制公式源码',
+        lookupDefinition: '查定义',
+        copied: '已复制',
+        refineDefinitionQuery: '请选择完整的术语',
+        decreaseFont: '减小字号',
+        increaseFont: '增大字号',
+        fontSize: '正文大小'
     },
     en: {
         contents: 'Contents',
         definitions: 'Definitions',
         symbols: 'Symbols',
+        formulas: 'Formulas',
         graph: 'Dependencies',
         back: 'Back',
         forward: 'Forward',
         search: 'Filter pages',
         searchDefinitions: 'Search definitions',
+        searchFormulas: 'Search formulas on this page',
         noDefinitions: 'No matching definitions',
         noSymbols: 'No indexed project notation occurs on this page',
+        noFormulas: 'No searchable formulas occur on this page',
         source: 'Source',
         jump: 'Locate',
         recall: 'Recall',
         live: 'Live',
         noContents: 'No headings on this page',
-        close: 'Close'
+        close: 'Close',
+        copyLatex: 'Copy LaTeX',
+        copyMarkdown: 'Copy Markdown',
+        copySource: 'Copy formula source',
+        lookupDefinition: 'Find definition',
+        copied: 'Copied',
+        refineDefinitionQuery: 'Select a fuller term',
+        decreaseFont: 'Decrease text size',
+        increaseFont: 'Increase text size',
+        fontSize: 'Text size'
     }
 } as const;
 
@@ -99,6 +131,20 @@ function normalizeQuery(value: string): string {
     return value.normalize('NFKC').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
 }
 
+const DEFAULT_FONT_SIZE = 18;
+const MIN_FONT_SIZE = 15;
+const MAX_FONT_SIZE = 24;
+const FONT_SIZE_STORAGE_KEY = 'markdown-formal.reader.font-size';
+
+function storedFontSize(): number {
+    try {
+        const value = Number.parseInt(localStorage.getItem(FONT_SIZE_STORAGE_KEY) || '', 10);
+        return Number.isInteger(value) ? Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, value)) : DEFAULT_FONT_SIZE;
+    } catch (_error) {
+        return DEFAULT_FONT_SIZE;
+    }
+}
+
 class ReaderApplication {
     private readonly root = document.getElementById('reader-app') as HTMLElement;
     private readonly markdown = createFormalRenderer();
@@ -108,12 +154,14 @@ class ReaderApplication {
     private historyPaths: string[] = [];
     private historyIndex = -1;
     private pageRequestId = 0;
+    private fontSize = storedFontSize();
     private main!: HTMLElement;
     private article!: HTMLElement;
     private inspector!: HTMLElement;
     private pageTitle!: HTMLElement;
     private liveStatus!: HTMLElement;
-    private recallTimer: number | undefined;
+    private sourceActions!: ReaderSourceActions;
+    private recallPopover!: ReaderRecallPopover;
 
     async start(): Promise<void> {
         this.buildShell();
@@ -132,7 +180,7 @@ class ReaderApplication {
         this.root.innerHTML = [
             '<div class="reader-shell">',
             '<aside class="reader-sidebar" aria-label="Project navigation">',
-            '<div class="reader-brand"><span class="reader-brand-mark">M</span><div><strong>Markdown Formal</strong><span id="reader-project-name"></span></div></div>',
+            '<div class="reader-brand"><span class="reader-brand-mark">MF</span><div><strong>Markdown Formal</strong><span id="reader-project-name"></span></div></div>',
             '<label class="reader-filter"><span class="sr-only">Filter pages</span><input id="reader-page-filter" type="search" autocomplete="off" /></label>',
             '<nav id="reader-page-nav" class="reader-page-nav"></nav>',
             '</aside>',
@@ -140,7 +188,8 @@ class ReaderApplication {
             '<header class="reader-toolbar">',
             '<div class="reader-history"><button id="reader-back" class="icon-button" title="Back" aria-label="Back">‹</button><button id="reader-forward" class="icon-button" title="Forward" aria-label="Forward">›</button></div>',
             '<div id="reader-page-title" class="reader-page-title"></div>',
-            '<div class="reader-tools"><button class="tool-button" data-inspector="contents" title="Contents">☰</button><button class="tool-button" data-inspector="definitions" title="Definitions">⌕</button><button class="tool-button" data-inspector="symbols" title="Symbols">Σ</button><button class="tool-button" data-inspector="graph" title="Dependencies">⌘</button></div>',
+            '<div class="reader-tools"><button class="tool-button" data-inspector="contents" title="Contents">☰</button><button class="tool-button" data-inspector="definitions" title="Definitions">⌕</button><button class="tool-button" data-inspector="symbols" title="Symbols">Σ</button><button class="tool-button" data-inspector="formulas" title="Formulas">∫</button><button class="tool-button" data-inspector="graph" title="Dependencies">⌘</button></div>',
+            '<div class="reader-type-control"><button type="button" class="type-size-button" data-font-size="-1" aria-label="Decrease text size">A−</button><output id="reader-font-size" aria-live="polite">' + this.fontSize + 'px</output><button type="button" class="type-size-button" data-font-size="1" aria-label="Increase text size">A+</button></div>',
             '<span id="reader-live" class="reader-live" aria-live="polite"></span>',
             '</header><article id="reader-article" class="reader-article"></article></main>',
             '<aside id="reader-inspector" class="reader-inspector" aria-live="polite"></aside>',
@@ -151,8 +200,33 @@ class ReaderApplication {
         this.inspector = this.root.querySelector('#reader-inspector') as HTMLElement;
         this.pageTitle = this.root.querySelector('#reader-page-title') as HTMLElement;
         this.liveStatus = this.root.querySelector('#reader-live') as HTMLElement;
+        this.updateFontSize(this.fontSize, false);
         (this.root.querySelector('#reader-page-filter') as HTMLInputElement).addEventListener('input', event => {
             this.renderNavigation((event.target as HTMLInputElement).value);
+        });
+        this.sourceActions = new ReaderSourceActions({
+            getDefinitions: query => this.findDefinitions(query, 7),
+            fetchDefinition: index => this.fetchJson<any>('/api/definition?index=' + index),
+            renderDefinition: definition => this.renderDefinitionContent(definition),
+            locateDefinition: definition => this.locateDefinition(definition),
+            labels: () => {
+                const dictionary = this.dictionary();
+                return {
+                    copyLatex: dictionary.copyLatex,
+                    copyMarkdown: dictionary.copyMarkdown,
+                    copySource: dictionary.copySource,
+                    lookupDefinition: dictionary.lookupDefinition,
+                    locate: dictionary.jump,
+                    copied: dictionary.copied,
+                    noDefinitions: dictionary.noDefinitions,
+                    refineDefinitionQuery: dictionary.refineDefinitionQuery
+                };
+            }
+        });
+        this.recallPopover = new ReaderRecallPopover({
+            fetchRecall: id => this.fetchJson<any>('/api/recall?id=' + encodeURIComponent(id)),
+            renderRecall: recall => renderFormalMarkdown(this.markdown, recall.content || '', this.renderOptions(recall.filePath, recall.labels || {})),
+            labels: () => ({ recall: this.dictionary().recall })
         });
     }
 
@@ -188,6 +262,31 @@ class ReaderApplication {
             button.title = dictionary[view] || '';
             button.setAttribute('aria-label', dictionary[view] || '');
         });
+        const fontSize = this.root.querySelector('.reader-type-control') as HTMLElement;
+        fontSize.setAttribute('aria-label', dictionary.fontSize);
+        const decrease = this.root.querySelector<HTMLElement>('[data-font-size="-1"]') as HTMLElement;
+        const increase = this.root.querySelector<HTMLElement>('[data-font-size="1"]') as HTMLElement;
+        decrease.title = dictionary.decreaseFont;
+        decrease.setAttribute('aria-label', dictionary.decreaseFont);
+        increase.title = dictionary.increaseFont;
+        increase.setAttribute('aria-label', dictionary.increaseFont);
+    }
+
+    private updateFontSize(value: number, persist = true): void {
+        this.fontSize = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, value));
+        this.root.style.setProperty('--reader-font-size', this.fontSize + 'px');
+        const output = this.root.querySelector('#reader-font-size') as HTMLOutputElement | null;
+        if (output) output.textContent = this.fontSize + 'px';
+        const decrease = this.root.querySelector<HTMLButtonElement>('[data-font-size="-1"]');
+        const increase = this.root.querySelector<HTMLButtonElement>('[data-font-size="1"]');
+        if (decrease) decrease.disabled = this.fontSize <= MIN_FONT_SIZE;
+        if (increase) increase.disabled = this.fontSize >= MAX_FONT_SIZE;
+        if (!persist) return;
+        try {
+            localStorage.setItem(FONT_SIZE_STORAGE_KEY, String(this.fontSize));
+        } catch (_error) {
+            // A restrictive browser context can disable persistence without affecting reading.
+        }
     }
 
     private renderNavigation(query = ''): void {
@@ -271,15 +370,19 @@ class ReaderApplication {
         const title = this.page.page?.displayHeading || this.page.page?.title || this.page.filePath;
         this.pageTitle.innerHTML = renderFormalInline(this.markdown, title, this.renderOptions(this.page.filePath, this.page.labels));
         document.title = title + ' — Markdown Formal';
-        this.article.innerHTML = renderFormalMarkdown(this.markdown, this.page.content, {
+        const rendered = renderFormalDocument(this.markdown, this.page.content, {
             currentFilePath: this.page.filePath,
             labels: this.page.labels,
             pages: this.state.pages,
             language: this.state.language
         });
+        this.page.formulas = rendered.formulas;
+        this.article.innerHTML = rendered.html;
         this.article.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((heading, index) => {
             if (!heading.id) heading.id = 'reader-heading-' + index;
         });
+        this.sourceActions.bind(this.article, { source: this.page.content, formulas: rendered.formulas });
+        this.recallPopover.bind(this.article, this.root);
     }
 
     private scrollToAnchor(anchor: string): void {
@@ -326,6 +429,7 @@ class ReaderApplication {
         if (view === 'contents') this.renderContents();
         if (view === 'definitions') this.renderDefinitions();
         if (view === 'symbols') this.renderSymbols();
+        if (view === 'formulas') this.renderFormulas();
         if (view === 'graph') await this.renderGraph();
     }
 
@@ -360,10 +464,7 @@ class ReaderApplication {
         search.addEventListener('input', () => this.renderDefinitions(search.value));
         this.inspector.append(search);
 
-        const normalized = normalizeQuery(query);
-        const matches = this.state.definitions.filter(definition => (
-            !normalized || [definition.title, ...(definition.aliases || [])].map(normalizeQuery).some(value => value.includes(normalized))
-        ));
+        const matches = this.findDefinitions(query);
         if (matches.length === 0) {
             this.inspector.append(this.emptyState(this.dictionary().noDefinitions));
             return;
@@ -393,7 +494,7 @@ class ReaderApplication {
         location.textContent = definition.filePath + ':' + definition.line;
         const content = document.createElement('div');
         content.className = 'inspector-content';
-        content.innerHTML = renderFormalMarkdown(this.markdown, definition.content || '', this.renderOptions(definition.filePath, definition.labels || {}));
+        content.innerHTML = this.renderDefinitionContent(definition);
         const locate = document.createElement('button');
         locate.type = 'button';
         locate.className = 'inspect-command';
@@ -402,6 +503,35 @@ class ReaderApplication {
             this.article.querySelector<HTMLElement>('[data-source-line="' + definition.line + '"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }));
         this.inspector.append(location, content, locate);
+    }
+
+    private findDefinitions(query: string, limit = Number.POSITIVE_INFINITY): DefinitionSummary[] {
+        if (!this.state) return [];
+        const normalized = normalizeQuery(query);
+        const matches = this.state.definitions.filter(definition => (
+            !normalized || [definition.title, ...(definition.aliases || [])].map(normalizeQuery).some(value => value.includes(normalized))
+        ));
+        if (!normalized) return matches.slice(0, limit);
+        return matches.sort((left, right) => {
+            const leftNames = [left.title, ...(left.aliases || [])].map(normalizeQuery);
+            const rightNames = [right.title, ...(right.aliases || [])].map(normalizeQuery);
+            const leftExact = leftNames.includes(normalized) ? 0 : 1;
+            const rightExact = rightNames.includes(normalized) ? 0 : 1;
+            if (leftExact !== rightExact) return leftExact - rightExact;
+            const leftLength = Math.min(...leftNames.filter(name => name.includes(normalized)).map(name => name.length));
+            const rightLength = Math.min(...rightNames.filter(name => name.includes(normalized)).map(name => name.length));
+            return leftLength - rightLength || left.title.localeCompare(right.title);
+        }).slice(0, limit);
+    }
+
+    private renderDefinitionContent(definition: any): string {
+        return renderFormalMarkdown(this.markdown, definition.content || '', this.renderOptions(definition.filePath, definition.labels || {}));
+    }
+
+    private locateDefinition(definition: ReaderDefinitionMatch): void {
+        void this.openPage(definition.filePath, 'push').then(() => {
+            this.article.querySelector<HTMLElement>('[data-source-line="' + definition.line + '"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
     }
 
     private renderSymbols(): void {
@@ -423,6 +553,71 @@ class ReaderApplication {
         });
         this.inspector.append(grid);
         this.showSymbol(symbols[0]);
+    }
+
+    private renderFormulas(query = ''): void {
+        this.inspector.replaceChildren(this.inspectorHeader(this.dictionary().formulas));
+        const search = document.createElement('input');
+        search.type = 'search';
+        search.className = 'inspector-search';
+        search.placeholder = this.dictionary().searchFormulas;
+        search.value = query;
+        search.addEventListener('input', () => this.renderFormulas(search.value));
+        this.inspector.append(search);
+        const normalized = normalizeQuery(query).replace(/\s/g, '');
+        const formulas = (this.page?.formulas || []).filter(formula => (
+            !normalized || normalizeQuery(formula.latex).replace(/\s/g, '').includes(normalized)
+        ));
+        if (formulas.length === 0) {
+            this.inspector.append(this.emptyState(this.dictionary().noFormulas));
+            return;
+        }
+        const visibleFormulas = formulas.slice(0, normalized ? 120 : 80);
+        const list = document.createElement('div');
+        list.className = 'inspector-list formula-list';
+        visibleFormulas.forEach(formula => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'inspector-formula';
+            const source = document.createElement('code');
+            source.textContent = formula.latex;
+            button.append(source);
+            button.addEventListener('click', () => {
+                this.showFormulaDetail(formula);
+                this.locateFormula(formula.id);
+            });
+            list.append(button);
+        });
+        this.inspector.append(list);
+        if (visibleFormulas.length < formulas.length) {
+            const summary = document.createElement('p');
+            summary.className = 'inspector-result-summary';
+            summary.textContent = this.state?.language === 'en'
+                ? `Showing ${visibleFormulas.length} of ${formulas.length}; refine the search to narrow results.`
+                : `显示 ${visibleFormulas.length} / ${formulas.length} 条，请输入 LaTeX 继续筛选。`;
+            this.inspector.append(summary);
+        }
+    }
+
+    private showFormulaDetail(formula: ReaderFormula): void {
+        this.inspector.querySelector('.formula-search-detail')?.remove();
+        const detail = document.createElement('section');
+        detail.className = 'formula-search-detail';
+        const preview = document.createElement('div');
+        preview.className = 'formula-search-preview';
+        preview.innerHTML = renderFormalMarkdown(this.markdown, formula.source, this.renderOptions(this.currentPath));
+        const source = document.createElement('code');
+        source.textContent = formula.latex;
+        detail.append(preview, source);
+        this.inspector.append(detail);
+    }
+
+    private locateFormula(id: string): void {
+        const formula = this.article.querySelector<HTMLElement>('[data-reader-formula="' + CSS.escape(id) + '"]');
+        if (!formula) return;
+        formula.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        formula.classList.add('is-highlighted');
+        window.setTimeout(() => formula.classList.remove('is-highlighted'), 1500);
     }
 
     private showSymbol(symbol: ReaderPagePayload['symbols'][number]): void {
@@ -488,24 +683,6 @@ class ReaderApplication {
         } as const;
     }
 
-    private async showRecall(id: string): Promise<void> {
-        if (!this.state) return;
-        try {
-            const recall = await this.fetchJson<any>('/api/recall?id=' + encodeURIComponent(id));
-            this.inspector.classList.add('is-open');
-            this.inspector.replaceChildren(this.inspectorHeader(this.dictionary().recall));
-            const title = document.createElement('p');
-            title.className = 'inspector-location';
-            title.textContent = recall.display || recall.title;
-            const content = document.createElement('div');
-            content.className = 'inspector-content';
-            content.innerHTML = renderFormalMarkdown(this.markdown, recall.content || '', this.renderOptions(recall.filePath, recall.labels || {}));
-            this.inspector.append(title, content);
-        } catch (_error) {
-            // Sections and non-recallable references remain ordinary links.
-        }
-    }
-
     private installHandlers(): void {
         this.root.addEventListener('click', event => {
             const target = event.target as HTMLElement | null;
@@ -520,6 +697,11 @@ class ReaderApplication {
                 void this.openInspector(inspectorButton.dataset.inspector);
                 return;
             }
+            const fontSizeButton = target.closest<HTMLButtonElement>('[data-font-size]');
+            if (fontSizeButton?.dataset.fontSize) {
+                this.updateFontSize(this.fontSize + Number(fontSizeButton.dataset.fontSize));
+                return;
+            }
             const link = target.closest<HTMLAnchorElement>('a[data-reader-page], a[data-formal-ref]');
             if (!link) return;
             const filePath = link.dataset.readerPage;
@@ -531,16 +713,6 @@ class ReaderApplication {
                 return;
             }
             void this.openPage(filePath, 'push', anchor);
-        });
-        this.root.addEventListener('mouseover', event => {
-            const reference = (event.target as HTMLElement | null)?.closest<HTMLAnchorElement>('a[data-formal-ref]');
-            if (!reference?.dataset.formalRef) return;
-            window.clearTimeout(this.recallTimer);
-            this.recallTimer = window.setTimeout(() => void this.showRecall(reference.dataset.formalRef as string), 420);
-        });
-        this.root.addEventListener('mouseout', event => {
-            if (!(event.target as HTMLElement | null)?.closest('a[data-formal-ref]')) return;
-            window.clearTimeout(this.recallTimer);
         });
         window.addEventListener('popstate', () => {
             const filePath = queryPath();
