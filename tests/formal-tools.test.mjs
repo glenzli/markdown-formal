@@ -1236,6 +1236,22 @@ async function testReaderMcpServer() {
     }
 }
 
+async function testReaderPluginMcpConfig() {
+    const pluginRoot = path.join(repoRoot, 'plugins', 'markdown-formal-reader');
+    const manifest = JSON.parse(await fs.readFile(path.join(pluginRoot, '.codex-plugin', 'plugin.json'), 'utf8'));
+    const mcpConfig = JSON.parse(await fs.readFile(path.join(pluginRoot, '.mcp.json'), 'utf8'));
+
+    assert.equal(manifest.mcpServers, './.mcp.json');
+    assert.deepEqual(mcpConfig, {
+        mcpServers: {
+            'markdown-formal-reader': {
+                command: 'markdown-formal',
+                args: ['mcp']
+            }
+        }
+    });
+}
+
 async function testReaderCodexTaskBinding() {
     const root = await makeWorkspace('reader-codex');
     await fs.writeFile(path.join(root, 'book1', '01-foundations.md'), [
@@ -1916,6 +1932,7 @@ const tests = [
     ['perf-dummy thresholds', testPerfDummyThresholds],
     ['local Reader server', testReaderServer],
     ['local Reader MCP server', testReaderMcpServer],
+    ['Reader plugin MCP configuration', testReaderPluginMcpConfig],
     ['local Reader Codex task binding', testReaderCodexTaskBinding],
     ['local Reader launcher', testReaderLauncher],
     ['page heading formatting', testPageHeadingFormatting],
