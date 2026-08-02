@@ -229,7 +229,7 @@ codex plugin marketplace add /path/to/markdown-formal
 codex plugin add markdown-formal-reader@personal
 ```
 
-The plugin calls `open_reader` for the current project or a project-relative Markdown page. If no prepared project is available, it opens Reader's local project launcher. MCP binds only to `127.0.0.1` and does not write manuscript or `.markdown-formal/` artifacts.
+The plugin calls `formal_reader` for the current project or a project-relative Markdown page. If no prepared project is available, it opens Reader's local project launcher. MCP binds only to `127.0.0.1` and does not write manuscript or `.markdown-formal/` artifacts.
 
 ### AI Workflow Integration
 
@@ -694,7 +694,7 @@ codex plugin marketplace add /path/to/markdown-formal
 codex plugin add markdown-formal-reader@personal
 ```
 
-发布版本同样可以从安装包根目录添加 marketplace。插件调用 `open_reader`：它可直接打开当前项目或某个项目相对 Markdown 页面；没有可用项目时会打开 Reader 的本机项目启动台。
+发布版本同样可以从安装包根目录添加 marketplace。插件调用 `formal_reader`：它可直接打开当前项目或某个项目相对 Markdown 页面；没有可用项目时会打开 Reader 的本机项目启动台。
 
 MCP 与 Reader 一样只绑定 `127.0.0.1`，不写入书稿或 `.markdown-formal/` 产物。
 

@@ -49,7 +49,7 @@ npm run formal -- serve /path/to/writing-project
 markdown-formal mcp
 ```
 
-安装 plugin 后，Codex 可以调用 `open_reader` 打开当前 prepared project 或指定章节；没有绑定项目时则显示本机项目启动台。开发使用 `npm link` 时，确保 `markdown-formal` 在 `PATH` 中即可。
+安装 plugin 后，Codex 可以调用 `formal_reader` 打开当前 prepared project 或指定章节；没有绑定项目时则显示本机项目启动台。开发使用 `npm link` 时，确保 `markdown-formal` 在 `PATH` 中即可。
 
 ![多卷章节导航](media/readme/navigation.png)
 

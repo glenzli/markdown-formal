@@ -5,7 +5,7 @@ description: Open the local Markdown Formal Reader for a prepared formal Markdow
 
 # Open Markdown Formal Reader
 
-Use `open_reader` when the user asks to read, inspect, navigate, or discuss a Markdown Formal project in the Reader.
+Use `formal_reader` when the user asks to read, inspect, navigate, or discuss a Markdown Formal project in the Reader.
 
 - Pass the current project root when it contains `.markdown-formal/config.json`.
 - Pass a project-relative `pagePath` when the user identified a chapter to open.

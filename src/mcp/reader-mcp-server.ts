@@ -83,10 +83,10 @@ export async function runReaderMcpServer(options: ReaderMcpServerOptions = {}): 
         name: 'markdown-formal-reader',
         version: '0.1.0'
     }, {
-        instructions: 'Use open_reader to launch Markdown Formal Reader for a prepared formal Markdown project. The Reader is local-only and read-only; it needs .markdown-formal/config.json.'
+        instructions: 'Use formal_reader to launch Markdown Formal Reader for a prepared formal Markdown project. The Reader is local-only and read-only; it needs .markdown-formal/config.json.'
     });
 
-    server.registerTool('open_reader', {
+    server.registerTool('formal_reader', {
         title: 'Open Markdown Formal Reader',
         description: 'Start or reuse the local Markdown Formal Reader for a prepared project, optionally opening one Markdown page.',
         inputSchema: {

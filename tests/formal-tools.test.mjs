@@ -1218,12 +1218,12 @@ async function testReaderMcpServer() {
     const mcp = await startMcp(root);
     try {
         const tools = await mcp.request('tools/list');
-        const openReader = tools.tools.find(tool => tool.name === 'open_reader');
-        assert.ok(openReader);
-        assert.equal(openReader._meta, undefined);
+        const formalReader = tools.tools.find(tool => tool.name === 'formal_reader');
+        assert.ok(formalReader);
+        assert.equal(formalReader._meta, undefined);
 
         const launch = await mcp.request('tools/call', {
-            name: 'open_reader',
+            name: 'formal_reader',
             arguments: { pagePath: 'book1/01-foundations.md' }
         });
         assert.equal(launch.isError, undefined);

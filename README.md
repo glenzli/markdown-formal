@@ -46,7 +46,7 @@ The repository also ships a Codex MCP plugin. It starts or reuses the local Read
 markdown-formal mcp
 ```
 
-After installation, Codex can call `open_reader` for the current prepared project or a named chapter. With no available project, it opens the local project launcher. During development, make `markdown-formal` available on `PATH`, for example with `npm link`.
+After installation, Codex can call `formal_reader` for the current prepared project or a named chapter. With no available project, it opens the local project launcher. During development, make `markdown-formal` available on `PATH`, for example with `npm link`.
 
 ![Multi-volume chapter navigation](media/readme/navigation.png)
 
@@ -291,7 +291,7 @@ npm run formal -- serve /path/to/writing-project
 markdown-formal mcp
 ```
 
-安装 plugin 后，Codex 可以调用 `open_reader` 打开当前 prepared project 或指定章节；没有绑定项目时则显示本机项目启动台。开发使用 `npm link` 时，确保 `markdown-formal` 在 `PATH` 中即可。
+安装 plugin 后，Codex 可以调用 `formal_reader` 打开当前 prepared project 或指定章节；没有绑定项目时则显示本机项目启动台。开发使用 `npm link` 时，确保 `markdown-formal` 在 `PATH` 中即可。
 
 ![多卷章节导航](media/readme/navigation.png)
 
