@@ -17,28 +17,27 @@ vasm:
 [核心模型](../docs-src/fragments/formal-core-model.vasm.md "@import:inline")
 
 - `#h-...` / `#tmp-*` 只写在声明位置；正文引用只写 `@h-...`、`@h-....title` 或 `@h-....full`。不要在行文中写 `命题 #h-...`、`由 #h-...`，也不要手写会变化的显示编号。
-- 新对象写 `#tmp-*`，由工具生成正式 hash。已有对象和章/页的 hash 必须从 `reference-map.md` 复制。
+- 新对象写 `#tmp-*`，由工具生成正式 hash。已有对象和章/页的 hash 从已读取的原文复制；目标不在当前上下文时，再查 `reference-map.md` 的对应行。
 - 定义不加 hash、不参与 ref；普通正文术语也不自动改成 ref。
 - 保留原始 Markdown 与 LaTeX；不要转义公式、手工替换显示编号，或直接编辑生成的索引和报告。
 
 ## 日常闭环
 
-开始前：
+首次进入任务或索引可能过期时：
 
 ```bash
 npm run formal -- prepare
 ```
 
-读取目标正文和 `.markdown-formal/reference-map.md`。只有本次涉及术语、概念附录或符号约定时，再读取 `.markdown-formal/project-analysis.md`。
+先读取目标正文。需要引用当前上下文外的既有对象、章节或页面时，再从 `.markdown-formal/reference-map.md` 读取对应行；不要为一次局部编辑加载整张表。只有本次涉及术语、概念附录或符号约定时，再读取 `.markdown-formal/project-analysis.md`。
 
 编辑后：
 
 ```bash
 npm run formal -- finish path/to/chapter-or-dir
-npm run formal -- verify
 ```
 
-`finish` 固化目标范围内的 `tmp-*`。只有本次确实新增跨文件 `@tmp-*` 引用时才加 `--all`。
+`finish` 固化目标范围内的 `tmp-*`，并已执行校验。只有本次确实新增跨文件 `@tmp-*` 引用时才加 `--all`。仅在直接运行 `finalize`、执行迁移，或作为独立 release 门禁时，再单独运行 `verify`。
 
 ## 声明与引用
 

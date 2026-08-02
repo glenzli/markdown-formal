@@ -10,31 +10,30 @@
 - 符号表：`.markdown-formal/symbols.json` 只记录项目明确约定且发生语义变化的特殊 LaTeX 记号，不索引通用变量、完整推导公式或一次性符号。
 - 依赖图：命题/引理/定理/推论之间的显式依赖来自 `@h-...`，权威数据是 `.markdown-formal/dependency-graph.json`；AI 或证明器推测出的边必须另存为 suggested 数据。
 - 导出：普通 Markdown/PDF 不直接消费 formal 源；先用 `export-md` 或 `export-md-split` 降级 marker/ref，项目级后处理之后再用 `render-pdf`。
-- 工具闭环：写作或迁移前运行 `prepare`，编辑后运行 `finish <file-or-dir>`，提交生成或迁移内容前运行 `verify`。
+- 工具闭环：进入任务或索引可能过期时运行 `prepare`，普通编辑后运行 `finish <file-or-dir>`（它会校验）；仅在直接 `finalize`、执行迁移或独立 release 门禁时另行运行 `verify`。
 
 * `#h-...` / `#tmp-*` 只写在声明位置；正文引用只写 `@h-...`、`@h-....title` 或 `@h-....full`。不要在行文中写 `命题 #h-...`、`由 #h-...`，也不要手写会变化的显示编号。
-* 新对象写 `#tmp-*`，由工具生成正式 hash。已有对象和章/页的 hash 必须从 `reference-map.md` 复制。
+* 新对象写 `#tmp-*`，由工具生成正式 hash。已有对象和章/页的 hash 从已读取的原文复制；目标不在当前上下文时，再查 `reference-map.md` 的对应行。
 * 定义不加 hash、不参与 ref；普通正文术语也不自动改成 ref。
 * 保留原始 Markdown 与 LaTeX；不要转义公式、手工替换显示编号，或直接编辑生成的索引和报告。
 
 ## 日常闭环
 
-开始前：
+首次进入任务或索引可能过期时：
 
 ```bash
 npm run formal -- prepare
 ```
 
-读取目标正文和 `.markdown-formal/reference-map.md`。只有本次涉及术语、概念附录或符号约定时，再读取 `.markdown-formal/project-analysis.md`。
+先读取目标正文。需要引用当前上下文外的既有对象、章节或页面时，再从 `.markdown-formal/reference-map.md` 读取对应行；不要为一次局部编辑加载整张表。只有本次涉及术语、概念附录或符号约定时，再读取 `.markdown-formal/project-analysis.md`。
 
 编辑后：
 
 ```bash
 npm run formal -- finish path/to/chapter-or-dir
-npm run formal -- verify
 ```
 
-`finish` 固化目标范围内的 `tmp-*`。只有本次确实新增跨文件 `@tmp-*` 引用时才加 `--all`。
+`finish` 固化目标范围内的 `tmp-*`，并已执行校验。只有本次确实新增跨文件 `@tmp-*` 引用时才加 `--all`。仅在直接运行 `finalize`、执行迁移，或作为独立 release 门禁时，再单独运行 `verify`。
 
 ## 声明与引用
 

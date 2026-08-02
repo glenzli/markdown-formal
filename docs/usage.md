@@ -24,7 +24,7 @@ The short version:
 - Symbol table: `.markdown-formal/symbols.json` records only project-defined special LaTeX notation with an explicit semantic change, not generic variables, complete derivations, or one-off symbols.
 - Dependency graph: explicit theorem-like dependencies come from `@h-...`; the canonical data is `.markdown-formal/dependency-graph.json`; AI- or prover-suggested edges must be stored separately as suggested data.
 - Export: ordinary Markdown/PDF does not consume formal source directly; use `export-md` or `export-md-split` to lower markers/refs first, then run project-specific postprocessing and `render-pdf`.
-- Tool loop: run `prepare` before writing or migration, `finish <file-or-dir>` after editing, and `verify` before committing generated or migrated content.
+- Tool loop: run `prepare` when entering a task or when the index may be stale, then run `finish <file-or-dir>` for ordinary edits; `finish` validates. Run `verify` separately only after direct `finalize`, a migration, or as an independent release gate.
 
 ### Core Syntax
 
@@ -171,7 +171,7 @@ Edit a file or directory, then finalize temporary IDs and refresh reports:
 npm run formal -- finish path/to/chapter-or-dir
 ```
 
-Run the strict gate:
+`finish` already validates. Run the strict gate separately only after direct `finalize`, a migration, or when an independent release gate is required:
 
 ```bash
 npm run formal -- verify
@@ -464,7 +464,7 @@ local engine is installed.
 - 符号表：`.markdown-formal/symbols.json` 只记录项目明确约定且发生语义变化的特殊 LaTeX 记号，不索引通用变量、完整推导公式或一次性符号。
 - 依赖图：命题/引理/定理/推论之间的显式依赖来自 `@h-...`，权威数据是 `.markdown-formal/dependency-graph.json`；AI 或证明器推测出的边必须另存为 suggested 数据。
 - 导出：普通 Markdown/PDF 不直接消费 formal 源；先用 `export-md` 或 `export-md-split` 降级 marker/ref，项目级后处理之后再用 `render-pdf`。
-- 工具闭环：写作或迁移前运行 `prepare`，编辑后运行 `finish <file-or-dir>`，提交生成或迁移内容前运行 `verify`。
+- 工具闭环：进入任务或索引可能过期时运行 `prepare`，普通编辑后运行 `finish <file-or-dir>`（它会校验）；仅在直接 `finalize`、执行迁移或独立 release 门禁时另行运行 `verify`。
 
 ## 核心语法
 
@@ -611,7 +611,7 @@ npm run formal -- prepare
 npm run formal -- finish path/to/chapter-or-dir
 ```
 
-运行严格校验：
+`finish` 已执行校验。只有直接使用 `finalize`、执行迁移，或需要独立 release 门禁时，再运行：
 
 ```bash
 npm run formal -- verify

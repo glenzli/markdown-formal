@@ -2661,9 +2661,9 @@ function printHelp({ all = false } = {}) {
 Migrations are dry-run by default. Pass --apply to edit files.
 
 Agent workflow:
-  1. Run prepare.
-  2. Read .markdown-formal/agent-guide.md and .markdown-formal/reference-map.md.
-  3. Use tmp-* for new objects and page anchors, then run finish on the edited file or directory.
+  1. Run prepare when starting or resuming a task, or when the index may be stale.
+  2. Read the target source; retrieve only matching rows from .markdown-formal/reference-map.md for external existing refs.
+  3. Use tmp-* for new objects and page anchors, then run finish on the edited file or directory (it verifies).
   4. For old numbered prose, migrate-text-refs <scope> updates target files plus incoming references by default.
   5. If you use finalize directly, run verify before treating generated or migrated content as complete.
 
@@ -2704,9 +2704,9 @@ Advanced:
 Migrations are dry-run by default. Pass --apply to edit files.
 
 Agent workflow:
-  1. Run prepare.
-  2. Read .markdown-formal/agent-guide.md and .markdown-formal/reference-map.md.
-  3. Use tmp-* for new objects and page anchors, then run finish on the edited file or directory.
+  1. Run prepare when starting or resuming a task, or when the index may be stale.
+  2. Read the target source; retrieve only matching rows from .markdown-formal/reference-map.md for external existing refs.
+  3. Use tmp-* for new objects and page anchors, then run finish on the edited file or directory (it verifies).
   4. For old numbered prose, migrate-text-refs <scope> updates target files plus incoming references by default.
   5. If you use finalize directly, run verify before treating generated or migrated content as complete.`);
 }

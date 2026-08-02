@@ -101,7 +101,7 @@ npm run formal -- prepare
 npm run formal -- finish path/to/chapter-or-dir
 ```
 
-提交生成或迁移内容前运行校验：
+`finish` 已执行校验。只有直接使用 `finalize`、执行迁移，或需要独立 release 门禁时，再运行：
 
 ```bash
 npm run formal -- verify
