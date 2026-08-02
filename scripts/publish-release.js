@@ -246,9 +246,7 @@ function releaseCommitRange() {
 }
 
 function releaseAssets(pkg) {
-    const vsix = `dist/${pkg.name}-${pkg.version}.vsix`;
     return [
-        { path: vsix, label: `${pkg.name}-${pkg.version}.vsix` },
         { path: 'dist/manifest.json', label: 'manifest.json' },
         { path: 'dist/checksums.txt', label: 'checksums.txt' },
         { path: 'dist/INSTALL.md', label: 'INSTALL.md' },
@@ -283,7 +281,6 @@ function releaseNotesFile(tag, pkg) {
         `- \`${pkg.name}@${pkg.version}\``,
         '',
         '## Artifacts',
-        `- \`${pkg.name}-${pkg.version}.vsix\`: VS Code-compatible extension package.`,
         '- `manifest.json`: release artifact map.',
         '- `checksums.txt`: SHA-256 checksums.',
         '- `INSTALL.md`: installation and vendoring notes.',
@@ -292,7 +289,6 @@ function releaseNotesFile(tag, pkg) {
         '',
         '```bash',
         `npm install -D ${pkg.name}`,
-        `code --install-extension ${pkg.name}-${pkg.version}.vsix`,
         '```',
         '',
         '## Changes',

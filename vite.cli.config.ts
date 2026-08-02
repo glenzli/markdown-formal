@@ -5,10 +5,6 @@ export default defineConfig({
     resolve: {
         alias: [
             {
-                find: '@markdown-formal/core/debug-log',
-                replacement: path.resolve(__dirname, 'packages/core/src/debug-log.ts')
-            },
-            {
                 find: '@markdown-formal/core',
                 replacement: path.resolve(__dirname, 'packages/core/src/formal-core.ts')
             }

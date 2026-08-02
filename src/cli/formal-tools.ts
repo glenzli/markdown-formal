@@ -7,7 +7,7 @@ import {
     DEFAULT_CONFIG,
     HASH_ID_RE,
     TMP_ID_RE,
-    buildPreviewCache,
+    buildReaderIndex,
     displayLabel,
     displayNumber,
     escapeRegExp,
@@ -149,7 +149,7 @@ async function scanWorkspace() {
 
 async function writeArtifacts(state) {
     await ensureCacheDir();
-    await fs.writeFile(path.join(CACHE_DIR, 'preview-cache.json'), `${JSON.stringify(buildPreviewCache(state), null, 2)}\n`, 'utf8');
+    await fs.writeFile(path.join(CACHE_DIR, 'reader-index.json'), `${JSON.stringify(buildReaderIndex(state), null, 2)}\n`, 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'dependency-graph.json'), `${JSON.stringify(state.dependencyGraph, null, 2)}\n`, 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'dependency-report.md'), renderDependencyReport(state.dependencyGraph), 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'reference-map.md'), renderReferenceMap(state.definitions, state.config, state.pages), 'utf8');
@@ -160,6 +160,7 @@ async function writeArtifacts(state) {
     await removeStaleArtifact('pages.json');
     await removeStaleArtifact('preview-index.json');
     await removeStaleArtifact('inventory.full.json');
+    await removeStaleArtifact('preview-cache.json');
 }
 
 async function removeStaleArtifact(fileName) {

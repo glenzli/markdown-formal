@@ -100,7 +100,7 @@ npm run formal -- verify
 
 人工维护入口只有：
 
-- `.markdown-formal/config.json`：语言、扫描排除、跨 book 查询依赖、PDF 默认值、预览调试等配置。
+- `.markdown-formal/config.json`：语言、扫描排除、跨 book 查询依赖和 PDF 默认值等配置。
 - `.markdown-formal/definitions.json`：AI 维护的定义查询例外源表。
 - `.markdown-formal/symbols.json`：AI 维护的特殊符号源表。
 
@@ -125,12 +125,6 @@ npm run formal -- verify
       "book3": ["book2"]
     }
   },
-  "preview": {
-    "ignoreHover": [
-      "appendix-b-concepts.md",
-      "book1/**/concept-*.md"
-    ]
-  },
   "render": {
     "pageHeadingStyle": "label-title"
   }
@@ -142,8 +136,7 @@ npm run formal -- verify
 - `npm run formal` 应从拥有 `.markdown-formal/` 的 formal root 执行。
 - 根目录扫描时，构建产物、上下文目录、草稿目录、外部证明工程等必须写入 `scan.exclude`。
 - 定义搜索和当前页符号表默认只在当前 book 内生效；跨 book 查询和跨 book 正文引用必须显式配置依赖。
-- 本地 Reader 是主阅读界面：用 `npm run formal -- serve .` 启动；它只绑定 `127.0.0.1`、只读、内存扫描，不依赖 `preview-cache.json`。
-- `preview.ignoreHover` 和 `debug.previewLog` 只属于旧 VS Code 兼容扩展；不要让这些兼容项约束 core、CLI 或 Reader。
+- 本地 Reader 是唯一支持的阅读界面：用 `npm run formal -- serve .` 启动；它只绑定 `127.0.0.1`、只读、内存扫描。`reader-index.json` 只用于结构检查，不是运行时依赖。
 
 ## Release 和 vendoring 边界
 
@@ -152,7 +145,7 @@ npm run formal -- verify
 1. 在 `markdown-formal` 源仓库运行 `npm run release:local`。
 2. 核对 `dist/checksums.txt`。
 3. 把 release 包里的 `cli/` vendored 到目标项目 `tools/markdown-formal/`。
-4. 日常阅读优先使用 `node tools/markdown-formal/out/cli/formal-tools.js serve .`；如仍需要编辑器内嵌预览，再安装 release 包里的 legacy `.vsix`。
+4. 日常阅读使用 `node tools/markdown-formal/out/cli/formal-tools.js serve .`。
 5. 把 release 包里的 `skills/editor.md` 作为 executable 规则输入，不要替代目标项目原生 AI 指令。
 6. 在目标项目运行 `npm run formal -- prepare` 和 `npm run formal -- verify`。
 

@@ -2,6 +2,8 @@
   "name": "markdown-formal-vscode-extension",
   "displayName": "Markdown Formal",
   "description": "Legacy VS Code-compatible preview integration for markdown-formal",
+  "private": true,
+  "deprecated": "Archived with markdown-formal 0.1.0. Use the local Reader via `markdown-formal serve` instead.",
   "version": "0.1.0",
   "publisher": "glenzli",
   "license": "MIT",

@@ -13,7 +13,7 @@
 
 - Long-lived implementation KBs, source indexes, call graphs, or architecture mirrors.
 - Release inclusion of repository-only development context such as `DEV_SKELETON.md`, `REVIEW_SKELETON.md`, or `AGENTS.md`.
-- Release or VSIX inclusion of `docs-src/`, `skills-src/`, `.vasmc/`, or VASMC build-state files.
+- Release inclusion of `docs-src/`, `skills-src/`, `.vasmc/`, or VASMC build-state files.
 - Changes that damage math, LaTeX, Markdown, or PDF export fidelity for formal writing content.
 - Changes that make enhanced preview affect workspaces without formal configuration.
 - Changes that make definitions or symbols participate in theorem-like numbering by default.

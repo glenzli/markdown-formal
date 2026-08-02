@@ -10,7 +10,7 @@
 
 ![markdown-formal banner](media/readme/banner.png)
 
-`markdown-formal` is a local Reader service and CLI for long-form mathematical and technical writing. It can run beside Codex or in any browser side panel; the VS Code preview remains only as an optional legacy compatibility package.
+`markdown-formal` is a local Reader service and CLI for long-form mathematical and technical writing. It can run beside Codex or in any browser side panel.
 
 It keeps stable hash IDs in source Markdown, then renders human-facing numbering, references, navigation, definition lookup, symbol tables, dependency graphs, and publication exports from generated metadata.
 
@@ -61,28 +61,6 @@ Run the primary interface:
 npm run formal -- serve /path/to/writing-project
 ```
 
-### Optional Legacy VS Code Package
-
-For projects that still require the embedded VS Code preview, build and link the compatibility package separately:
-
-```bash
-npm run build:vscode-extension
-```
-
-Link into VS Code:
-
-```bash
-ln -s "$PWD/packages/vscode-extension" ~/.vscode/extensions/markdown-formal
-```
-
-Link into Antigravity:
-
-```bash
-ln -s "$PWD/packages/vscode-extension" ~/.antigravity-ide/extensions/markdown-formal
-```
-
-The package retains the existing baseline. New capabilities land in the local Reader first. Reload the editor window after rebuilding.
-
 ### Use In A Writing Project
 
 A writing project vendors the CLI and owns its `.markdown-formal/` metadata:
@@ -125,7 +103,7 @@ Before committing generated or migrated content:
 npm run formal -- verify
 ```
 
-The Reader requires `.markdown-formal/config.json`, which `prepare` creates. It scans the current project state in memory and does not require or write a preview cache. The legacy VS Code preview still requires `.markdown-formal/preview-cache.json` and leaves ordinary Markdown unchanged when formal configuration is absent.
+The Reader requires `.markdown-formal/config.json`, which `prepare` creates. It scans the current project state in memory; `reader-index.json` is an inspectable structural snapshot, not a Reader runtime prerequisite.
 
 Install the CLI from npm:
 
@@ -216,8 +194,6 @@ Release output:
 
 ```text
 dist/
-  markdown-formal-vscode-extension-<version>.vsix
-  vscode-extension/
   cli/
   skills/
   vasm-catalog/
@@ -229,7 +205,7 @@ dist/
   checksums.txt
 ```
 
-`cli/` contains the vendorable CLI and Reader assets; the npm package installs the `markdown-formal` CLI. The VSIX and `vscode-extension/` are optional legacy compatibility artifacts. Use `skills/` as reviewed AI workflow artifacts. When consuming through VASMC, prefer `vasm-catalog/vasmc-catalog.yaml` so the consumer lockfile fixes artifact hashes.
+`cli/` contains the vendorable CLI and Reader assets; the npm package installs the `markdown-formal` CLI. Use `skills/` as reviewed AI workflow artifacts. When consuming through VASMC, prefer `vasm-catalog/vasmc-catalog.yaml` so the consumer lockfile fixes artifact hashes.
 
 Release orchestration:
 
@@ -257,7 +233,7 @@ npm run formal -- perf-dummy 50 200 --max-ms 2000 --max-heap-mb 256
 npm audit --registry=https://registry.npmjs.org --omit=optional
 ```
 
-The Reader, CLI, and legacy extension outputs remain dependency-free after bundling. Development dependencies are pinned for TypeScript, Vite bundling, Markdown/LaTeX rendering, and VSIX packaging.
+The Reader and CLI outputs remain dependency-free after bundling. Development dependencies are pinned for TypeScript, Vite bundling, and Markdown/LaTeX rendering.
 
 ---
 
@@ -267,7 +243,7 @@ The Reader, CLI, and legacy extension outputs remain dependency-free after bundl
 
 ![markdown-formal banner](media/readme/banner.png)
 
-`markdown-formal` 是一个本地 Reader 服务和 CLI，用于长期维护数学或技术类 Markdown 书稿。它可与 Codex 或任意浏览器侧栏并行运行；VS Code Preview 仅作为可选的 legacy 兼容包保留。
+`markdown-formal` 是一个本地 Reader 服务和 CLI，用于长期维护数学或技术类 Markdown 书稿。它可与 Codex 或任意浏览器侧栏并行运行。
 
 它让源码保存稳定的 hash ID，再由工具渲染面向读者的编号、引用、导航、定义查询、符号表、依赖图和发布产物。
 
@@ -320,28 +296,6 @@ npm run build
 npm run formal -- serve /path/to/writing-project
 ```
 
-### 可选 Legacy VS Code 包
-
-如果项目仍需要 VS Code 内嵌预览，单独构建并链接 compatibility package：
-
-```bash
-npm run build:vscode-extension
-```
-
-链接到 VS Code：
-
-```bash
-ln -s "$PWD/packages/vscode-extension" ~/.vscode/extensions/markdown-formal
-```
-
-链接到 Antigravity：
-
-```bash
-ln -s "$PWD/packages/vscode-extension" ~/.antigravity-ide/extensions/markdown-formal
-```
-
-该包保持现有基础功能，但新能力优先实现于本地 Reader。重新构建后 reload editor window。
-
 ### 在写作项目中使用
 
 目标项目通常 vendoring CLI，并自己维护 `.markdown-formal/` 数据：
@@ -384,7 +338,7 @@ npm run formal -- finish path/to/chapter-or-dir
 npm run formal -- verify
 ```
 
-Reader 需要项目根目录存在 `.markdown-formal/config.json`，可由 `prepare` 创建。它每次在内存中扫描当前状态，不依赖或写入 preview cache。legacy VS Code 预览仍需要生成 `.markdown-formal/preview-cache.json`，且在没有 formal 配置时保持原生 Markdown 预览。
+Reader 需要项目根目录存在 `.markdown-formal/config.json`，可由 `prepare` 创建。它每次在内存中扫描当前状态；`reader-index.json` 仅是可检查的结构化快照，不是 Reader 的运行时前提。
 
 如果通过 npm 使用 CLI：
 
@@ -476,8 +430,6 @@ npm run release:check
 
 ```text
 dist/
-  markdown-formal-vscode-extension-<version>.vsix
-  vscode-extension/
   cli/
   skills/
   vasm-catalog/
@@ -489,7 +441,7 @@ dist/
   checksums.txt
 ```
 
-`cli/` 包含目标项目本地 vendoring 所需的 CLI 和 Reader 静态资源，npm 包用于安装 `markdown-formal` CLI。VSIX 和 `vscode-extension/` 是可选 legacy 兼容产物；`skills/` 包含需要审阅和融合的 AI artifact。通过 VASMC 接入时，优先使用 `vasm-catalog/vasmc-catalog.yaml` 并让 consumer lockfile 固定 hash。
+`cli/` 包含目标项目本地 vendoring 所需的 CLI 和 Reader 静态资源，npm 包用于安装 `markdown-formal` CLI。`skills/` 包含需要审阅和融合的 AI artifact。通过 VASMC 接入时，优先使用 `vasm-catalog/vasmc-catalog.yaml` 并让 consumer lockfile 固定 hash。
 
 发布编排：
 
@@ -517,4 +469,4 @@ npm run formal -- perf-dummy 50 200 --max-ms 2000 --max-heap-mb 256
 npm audit --registry=https://registry.npmjs.org --omit=optional
 ```
 
-构建后的 Reader、CLI 和 legacy 扩展运行时保持无 npm 运行时依赖。开发依赖只用于 TypeScript、Vite 打包、Markdown/LaTeX 渲染和 VSIX 打包。
+构建后的 Reader 和 CLI 运行时保持无 npm 运行时依赖。开发依赖只用于 TypeScript、Vite 打包和 Markdown/LaTeX 渲染。

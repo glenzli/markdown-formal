@@ -303,23 +303,23 @@ async function testCustomDictionaryTextRefs() {
     const chapter = await read(root, 'book1/01-a.md');
     assert.match(chapter, /By @h-2222222222222222 we conclude\./);
 
-    const previewCache = JSON.parse(await read(root, '.markdown-formal/preview-cache.json'));
-    assert.equal(previewCache.entries['h-2222222222222222'].content, 'Theorem (Base): Base statement.');
-    assert.equal(previewCache.definitions[0].title, 'Spectrum');
-    assert.equal(previewCache.definitions[0].filePath, 'book1/01-a.md');
-    assert.equal(previewCache.definitions[0].line, 5);
-    assert.equal(previewCache.definitions[0].content, 'Definition (Spectrum): A definition body.');
-    assert.equal(previewCache.definitions[1].title, '加粗术语');
-    assert.equal(previewCache.definitions[1].line, 7);
-    assert.equal(previewCache.definitions[1].content, '**定义（加粗术语）：** 中文定义正文。');
-    assert.equal(previewCache.definitions[2].title, '指标密度');
-    assert.equal(previewCache.definitions[2].line, 9);
-    assert.match(previewCache.definitions[2].content, /\\alpha\(D\)=/);
-    assert.match(previewCache.definitions[2].content, /其中 \$D\$ 是局部椭圆算子。/);
-    assert.equal(previewCache.definitions[3].title, '非标准定义');
-    assert.deepEqual(previewCache.definitions[3].aliases, ['别名定义']);
-    assert.equal(previewCache.definitions[3].line, 17);
-    assert.match(previewCache.definitions[3].content, /称为“非标准定义”/);
+    const readerIndex = JSON.parse(await read(root, '.markdown-formal/reader-index.json'));
+    assert.equal(readerIndex.entries['h-2222222222222222'].content, 'Theorem (Base): Base statement.');
+    assert.equal(readerIndex.definitions[0].title, 'Spectrum');
+    assert.equal(readerIndex.definitions[0].filePath, 'book1/01-a.md');
+    assert.equal(readerIndex.definitions[0].line, 5);
+    assert.equal(readerIndex.definitions[0].content, 'Definition (Spectrum): A definition body.');
+    assert.equal(readerIndex.definitions[1].title, '加粗术语');
+    assert.equal(readerIndex.definitions[1].line, 7);
+    assert.equal(readerIndex.definitions[1].content, '**定义（加粗术语）：** 中文定义正文。');
+    assert.equal(readerIndex.definitions[2].title, '指标密度');
+    assert.equal(readerIndex.definitions[2].line, 9);
+    assert.match(readerIndex.definitions[2].content, /\\alpha\(D\)=/);
+    assert.match(readerIndex.definitions[2].content, /其中 \$D\$ 是局部椭圆算子。/);
+    assert.equal(readerIndex.definitions[3].title, '非标准定义');
+    assert.deepEqual(readerIndex.definitions[3].aliases, ['别名定义']);
+    assert.equal(readerIndex.definitions[3].line, 17);
+    assert.match(readerIndex.definitions[3].content, /称为“非标准定义”/);
     await assert.rejects(read(root, '.markdown-formal/definition-index.md'), /ENOENT/);
 }
 
@@ -346,8 +346,8 @@ async function testStructuredDefinitionMarkerContent() {
 
     const prepare = runCli(root, ['prepare']);
     assert.equal(prepare.status, 0, combinedOutput(prepare));
-    const previewCache = JSON.parse(await read(root, '.markdown-formal/preview-cache.json'));
-    const definition = previewCache.definitions.find(item => item.title === '算子网络环路');
+    const readerIndex = JSON.parse(await read(root, '.markdown-formal/reader-index.json'));
+    const definition = readerIndex.definitions.find(item => item.title === '算子网络环路');
     assert.ok(definition);
     assert.match(definition.content, /\*\*\(i\)\*\* 给定有限有向图/);
     assert.match(definition.content, /G=\(V,E\)\./);
@@ -382,14 +382,14 @@ async function testSymbolCache() {
 
     const prepare = runCli(root, ['prepare']);
     assert.equal(prepare.status, 0, combinedOutput(prepare));
-    const previewCache = JSON.parse(await read(root, '.markdown-formal/preview-cache.json'));
-    assert.equal(previewCache.symbols.length, 2);
-    assert.equal(previewCache.symbols[0].display, '$\\sigma(T)$');
-    assert.equal(previewCache.symbols[1].display, '$\\lambda$');
-    assert.equal(previewCache.symbols[0].regex, '^\\\\sigma\\((.+?)\\)$');
-    assert.deepEqual(previewCache.symbols[0].captures, ['operator']);
-    assert.equal(previewCache.symbols[0].sourceFilePath, 'book1/01-a.md');
-    assert.equal(previewCache.symbols[0].sourceLine, 3);
+    const readerIndex = JSON.parse(await read(root, '.markdown-formal/reader-index.json'));
+    assert.equal(readerIndex.symbols.length, 2);
+    assert.equal(readerIndex.symbols[0].display, '$\\sigma(T)$');
+    assert.equal(readerIndex.symbols[1].display, '$\\lambda$');
+    assert.equal(readerIndex.symbols[0].regex, '^\\\\sigma\\((.+?)\\)$');
+    assert.deepEqual(readerIndex.symbols[0].captures, ['operator']);
+    assert.equal(readerIndex.symbols[0].sourceFilePath, 'book1/01-a.md');
+    assert.equal(readerIndex.symbols[0].sourceLine, 3);
 }
 
 async function testWarnsUnbalancedSymbolPattern() {
@@ -449,24 +449,24 @@ async function testRecallBoundariesAndOptionalBlocks() {
 
     const prepare = runCli(root, ['prepare']);
     assert.equal(prepare.status, 0, combinedOutput(prepare));
-    const previewCache = JSON.parse(await read(root, '.markdown-formal/preview-cache.json'));
+    const readerIndex = JSON.parse(await read(root, '.markdown-formal/reader-index.json'));
 
-    assert.equal(previewCache.entries['h-1111111111111111'].content, undefined);
-    assert.equal(previewCache.entries['h-2222222222222222'].content, [
+    assert.equal(readerIndex.entries['h-1111111111111111'].content, undefined);
+    assert.equal(readerIndex.entries['h-2222222222222222'].content, [
         'Theorem (Boundary): First line of the statement.',
         'Second statement line with $x$.'
     ].join('\n'));
-    assert.doesNotMatch(previewCache.entries['h-2222222222222222'].content, /proof body/i);
-    assert.match(previewCache.entries['h-3333333333333333'].content, /second line/);
-    assert.equal(previewCache.entries['h-8888888888888888'].title, '旁支事实');
-    assert.match(previewCache.entries['h-8888888888888888'].content, /^> 注/);
-    assert.doesNotMatch(previewCache.entries['h-8888888888888888'].content, /不应进入 recall/);
-    assert.equal(previewCache.entries['h-2222222222222222'].number, 1);
-    assert.equal(previewCache.entries['h-4444444444444444'].number, 2);
-    assert.equal(previewCache.entries['h-6666666666666666'].title, '有效分量包含律');
-    assert.equal(previewCache.entries['h-7777777777777777'].title, '加粗标题');
-    assert.equal(previewCache.entries['h-3333333333333333'].number, undefined);
-    assert.equal(previewCache.entries['h-5555555555555555'].number, 1);
+    assert.doesNotMatch(readerIndex.entries['h-2222222222222222'].content, /proof body/i);
+    assert.match(readerIndex.entries['h-3333333333333333'].content, /second line/);
+    assert.equal(readerIndex.entries['h-8888888888888888'].title, '旁支事实');
+    assert.match(readerIndex.entries['h-8888888888888888'].content, /^> 注/);
+    assert.doesNotMatch(readerIndex.entries['h-8888888888888888'].content, /不应进入 recall/);
+    assert.equal(readerIndex.entries['h-2222222222222222'].number, 1);
+    assert.equal(readerIndex.entries['h-4444444444444444'].number, 2);
+    assert.equal(readerIndex.entries['h-6666666666666666'].title, '有效分量包含律');
+    assert.equal(readerIndex.entries['h-7777777777777777'].title, '加粗标题');
+    assert.equal(readerIndex.entries['h-3333333333333333'].number, undefined);
+    assert.equal(readerIndex.entries['h-5555555555555555'].number, 1);
 
     const referenceMap = await read(root, '.markdown-formal/reference-map.md');
     assert.doesNotMatch(referenceMap, /注 1\.1/);
@@ -636,14 +636,14 @@ async function testEquationFigureTableNumbering() {
     const chapter = await read(root, 'book1/01-a.md');
     assert.match(chapter, /见 @h-1111111111111111、@h-2222222222222222 和 @h-3333333333333333。/);
 
-    const previewCache = JSON.parse(await read(root, '.markdown-formal/preview-cache.json'));
-    assert.equal(previewCache.entries['h-1111111111111111'].type, 'equation');
-    assert.equal(previewCache.entries['h-1111111111111111'].number, 1);
-    assert.equal(previewCache.entries['h-2222222222222222'].type, 'figure');
-    assert.equal(previewCache.entries['h-2222222222222222'].title, '反馈环');
-    assert.equal(previewCache.entries['h-3333333333333333'].type, 'table');
-    assert.equal(previewCache.entries['h-4444444444444444'].appendix, 'A');
-    assert.equal(previewCache.entries['h-4444444444444444'].number, 1);
+    const readerIndex = JSON.parse(await read(root, '.markdown-formal/reader-index.json'));
+    assert.equal(readerIndex.entries['h-1111111111111111'].type, 'equation');
+    assert.equal(readerIndex.entries['h-1111111111111111'].number, 1);
+    assert.equal(readerIndex.entries['h-2222222222222222'].type, 'figure');
+    assert.equal(readerIndex.entries['h-2222222222222222'].title, '反馈环');
+    assert.equal(readerIndex.entries['h-3333333333333333'].type, 'table');
+    assert.equal(readerIndex.entries['h-4444444444444444'].appendix, 'A');
+    assert.equal(readerIndex.entries['h-4444444444444444'].number, 1);
 
     const referenceMap = await read(root, '.markdown-formal/reference-map.md');
     assert.match(referenceMap, /公式 \(1\.1\)/);
@@ -965,12 +965,12 @@ async function testScanExcludeAndZeroIntroductionPages() {
 
     const verify = runCli(root, ['verify']);
     assert.equal(verify.status, 0, combinedOutput(verify));
-    const previewCache = JSON.parse(await read(root, '.markdown-formal/preview-cache.json'));
-    assert.equal(previewCache.pages.filter(page => page.kind === 'intro').length, 2);
-    assert.equal(previewCache.pages.filter(page => page.kind === 'chapter' && page.chapter === 0).length, 0);
-    assert.equal(previewCache.pages.some(page => page.filePath.startsWith('draft/')), false);
-    assert.equal(previewCache.pages.some(page => page.filePath.startsWith('.context/')), false);
-    assert.equal(previewCache.pages.some(page => page.filePath.startsWith('formal-oet/.lake/')), false);
+    const readerIndex = JSON.parse(await read(root, '.markdown-formal/reader-index.json'));
+    assert.equal(readerIndex.pages.filter(page => page.kind === 'intro').length, 2);
+    assert.equal(readerIndex.pages.filter(page => page.kind === 'chapter' && page.chapter === 0).length, 0);
+    assert.equal(readerIndex.pages.some(page => page.filePath.startsWith('draft/')), false);
+    assert.equal(readerIndex.pages.some(page => page.filePath.startsWith('.context/')), false);
+    assert.equal(readerIndex.pages.some(page => page.filePath.startsWith('formal-oet/.lake/')), false);
 }
 
 async function testPageTitleUsesUniqueHighestHeading() {
@@ -1004,8 +1004,8 @@ async function testPageTitleUsesUniqueHighestHeading() {
 
     const prepare = runCli(root, ['prepare']);
     assert.equal(prepare.status, 0, combinedOutput(prepare));
-    const previewCache = JSON.parse(await read(root, '.markdown-formal/preview-cache.json'));
-    const titleFor = filePath => previewCache.pages.find(page => page.filePath === filePath)?.title;
+    const readerIndex = JSON.parse(await read(root, '.markdown-formal/reader-index.json'));
+    const titleFor = filePath => readerIndex.pages.find(page => page.filePath === filePath)?.title;
 
     assert.equal(titleFor('book1/01-lowered.md'), 'Lowered Chapter Title');
     assert.equal(titleFor('book1/02-formal-only.md'), 'formal only');
@@ -1026,25 +1026,6 @@ async function testPerfDummyThresholds() {
     const fail = runCli(root, ['perf-dummy', '2', '5', '--max-heap-mb', '0']);
     assert.notEqual(fail.status, 0, combinedOutput(fail));
     assert.match(combinedOutput(fail), /PERF failed: heap/);
-}
-
-async function testPreviewIgnoreHoverPatterns() {
-    const { shouldIgnorePreviewHover } = formalCore();
-    const config = {
-        preview: {
-            ignoreHover: [
-                'appendix-b-concepts.md',
-                'book2/**/concept-index.md',
-                'appendix-*.md'
-            ]
-        }
-    };
-
-    assert.equal(shouldIgnorePreviewHover('book1/appendix-b-concepts.md', config), true);
-    assert.equal(shouldIgnorePreviewHover('book2/vol-1/concept-index.md', config), true);
-    assert.equal(shouldIgnorePreviewHover('book3/appendix-c.md', config), true);
-    assert.equal(shouldIgnorePreviewHover('book4/01-main.md', config), false);
-    assert.equal(shouldIgnorePreviewHover('book1/01-main.md', config), false);
 }
 
 async function testReaderServer() {
@@ -1585,7 +1566,7 @@ async function testRenderPdfUsesPandocRenderer() {
         '3'
     ]);
     assert.equal(await read(root, 'dist/book.pdf'), 'PDF');
-    await assert.rejects(() => fs.stat(path.join(root, '.markdown-formal', 'preview-cache.json')));
+    await assert.rejects(() => fs.stat(path.join(root, '.markdown-formal', 'reader-index.json')));
     assert.ok(await read(root, '.markdown-formal/config.json'));
 }
 
@@ -1759,7 +1740,6 @@ const tests = [
     ['scan exclude and zero introduction pages', testScanExcludeAndZeroIntroductionPages],
     ['page title uses unique highest heading', testPageTitleUsesUniqueHighestHeading],
     ['perf-dummy thresholds', testPerfDummyThresholds],
-    ['preview ignore hover patterns', testPreviewIgnoreHoverPatterns],
     ['local Reader server', testReaderServer],
     ['local Reader Codex task binding', testReaderCodexTaskBinding],
     ['local Reader launcher', testReaderLauncher],

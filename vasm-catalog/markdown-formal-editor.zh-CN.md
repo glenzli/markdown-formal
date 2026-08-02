@@ -41,13 +41,13 @@ npm run formal -- finish path/to/chapter-or-dir
 - `.markdown-formal/dependency-report.md`：依赖图的人类/AI 审阅报告，区分陈述依赖、证明依赖、跨章/跨卷边、循环和孤立节点。
 - `npm run formal -- graph impact|upstream|focus|matrix|bridges|isolated|cycles`：对权威依赖图做局部查询和结构分析；输出给人和 AI 读，不替代 JSON。
 - `.markdown-formal/report.md`：lint、verify、迁移报告入口。
-- `.markdown-formal/preview-cache.json`：仅旧 VS Code 兼容扩展使用的预览缓存，不直接编辑。
-- `.markdown-formal/config.json`：语言、扫描排除、跨 book 查询依赖等配置，可人工维护；也是本地 Reader 和旧 VS Code 兼容扩展的显式启用开关。
+- `.markdown-formal/reader-index.json`：生成的 formal entry、页面、定义和符号结构快照，不直接编辑。
+- `.markdown-formal/config.json`：语言、扫描排除、跨 book 查询依赖等配置，可人工维护；也是本地 Reader 的显式启用开关。
 - `.markdown-formal/definitions.json`：定义查询例外源表，用于非标准定义、别名/中英互查或不可靠边界。
 - `.markdown-formal/symbols.json`：项目特殊符号表源表。
 
 不要把 `.markdown-formal/` 下的生成缓存当成写作源；人工维护入口只有 `config.json`、`definitions.json` 和 `symbols.json`。
-日常阅读优先启动本地 Reader：`npm run formal -- serve .`。它只要求项目根目录存在 `.markdown-formal/config.json`，在内存中扫描，不依赖或写入 `preview-cache.json`，并只绑定 `127.0.0.1` 提供只读页面。旧 VS Code 兼容扩展仍需要已生成的 `preview-cache.json`；它只是可选兼容层，不能反向约束 core、CLI 或 Reader 的能力。
+日常阅读使用本地 Reader：`npm run formal -- serve .`。它只要求项目根目录存在 `.markdown-formal/config.json`，在内存中扫描，并只绑定 `127.0.0.1` 提供只读页面。`reader-index.json` 是可检查的结构快照，不是运行时前提。
 
 ## PDF/Markdown 导出
 
@@ -246,17 +246,11 @@ book2/
     "bookDependencies": {
       "book3": ["book2"]
     }
-  },
-  "preview": {
-    "ignoreHover": [
-      "appendix-b-concepts.md",
-      "book1/**/concept-*.md"
-    ]
   }
 }
 ```
 
-AI 应从拥有 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbols.json` 的项目根目录运行 `npm run formal`。如果根目录下有构建产物、上下文材料、草稿或其他不属于正式正文体系的 Markdown，先在 `.markdown-formal/config.json` 的 `scan.exclude` 中排除，再运行 `prepare` / `verify`。本地 Reader 以当前页数据为主，支持导航、跳转、定义查询和当前页符号表，不以旧编辑器的 hover 代价限制自身设计。`preview.ignoreHover` 和 `debug.previewLog` 只属于旧 VS Code 兼容扩展：前者可用完整相对路径、裸文件名或 glob 关闭正文 `@hash` 悬浮 recall，后者用于排查该扩展的空白预览。不要为这些兼容项修改 core、CLI 或 Reader 的行为。
+AI 应从拥有 `.markdown-formal/definitions.json` 和 `.markdown-formal/symbols.json` 的项目根目录运行 `npm run formal`。如果根目录下有构建产物、上下文材料、草稿或其他不属于正式正文体系的 Markdown，先在 `.markdown-formal/config.json` 的 `scan.exclude` 中排除，再运行 `prepare` / `verify`。本地 Reader 以当前页数据为主，支持导航、跳转、定义查询和当前页符号表。
 
 跨 book 的 `@h-...` 和 `@chapter:` / `@page:` 引用默认会被 `verify` 阻断。只有当源 book 明确依赖目标 book 时，才在 `.markdown-formal/config.json` 的 `lookup.bookDependencies` 中声明，例如 `"book3": ["book2"]`。
 

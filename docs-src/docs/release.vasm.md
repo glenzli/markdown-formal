@@ -9,13 +9,12 @@ vasm:
 
 # Release
 
-`markdown-formal` 的 release 包含四类主产物和一个可选 compatibility 产物：
+`markdown-formal` 的 release 包含四类主产物：
 
 - 可 vendoring 的 CLI 与本地 Reader 运行时；
 - 面向人的公开文档；
 - 需要融合到目标项目的 AI 工作流 artifact；
 - 可由 VASMC 锁定消费的 catalog exports。
-- 可选的 legacy VS Code 扩展包。
 
 ## 构建
 
@@ -43,14 +42,12 @@ release 包直接输出到 `dist/`；该目录代表当前构建版本：
 dist/
 ```
 
-`dist/` 只表示当前构建结果，不再额外包一层版本目录。版本号保留在 VSIX 文件名、`manifest.json` 和 npm package metadata 中。`vasm-catalog/` 的源码 checkout / npm 发布面位于仓库根目录；release 发布面位于 `dist/vasm-catalog/`。
+`dist/` 只表示当前构建结果，不再额外包一层版本目录。版本号保留在 `manifest.json` 和 npm package metadata 中。`vasm-catalog/` 的源码 checkout / npm 发布面位于仓库根目录；release 发布面位于 `dist/vasm-catalog/`。
 
 ## Release 结构
 
 ```text
 dist/
-  markdown-formal-vscode-extension-<version>.vsix
-  vscode-extension/
   cli/
   skills/
   vasm-catalog/
@@ -65,8 +62,6 @@ dist/
 各产物职责：
 
 - `cli/`：目标项目使用的无运行时依赖 CLI 与内置 Reader 静态资源。
-- `markdown-formal-vscode-extension-<version>.vsix`：可选的 legacy VS Code 兼容扩展安装包。
-- `vscode-extension/`：用于本地编辑器扩展目录的 legacy 解包版本。
 - `skills/`：AI 规则与组合指导 artifact，目前包含 `skills/editor.md` 和 `skills/integrator.md`。
 - `vasm-catalog/`：面向 VASMC consumer 的 catalog，包含 `vasmc-catalog.yaml`、`editor` export 和 `integrator` export。
 - `docs/`：面向人的文档。
@@ -78,7 +73,7 @@ dist/
 
 ## npm 包
 
-npm 包用于安装 CLI、本地 Reader、AI artifacts 和 VASMC catalog，不替代可选 VSIX：
+npm 包用于安装 CLI、本地 Reader、AI artifacts 和 VASMC catalog：
 
 ```bash
 npm install -D markdown-formal
@@ -102,7 +97,7 @@ npm 包入口：
 - `vasm-catalog/`：VASMC consumer 使用的 catalog exports。
 - `docs/`：面向人的 usage 和 release 文档。
 
-npm 包由根目录 `package.json.files` 控制包含范围；legacy VSIX 由 `packages/vscode-extension/package.json` 控制。不要在同一个 VSIX package 中同时引入 `.vscodeignore`。
+npm 包由根目录 `package.json.files` 控制包含范围。
 
 使用 npm 包里的 catalog：
 
@@ -131,35 +126,7 @@ node tools/markdown-formal/out/cli/formal-tools.js serve .
 markdown-formal serve
 ```
 
-命令只监听 `127.0.0.1`，只读扫描项目，并在源文件变化后刷新页面。最近项目记录保存在用户本机状态目录，不写入项目。新能力应优先加到 Reader，而不是 VS Code compatibility layer。
-
-## 可选 Legacy VS Code 扩展
-
-安装打包扩展：
-
-```bash
-code --install-extension dist/markdown-formal-vscode-extension-<version>.vsix
-```
-
-本地开发优先使用软链接：
-
-```bash
-ln -s "$PWD/packages/vscode-extension" ~/.vscode/extensions/markdown-formal
-```
-
-Antigravity：
-
-```bash
-ln -s "$PWD/packages/vscode-extension" ~/.antigravity-ide/extensions/markdown-formal
-```
-
-修改后重新构建：
-
-```bash
-npm run build:vscode-extension
-```
-
-然后 reload editor window。
+命令只监听 `127.0.0.1`，只读扫描项目，并在源文件变化后刷新页面。最近项目记录保存在用户本机状态目录，不写入项目。
 
 ## Vendoring CLI
 
@@ -247,7 +214,6 @@ npm run release:local
 
 - `dist/manifest.json`
 - `dist/checksums.txt`
-- 如果扩展打包逻辑有变化，检查 VSIX 内容
 
 ## 发布编排
 
@@ -283,7 +249,6 @@ npm run release:check
 
 GitHub/GitLab release 会附带：
 
-- `dist/markdown-formal-vscode-extension-<version>.vsix`
 - `dist/manifest.json`
 - `dist/checksums.txt`
 - `dist/INSTALL.md`
@@ -309,7 +274,6 @@ npm run release -- --gitlab-repo glenzli/markdown-formal
 - TypeScript 编译；
 - Vite 打包；
 - 测试；
-- VSIX 打包。
 
 规则：
 

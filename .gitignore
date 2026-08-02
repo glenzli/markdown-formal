@@ -2,7 +2,7 @@ node_modules/
 out/
 dist/
 .vscode-test/
-*.vsix
+legacy/vscode-extension/*.vsix
 .vasmc/
 vasmc-build-state.yaml
 .markdown-formal/*
