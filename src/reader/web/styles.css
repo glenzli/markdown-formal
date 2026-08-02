@@ -231,6 +231,7 @@ button { cursor: pointer; }
 .reader-dependency-marker:focus-visible { outline: 2px solid rgba(38, 127, 174, .55); outline-offset: 3px; border-radius: 3px; }
 .reader-dependency-marker.is-referenced { color: #267fae; }
 .reader-dependency-marker.is-bridge { color: #31726d; }
+.reader-dependency-marker.is-remark { color: #766c8c; }
 .reader-dependency-marker.is-propagating { filter: saturate(1.14); }
 .reader-dependency-popover {
     position: fixed;

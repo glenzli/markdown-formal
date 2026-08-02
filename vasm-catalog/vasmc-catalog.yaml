@@ -5,12 +5,12 @@ exports:
     version: 0.1.0
     format: executable
     file: markdown-formal-editor.zh-CN.md
-    hash: sha256:fb5e365f9685d220fc1a2cd1e33a7a82c852c54f4fa067fdc1403b158f8bda90
+    hash: sha256:d591e8cef82c14a091d271bb1c302ca138325726e680d21d779d9db83a8cea69
   integrator:
     name: markdown-formal-integrator-guide
     version: 0.1.0
     format: integrative
     file: markdown-formal-integrator.md
-    hash: sha256:61506d8680e9f756b90e1b02ffe88fa8223dabc4b10aaf2c84693f8ed7704730
+    hash: sha256:b1f4c1b13af9885911b5827e111620c176d3272cd1f7d4f4e896a859dedee299
     appliesTo:
-      - sha256:fb5e365f9685d220fc1a2cd1e33a7a82c852c54f4fa067fdc1403b158f8bda90
+      - sha256:d591e8cef82c14a091d271bb1c302ca138325726e680d21d779d9db83a8cea69

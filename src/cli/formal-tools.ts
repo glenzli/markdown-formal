@@ -286,7 +286,9 @@ async function graph(args = []) {
     const dependencyGraph = state.dependencyGraph;
 
     if (!options.action) {
-        console.log(`OK graph: ${dependencyGraph.summary.nodes} nodes, ${dependencyGraph.summary.edges} explicit edges, ${dependencyGraph.summary.proofEdges} proof edges, ${dependencyGraph.summary.cycles} cycles`);
+        const supplementalRemarks = dependencyGraph.summary.supplementalRemarkNodes;
+        const remarkLabel = supplementalRemarks === 1 ? 'supplemental remark' : 'supplemental remarks';
+        console.log(`OK graph: ${dependencyGraph.summary.theoremLikeNodes} theorem-like nodes, ${supplementalRemarks} ${remarkLabel}, ${dependencyGraph.summary.edges} explicit edges, ${dependencyGraph.summary.proofEdges} proof edges, ${dependencyGraph.summary.cycles} cycles`);
         console.log('Graph: .markdown-formal/dependency-graph.json');
         console.log('Report: .markdown-formal/dependency-report.md');
         console.log('Run `npm run formal -- graph summary` for a Markdown summary.');

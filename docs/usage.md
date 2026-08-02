@@ -22,7 +22,7 @@ The short version:
 - Definition lookup: definitions do not get hash IDs or refs; the tool scans standard `定义（术语）：...` / `Definition (Term): ...` entries and deliberately named concept/glossary appendices. AI maintains `.markdown-formal/definitions.json` only for missing lookup entries, nonstandard definitions, aliases, bilingual lookup, and unreliable boundaries.
 - Project knowledge: `.markdown-formal/project-analysis.json` / `.markdown-formal/project-analysis.md` are generated summaries of concept/glossary, notation, and summary pages. Reader rebuilds them in memory and sends current-book sources with Codex discussion context.
 - Symbol table: `.markdown-formal/symbols.json` records only project-defined special LaTeX notation with an explicit semantic change, not generic variables, complete derivations, or one-off symbols.
-- Dependency graph: explicit theorem-like dependencies come from `@h-...`; the canonical data is `.markdown-formal/dependency-graph.json`; AI- or prover-suggested edges must be stored separately as suggested data.
+- Dependency graph: explicit dependencies between theorem-like objects and proof-backed hash remarks come from `@h-...`; the canonical data is `.markdown-formal/dependency-graph.json`; plain remarks have no graph node, and AI- or prover-suggested edges must be stored separately as suggested data.
 - Export: ordinary Markdown/PDF does not consume formal source directly; use `export-md` or `export-md-split` to lower markers/refs first, then run project-specific postprocessing and `render-pdf`.
 - Tool loop: run `prepare` when entering a task or when the index may be stale, then run `finish <file-or-dir>` for ordinary edits; `finish` validates. Run `verify` separately only after direct `finalize`, a migration, or as an independent release gate.
 
@@ -199,10 +199,10 @@ The command prints a URL bound only to `127.0.0.1`. Open it in Codex's local bro
 - current-page contents;
 - theorem-like recall loaded only when needed;
 - project-wide definition search and current-page symbols;
-- in-text dependency markers for propositions, lemmas, theorems, and corollaries;
+- in-text dependency markers for propositions, lemmas, theorems, corollaries, and proof-backed hash remarks;
 - live refresh after source changes.
 
-Dependency markers read only explicit `@h-...` relationships. A short line above the dot means the statement or proof explicitly references formal items such as a section, definition, or theorem-like object. A vertical line below means a later theorem-like object depends on it; a fork means multiple direct downstream nodes. Color follows downstream impact: muted is a terminal node with no downstream theorem-like nodes, blue is directly cited, and green is both explicitly grounded and cited later. Hover for reference and transitive-impact counts. These are structural signals, not measures of mathematical importance. The canonical dependency graph itself still contains only theorem-like-to-theorem-like edges.
+Dependency markers read only explicit `@h-...` relationships. A short line above the dot means the statement or proof explicitly references formal items such as a section, definition, theorem-like object, or proof-backed hash remark. A vertical line below means a later dependency node depends on it; a fork means multiple direct downstream nodes. Mainline theorem-like nodes use the ordinary impact colors: muted is a terminal node, blue is directly cited, and green is both explicitly grounded and cited later. Hash remarks use a muted supplemental color and label; plain `注（...）` / `Remark (...)` entries have no graph node or marker. Hover for reference and transitive-impact counts. These are structural signals, not measures of mathematical importance.
 
 If the Codex CLI is installed and signed in locally, selecting text or a formula can open Reader's temporary discussion dialog. The first message includes the relative path, source line range, selected Markdown, project root, and read-only tool boundary; subsequent messages retain that context. A temporary discussion is not persisted and never writes the manuscript or local task state. You can also bind a task whose working directory exactly matches the project, then explicitly send any temporary-discussion conclusion to that task for verification and further work. Bindings are stored only in local user state, never in the manuscript. Reader does not handle Codex tool approvals; continue the task in Codex when tools are needed.
 
@@ -304,7 +304,7 @@ Generate the graph summary:
 npm run formal -- graph summary
 ```
 
-Inspect one theorem-like object:
+Inspect one dependency node (a theorem-like object or proof-backed hash remark):
 
 ```bash
 npm run formal -- graph focus <h-id> --depth 2
@@ -328,7 +328,7 @@ Summarize chapter-level flow:
 npm run formal -- graph matrix chapter
 ```
 
-The graph records explicit `@h-...` references only. Suggested or inferred mathematical dependencies should be stored separately by the target project.
+The graph records explicit `@h-...` references only. Its reports separate mainline theorem-like statistics from supplemental hash-remark statistics, and plain `注（...）` / `Remark (...)` entries are excluded. Suggested or inferred mathematical dependencies should be stored separately by the target project.
 
 ### Project Structure
 
@@ -487,7 +487,7 @@ local engine is installed.
 - 定义查询：定义不加 hash、不参与 ref；工具自动扫描标准 `定义（术语）：...` / `Definition (Term): ...`，并在发现概念/术语附录时利用其表格和末级条目建立补充索引。AI 只为查询缺失、非标准定义、别名、中英互查和不可靠边界维护 `.markdown-formal/definitions.json`。
 - 项目知识：`.markdown-formal/project-analysis.json` / `.markdown-formal/project-analysis.md` 是工具生成的概念附录、符号附录和 summary 页面摘要；Reader 在内存中按内容变化重建，并把同 book 来源交给任务讨论。
 - 符号表：`.markdown-formal/symbols.json` 只记录项目明确约定且发生语义变化的特殊 LaTeX 记号，不索引通用变量、完整推导公式或一次性符号。
-- 依赖图：命题/引理/定理/推论之间的显式依赖来自 `@h-...`，权威数据是 `.markdown-formal/dependency-graph.json`；AI 或证明器推测出的边必须另存为 suggested 数据。
+- 依赖图：命题/引理/定理/推论与带 hash、可证明的补充注释之间的显式依赖来自 `@h-...`，权威数据是 `.markdown-formal/dependency-graph.json`；普通 `注（...）` 不进入图。AI 或证明器推测出的边必须另存为 suggested 数据。
 - 导出：普通 Markdown/PDF 不直接消费 formal 源；先用 `export-md` 或 `export-md-split` 降级 marker/ref，项目级后处理之后再用 `render-pdf`。
 - 工具闭环：进入任务或索引可能过期时运行 `prepare`，普通编辑后运行 `finish <file-or-dir>`（它会校验）；仅在直接 `finalize`、执行迁移或独立 release 门禁时另行运行 `verify`。
 
@@ -664,10 +664,10 @@ npm run formal -- serve
 - 当前页目录；
 - 仅在需要时加载的命题类 recall；
 - 全书定义查找与当前页符号表；
-- 命题、引理、定理和推论旁的页内依赖标记；
+- 命题、引理、定理、推论和带 hash 补充注释旁的页内依赖标记；
 - 源文件改动后的实时刷新。
 
-依赖标记只读取显式 `@h-...` 关系。圆点上方的短线表示该陈述或证明显式引用了 formal 对象（可为小节、定义或命题）；下方纵线表示后续命题类对象依赖它，分叉表示多个直接下游。颜色与下游影响对应：灰色是没有下游命题的终点，蓝色表示被直接引用，绿色分叉表示既有显式前提也被后续对象引用。悬停可查看引用数与传递影响范围；这些是结构信号，不等同于命题的数学重要性。权威依赖图本身仍只包含命题类对象之间的边。
+依赖标记只读取显式 `@h-...` 关系。圆点上方的短线表示该陈述或证明显式引用了 formal 对象（可为小节、定义或命题）；下方纵线表示后续依赖对象依赖它，分叉表示多个直接下游。主线命题使用常规颜色；带 hash 的、可证明的补充注释使用低强调度的注释颜色。灰色是没有下游对象的终点，蓝色表示被直接引用，绿色分叉表示既有显式前提也被后续对象引用。悬停可查看引用数与传递影响范围；这些是结构信号，不等同于数学重要性。权威依赖图包含命题/引理/定理/推论之间的边，也包含带 hash 补充注释的入边、出边；普通 `注（...）` 不进入图，也没有标记。
 
 若本机 Codex CLI 已安装并登录，可在选中正文或公式后打开 Reader 的临时讨论浮窗。首条消息会附带相对路径、源码行范围、选中 Markdown、项目根和只读工具边界；后续消息保留该上下文。临时讨论是不可持久化的，不写入书稿或本机任务状态。也可绑定一个工作目录与当前项目完全一致的任务，再将任一临时讨论结论显式发送到该任务，由任务核验并继续执行。绑定记录仅写入本机用户状态目录，不写入书稿。Reader 不承接 Codex 的工具审批，任务需要工具时应回到 Codex 继续。
 
@@ -773,7 +773,7 @@ npm run formal -- migrate-ids --apply path/to/chapter-or-volume
 npm run formal -- graph summary
 ```
 
-查看某个命题类对象的局部图：
+查看某个命题类对象或带 hash 补充注释的局部图：
 
 ```bash
 npm run formal -- graph focus <h-id> --depth 2
@@ -797,7 +797,7 @@ npm run formal -- graph upstream <h-id>
 npm run formal -- graph matrix chapter
 ```
 
-依赖图只记录显式 `@h-...` 引用。AI 或领域工具推测出的数学依赖应由目标项目单独维护，不要混入 canonical graph。
+依赖图只记录显式 `@h-...` 引用。报告把主线 theorem-like 对象与带 hash 补充注释分别统计，避免旁支事实改变主线结论；普通 `注（...）` 不成为节点。AI 或领域工具推测出的数学依赖应由目标项目单独维护，不要混入 canonical graph。
 
 ## 项目结构
 

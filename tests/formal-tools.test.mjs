@@ -616,10 +616,17 @@ async function testDependencyGraph() {
         '证明：',
         'The proof uses @h-2222222222222222.',
         '',
-        '命题 #h-2222222222222222（Statement Uses）：由 @h-1111111111111111 可得 statement.',
+        '命题 #h-2222222222222222（Statement Uses）：由 @h-1111111111111111 和 @h-5555555555555555 可得 statement.',
         '',
         'Proof.',
         'The proof uses @h-3333333333333333.',
+        '',
+        '注 #h-5555555555555555（Supporting Fact）：This supplemental fact has a proof.',
+        '',
+        'Proof.',
+        'The proof uses @h-3333333333333333.',
+        '',
+        '注（Plain Note）：This explanatory note must not become a dependency node.',
         '',
         '## #h-4444444444444444 Notes',
         '',
@@ -638,40 +645,50 @@ async function testDependencyGraph() {
 
     const graph = JSON.parse(await read(root, '.markdown-formal/dependency-graph.json'));
     assert.equal(graph.schemaVersion, 1);
-    assert.equal(graph.nodes.length, 3);
-    assert.equal(graph.edges.length, 3);
-    assert.equal(graph.summary.statementEdges, 1);
-    assert.equal(graph.summary.proofEdges, 2);
-    assert.equal(graph.summary.crossChapterEdges, 1);
+    assert.equal(graph.nodes.length, 4);
+    assert.equal(graph.summary.theoremLikeNodes, 3);
+    assert.equal(graph.summary.supplementalRemarkNodes, 1);
+    assert.equal(graph.nodes.find(node => node.id === 'h-5555555555555555')?.kind, 'remark');
+    assert.equal(graph.nodes.some(node => node.title === 'Plain Note'), false);
+    assert.equal(graph.edges.length, 5);
+    assert.equal(graph.summary.theoremLikeEdges, 3);
+    assert.equal(graph.summary.supplementalRemarkEdges, 2);
+    assert.equal(graph.summary.statementEdges, 2);
+    assert.equal(graph.summary.proofEdges, 3);
+    assert.equal(graph.summary.crossChapterEdges, 2);
     assert.equal(graph.summary.cycles, 1);
-    assert.equal(graph.diagnostics.filter(item => item.code === 'ambient-theorem-ref').length, 1);
+    assert.equal(graph.diagnostics.filter(item => item.code === 'ambient-dependency-ref').length, 1);
 
     const edgeKey = edge => `${edge.from}->${edge.to}:${edge.where}`;
     assert.ok(graph.edges.map(edgeKey).includes('h-1111111111111111->h-2222222222222222:proof'));
     assert.ok(graph.edges.map(edgeKey).includes('h-2222222222222222->h-1111111111111111:statement'));
     assert.ok(graph.edges.map(edgeKey).includes('h-2222222222222222->h-3333333333333333:proof'));
+    assert.ok(graph.edges.map(edgeKey).includes('h-2222222222222222->h-5555555555555555:statement'));
+    assert.ok(graph.edges.map(edgeKey).includes('h-5555555555555555->h-3333333333333333:proof'));
     assert.deepEqual(graph.cycles[0].ids.sort(), ['h-1111111111111111', 'h-2222222222222222']);
 
     const report = await read(root, '.markdown-formal/dependency-report.md');
-    assert.match(report, /Proof edges: 2/);
+    assert.match(report, /Supplemental fact remarks: 1/);
+    assert.match(report, /Proof edges: 3/);
     assert.match(report, /Cross-Scope Edges/);
-    assert.match(report, /ambient-theorem-ref/);
+    assert.match(report, /ambient-dependency-ref/);
 
     const graphCommand = runCli(root, ['graph']);
     assert.equal(graphCommand.status, 0, combinedOutput(graphCommand));
-    assert.match(combinedOutput(graphCommand), /OK graph: 3 nodes, 3 explicit edges, 2 proof edges, 1 cycles/);
+    assert.match(combinedOutput(graphCommand), /OK graph: 3 theorem-like nodes, 1 supplemental remark, 5 explicit edges, 3 proof edges, 1 cycles/);
 
     const graphSummary = runCli(root, ['graph', 'summary']);
     assert.equal(graphSummary.status, 0, combinedOutput(graphSummary));
     assert.match(combinedOutput(graphSummary), /# Dependency Graph Summary/);
-    assert.match(combinedOutput(graphSummary), /- Proof edges: 2/);
-    assert.match(combinedOutput(graphSummary), /- Cross-chapter edges: 1/);
+    assert.match(combinedOutput(graphSummary), /- Supplemental fact remarks: 1/);
+    assert.match(combinedOutput(graphSummary), /- Proof edges: 3/);
+    assert.match(combinedOutput(graphSummary), /- Cross-chapter edges: 2/);
 
     const proofSummary = runCli(root, ['graph', 'summary', '--where', 'proof']);
     assert.equal(proofSummary.status, 0, combinedOutput(proofSummary));
     assert.match(combinedOutput(proofSummary), /# Dependency Graph Summary \(proof edges only\)/);
     assert.match(combinedOutput(proofSummary), /- Statement edges: 0/);
-    assert.match(combinedOutput(proofSummary), /- Proof edges: 2/);
+    assert.match(combinedOutput(proofSummary), /- Proof edges: 3/);
 
     const impact = runCli(root, ['graph', 'impact', '@h-1111111111111111']);
     assert.equal(impact.status, 0, combinedOutput(impact));
@@ -695,7 +712,7 @@ async function testDependencyGraph() {
     const matrix = runCli(root, ['graph', 'matrix', 'chapter']);
     assert.equal(matrix.status, 0, combinedOutput(matrix));
     assert.match(combinedOutput(matrix), /# Dependency Matrix By chapter/);
-    assert.match(combinedOutput(matrix), /Edges: 3/);
+    assert.match(combinedOutput(matrix), /Edges: 5/);
 
     const cycles = runCli(root, ['graph', 'cycles']);
     assert.equal(cycles.status, 0, combinedOutput(cycles));
@@ -1161,6 +1178,12 @@ async function testReaderServer() {
         '命题 #h-4444444444444444（Consequence）：By @h-3333333333333333 and @h-2222222222222222, the conclusion follows.',
         '',
         'By @h-3333333333333333, the conclusion follows.',
+        '',
+        '注 #h-5555555555555555（Supporting Fact）：This supplemental fact is proof-backed.',
+        '',
+        'Proof: by @h-3333333333333333.',
+        '',
+        '注（Plain Note）：This explanatory note must not receive a marker.',
         ''
     ].join('\n'));
     const prepare = runCli(root, ['prepare']);
@@ -1184,31 +1207,41 @@ async function testReaderServer() {
         assert.match(page.content, /Finite cover/);
         assert.equal(page.page.displayHeading, '第 1 章 Foundations');
         assert.equal(page.labels['h-3333333333333333'].content, undefined);
-        assert.deepEqual(page.dependencyMarkers['h-3333333333333333'], {
-            directDependencies: 0,
-            sourceReferenceCount: 0,
-            directDependents: 1,
-            impactCount: 1,
-            role: 'referenced',
-            upstream: [],
-            downstream: [{
-                id: 'h-4444444444444444',
-                display: '命题 1.2',
-                title: 'Consequence',
-                filePath: 'book1/01-foundations.md'
-            }]
-        });
+        const theoremMarker = page.dependencyMarkers['h-3333333333333333'];
+        assert.equal(theoremMarker.kind, 'theorem-like');
+        assert.equal(theoremMarker.directDependencies, 0);
+        assert.equal(theoremMarker.directDependents, 2);
+        assert.equal(theoremMarker.impactCount, 2);
+        assert.deepEqual(theoremMarker.downstream.map(item => item.id).sort(), ['h-4444444444444444', 'h-5555555555555555']);
         assert.deepEqual(page.dependencyMarkers['h-4444444444444444'], {
             directDependencies: 1,
             sourceReferenceCount: 2,
             directDependents: 0,
             impactCount: 0,
             role: 'leaf',
+            kind: 'theorem-like',
             upstream: [{
                 id: 'h-3333333333333333',
                 display: '定理 1.1',
                 title: 'Finite cover',
-                filePath: 'book1/01-foundations.md'
+                filePath: 'book1/01-foundations.md',
+                kind: 'theorem-like'
+            }],
+            downstream: []
+        });
+        assert.deepEqual(page.dependencyMarkers['h-5555555555555555'], {
+            directDependencies: 1,
+            sourceReferenceCount: 1,
+            directDependents: 0,
+            impactCount: 0,
+            role: 'leaf',
+            kind: 'remark',
+            upstream: [{
+                id: 'h-3333333333333333',
+                display: '定理 1.1',
+                title: 'Finite cover',
+                filePath: 'book1/01-foundations.md',
+                kind: 'theorem-like'
             }],
             downstream: []
         });

@@ -20,17 +20,17 @@ npm run formal -- prepare
 - 定义查询：定义不加 hash、不参与 ref；工具自动扫描标准 `定义（术语）：...` / `Definition (Term): ...`，并在发现概念/术语附录时利用其表格和末级条目建立补充索引。AI 只为查询缺失、非标准定义、别名、中英互查和不可靠边界维护 `.markdown-formal/definitions.json`。
 - 项目知识：`.markdown-formal/project-analysis.json` / `.markdown-formal/project-analysis.md` 是工具生成的概念附录、符号附录和 summary 页面摘要；Reader 在内存中按内容变化重建，并把同 book 来源交给任务讨论。
 - 符号表：`.markdown-formal/symbols.json` 只记录项目明确约定且发生语义变化的特殊 LaTeX 记号，不索引通用变量、完整推导公式或一次性符号。
-- 依赖图：命题/引理/定理/推论之间的显式依赖来自 `@h-...`，权威数据是 `.markdown-formal/dependency-graph.json`；AI 或证明器推测出的边必须另存为 suggested 数据。
+- 依赖图：命题/引理/定理/推论与带 hash、可证明的补充注释之间的显式依赖来自 `@h-...`，权威数据是 `.markdown-formal/dependency-graph.json`；普通 `注（...）` 不进入图。AI 或证明器推测出的边必须另存为 suggested 数据。
 - 导出：普通 Markdown/PDF 不直接消费 formal 源；先用 `export-md` 或 `export-md-split` 降级 marker/ref，项目级后处理之后再用 `render-pdf`。
 - 工具闭环：进入任务或索引可能过期时运行 `prepare`，普通编辑后运行 `finish <file-or-dir>`（它会校验）；仅在直接 `finalize`、执行迁移或独立 release 门禁时另行运行 `verify`。
 
 把以下能力分别放进目标项目相应动作，而不是只贴一个独立 skill：
 
 - **写作与引用**：新编号对象用 `#tmp-*` 声明，正文只用 `@h-...`；已有 ID 从目标正文或 `reference-map.md` 的相关行复制；通常完成时只运行 `finish`，它会校验。直接 `finalize`、迁移或 release 门禁才另行 `verify`。
-- **数学文风**：定义不加 hash；说明类注与普通例默认不加 hash；有证明、稳定锚点或后文实际引用时才为注/例添加 hash。
+- **数学文风**：定义不加 hash；说明类注与普通例默认不加 hash；有证明、稳定锚点或后文实际引用时才为注/例添加 hash。带 hash 的注是未编号的补充事实节点，普通注不进入依赖图。
 - **项目知识**：工具自动抽标准定义和明确命名的概念/术语附录；`project-analysis.md` 是按需读取的派生摘要。AI 仅为缺失、别名/双语或不可靠边界维护 definitions override。
 - **符号**：只有项目明确新增或改写特殊记号语义时维护经审阅的符号源表；不索引普通变量或整条公式。
-- **结构审阅**：命题依赖图只来自显式 `@h-...`；需要时将 `graph impact`、`focus`、`cycles` 或 `matrix` 接入审阅流程。AI/Lean 推测边须单独存放。
+- **结构审阅**：依赖图只来自显式 `@h-...`，覆盖主线命题类对象与带 hash 的补充注释；报告分开统计两层。需要时将 `graph impact`、`focus`、`cycles` 或 `matrix` 接入审阅流程。AI/Lean 推测边须单独存放。
 - **项目边界**：formal root 配置 `scan.exclude`；跨 book 引用或查询显式配置 `lookup.bookDependencies`。
 
 ## 可融合的最小片段

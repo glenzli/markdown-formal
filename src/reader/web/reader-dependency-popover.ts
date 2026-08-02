@@ -1,8 +1,8 @@
-import type { ReaderDependencyMarker, ReaderDependencyNeighbor } from '../dependency-markers';
+import type { ReaderDependencyMarker, ReaderDependencyMarkerKind, ReaderDependencyNeighbor } from '../dependency-markers';
 import { closestReaderElement, positionReaderPopover } from './reader-popover';
 
 export interface ReaderDependencyPopoverLabels {
-    dependency: string;
+    dependencyTitle: (kind: ReaderDependencyMarkerKind) => string;
     upstream: string;
     downstream: string;
     noUpstream: string;
@@ -17,7 +17,7 @@ export interface ReaderDependencyPopoverHost {
 }
 
 /**
- * Displays the direct theorem-like neighborhood for one marker. The graph
+ * Displays the direct dependency neighborhood for one marker. The graph
  * projection is already page-local, so opening this card never fetches or
  * expands the full project graph.
  */
@@ -117,16 +117,17 @@ export class ReaderDependencyPopover {
         if (!dependency) return;
 
         const labels = this.host.labels();
+        const dependencyTitle = labels.dependencyTitle(dependency.kind);
         const popover = document.createElement('section');
         popover.className = 'reader-dependency-popover';
         popover.setAttribute('role', 'dialog');
-        popover.setAttribute('aria-label', labels.dependency);
+        popover.setAttribute('aria-label', dependencyTitle);
         popover.addEventListener('pointerenter', this.onPopoverPointerEnter);
         popover.addEventListener('pointerleave', this.onPopoverPointerLeave);
 
         const header = document.createElement('header');
         const title = document.createElement('h2');
-        title.textContent = labels.dependency;
+        title.textContent = dependencyTitle;
         header.append(title);
         popover.append(header);
         popover.append(

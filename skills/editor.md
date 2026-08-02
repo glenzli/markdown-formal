@@ -8,7 +8,7 @@
 - 定义查询：定义不加 hash、不参与 ref；工具自动扫描标准 `定义（术语）：...` / `Definition (Term): ...`，并在发现概念/术语附录时利用其表格和末级条目建立补充索引。AI 只为查询缺失、非标准定义、别名、中英互查和不可靠边界维护 `.markdown-formal/definitions.json`。
 - 项目知识：`.markdown-formal/project-analysis.json` / `.markdown-formal/project-analysis.md` 是工具生成的概念附录、符号附录和 summary 页面摘要；Reader 在内存中按内容变化重建，并把同 book 来源交给任务讨论。
 - 符号表：`.markdown-formal/symbols.json` 只记录项目明确约定且发生语义变化的特殊 LaTeX 记号，不索引通用变量、完整推导公式或一次性符号。
-- 依赖图：命题/引理/定理/推论之间的显式依赖来自 `@h-...`，权威数据是 `.markdown-formal/dependency-graph.json`；AI 或证明器推测出的边必须另存为 suggested 数据。
+- 依赖图：命题/引理/定理/推论与带 hash、可证明的补充注释之间的显式依赖来自 `@h-...`，权威数据是 `.markdown-formal/dependency-graph.json`；普通 `注（...）` 不进入图。AI 或证明器推测出的边必须另存为 suggested 数据。
 - 导出：普通 Markdown/PDF 不直接消费 formal 源；先用 `export-md` 或 `export-md-split` 降级 marker/ref，项目级后处理之后再用 `render-pdf`。
 - 工具闭环：进入任务或索引可能过期时运行 `prepare`，普通编辑后运行 `finish <file-or-dir>`（它会校验）；仅在直接 `finalize`、执行迁移或独立 release 门禁时另行运行 `verify`。
 
@@ -52,7 +52,7 @@ $$
 - 页面需要被引用时，把 hash 放在文件唯一最高级标题；它在预览中隐藏，不产生小节号。
 - 小节只编号和跳转，不提供 recall。命题、引理、定理、推论的 recall 在 `证明` / `Proof` 前停止。
 - 公式、图、表有独立编号；公式 marker 放在 display math 前，hash 不写入公式内部。
-- `注（说明）：...` 默认不加 hash。需要证明、后文引用或稳定锚点的旁支事实才写 `注 #tmp-*（名称）：...`；它不显示“注 x.x”，也不进目录。例默认不加 hash，只有已经被后文引用时才反向加 hash。
+- `注（说明）：...` 默认不加 hash。需要证明、后文引用或稳定锚点的旁支事实才写 `注 #tmp-*（名称）：...`；它不显示“注 x.x”，也不进目录，但会作为补充事实进入显式依赖图。普通注不进入图。例默认不加 hash，只有已经被后文引用时才反向加 hash。
 
 ## 定义、概念页和符号
 
@@ -68,7 +68,7 @@ $$
 
 - 从拥有 `.markdown-formal/config.json` 的 formal root 运行命令。构建、草稿、上下文和外部工程目录写入 `scan.exclude`。
 - 定义查询和符号表默认限制在当前 book；跨 book 引用或查询必须先配置 `lookup.bookDependencies`。
-- 改动已有命题类对象前，按需要运行 `npm run formal -- graph impact <h-id>` 或 `graph focus <h-id> --depth 2`；显式依赖只来自 `@h-...`，AI 推测边不能写进权威依赖图。
+- 改动已有命题类对象或带 hash 补充注释前，按需要运行 `npm run formal -- graph impact <h-id>` 或 `graph focus <h-id> --depth 2`；显式依赖只来自 `@h-...`，报告会将主线对象与补充注释分开统计，AI 推测边不能写进权威依赖图。
 - 旧编号迁移使用 `migrate-text-refs` / `migrate-ids` 的 dry-run 后再 `--apply`。工具不会自动改裸数字或手写章引用；结合上下文改为页面 `@h-...` 或临时 `@chapter:path.md`。
 
 完整命令、PDF 发布和配置字段见项目的 `docs/usage.md`；不要把这些说明复制进写作提示词。

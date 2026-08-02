@@ -199,7 +199,11 @@ export interface DependencyGraph {
     diagnostics: DependencyGraphDiagnostic[];
     summary: {
         nodes: number;
+        theoremLikeNodes: number;
+        supplementalRemarkNodes: number;
         edges: number;
+        theoremLikeEdges: number;
+        supplementalRemarkEdges: number;
         isolated: number;
         cycles: number;
         crossBookEdges: number;
@@ -274,6 +278,8 @@ export interface FormalMarker {
 
 export const FORMAL_TYPES = ['prop', 'lemma', 'theorem', 'cor', 'def', 'remark', 'example', 'section', 'equation', 'figure', 'table'];
 export const THEOREM_COUNTER_TYPES = new Set(['prop', 'lemma', 'theorem', 'cor']);
+// Proof-backed remarks are graph nodes but deliberately stay outside theorem numbering.
+export const DEPENDENCY_NODE_TYPES = new Set([...THEOREM_COUNTER_TYPES, 'remark']);
 export const RECALL_TYPES = new Set(['prop', 'lemma', 'theorem', 'cor', 'remark', 'example']);
 export const SECTION_TYPES = new Set(['section']);
 const PAGE_LABEL_TYPES = new Set(['chapter', 'intro', 'summary', 'appendix']);
@@ -2576,7 +2582,7 @@ function dependencySourceBlocks(definitions: FormalDefinition[], documents: Form
     const blocksByFile = new Map<string, DependencySourceBlock[]>();
 
     for (const def of definitions) {
-        if (!def.id || !THEOREM_COUNTER_TYPES.has(def.type)) continue;
+        if (!def.id || !DEPENDENCY_NODE_TYPES.has(def.type)) continue;
         const content = documentMap.get(def.file);
         if (content === undefined) continue;
         const lines = content.split(/\r?\n/);
@@ -2712,11 +2718,11 @@ export function buildDependencyGraph(state: any, documents: FormalDocument[]): D
     const config = state.config || mergeConfig(DEFAULT_CONFIG);
     const definitions: FormalDefinition[] = state.definitions || [];
     const references: FormalReference[] = state.references || [];
-    const theoremDefinitions = definitions
-        .filter(def => def.id && THEOREM_COUNTER_TYPES.has(def.type))
+    const dependencyDefinitions = definitions
+        .filter(def => def.id && DEPENDENCY_NODE_TYPES.has(def.type))
         .sort(compareDefinitionRecords);
-    const nodeById = new Map(theoremDefinitions.map(def => [def.id as string, dependencyGraphNode(def, config)]));
-    const blocksByFile = dependencySourceBlocks(theoremDefinitions, documents);
+    const nodeById = new Map(dependencyDefinitions.map(def => [def.id as string, dependencyGraphNode(def, config)]));
+    const blocksByFile = dependencySourceBlocks(dependencyDefinitions, documents);
     const sourceReferences = new Map<string, Set<string>>();
     const edges: DependencyGraphEdge[] = [];
     const diagnostics: DependencyGraphDiagnostic[] = [];
@@ -2734,10 +2740,10 @@ export function buildDependencyGraph(state: any, documents: FormalDocument[]): D
         if (!sourceBlock) {
             diagnostics.push({
                 severity: 'info',
-                code: 'ambient-theorem-ref',
+                code: 'ambient-dependency-ref',
                 file: ref.file,
                 line: ref.line,
-                message: `Reference @${ref.id} targets a theorem-like object but is outside a theorem-like statement/proof block.`
+                message: `Reference @${ref.id} targets a dependency node but is outside a dependency statement/proof block.`
             });
             continue;
         }
@@ -2775,6 +2781,8 @@ export function buildDependencyGraph(state: any, documents: FormalDocument[]): D
     const isCrossBook = (edge: DependencyGraphEdge) => (nodeById.get(edge.from)?.bookKey || '') !== (nodeById.get(edge.to)?.bookKey || '');
     const isCrossVolume = (edge: DependencyGraphEdge) => (nodeById.get(edge.from)?.volumeKey || '') !== (nodeById.get(edge.to)?.volumeKey || '');
     const isCrossChapter = (edge: DependencyGraphEdge) => (nodeById.get(edge.from)?.unitKey || '') !== (nodeById.get(edge.to)?.unitKey || '');
+    const isSupplementalRemark = (node: DependencyGraphNode | undefined) => node?.kind === 'remark';
+    const isTheoremLikeEdge = (edge: DependencyGraphEdge) => !isSupplementalRemark(nodeById.get(edge.from)) && !isSupplementalRemark(nodeById.get(edge.to));
 
     return {
         schemaVersion: 1,
@@ -2785,7 +2793,11 @@ export function buildDependencyGraph(state: any, documents: FormalDocument[]): D
         diagnostics,
         summary: {
             nodes: nodes.length,
+            theoremLikeNodes: nodes.filter(node => node.kind !== 'remark').length,
+            supplementalRemarkNodes: nodes.filter(node => node.kind === 'remark').length,
             edges: edges.length,
+            theoremLikeEdges: edges.filter(isTheoremLikeEdge).length,
+            supplementalRemarkEdges: edges.filter(edge => !isTheoremLikeEdge(edge)).length,
             isolated: nodes.filter(node => (incoming.get(node.id) || 0) === 0 && (outgoing.get(node.id) || 0) === 0).length,
             cycles: cycles.length,
             crossBookEdges: edges.filter(isCrossBook).length,
@@ -2823,6 +2835,14 @@ function dependencyNodeTitle(node: DependencyGraphNode): string {
     return `${node.display}${node.title ? ` ${node.title}` : ''}`;
 }
 
+function isSupplementalRemarkNode(node: DependencyGraphNode | undefined): boolean {
+    return node?.kind === 'remark';
+}
+
+function dependencyNodeKindLabel(node: DependencyGraphNode): string {
+    return isSupplementalRemarkNode(node) ? 'Supplemental remark' : 'Theorem-like';
+}
+
 function pushLimitedRows<T>(lines: string[], rows: T[], limit: number, render: (row: T) => string, moreRow?: (remaining: number) => string) {
     rows.slice(0, limit).forEach(row => lines.push(render(row)));
     if (rows.length > limit) {
@@ -2841,7 +2861,11 @@ export function renderDependencyReport(graph: DependencyGraph): string {
         '## Summary',
         '',
         `- Nodes: ${graph.summary.nodes}`,
+        `- Theorem-like nodes: ${graph.summary.theoremLikeNodes}`,
+        `- Supplemental fact remarks: ${graph.summary.supplementalRemarkNodes}`,
         `- Explicit edges: ${graph.summary.edges}`,
+        `- Mainline theorem-like edges: ${graph.summary.theoremLikeEdges}`,
+        `- Edges involving supplemental remarks: ${graph.summary.supplementalRemarkEdges}`,
         `- Statement edges: ${graph.summary.statementEdges}`,
         `- Proof edges: ${graph.summary.proofEdges}`,
         `- Body edges: ${graph.summary.bodyEdges}`,
@@ -2858,9 +2882,9 @@ export function renderDependencyReport(graph: DependencyGraph): string {
     if (outgoing.length === 0) {
         lines.push('No outgoing dependencies.', '');
     } else {
-        lines.push('| Count | Node | Location |');
-        lines.push('| ---: | --- | --- |');
-        pushLimitedRows(lines, outgoing, 20, row => `| ${row.count} | ${escapeTable(row.node.display)} ${escapeTable(row.node.title || '')} | \`${dependencyNodeLocation(row.node)}\` |`);
+        lines.push('| Count | Kind | Node | Location |');
+        lines.push('| ---: | --- | --- | --- |');
+        pushLimitedRows(lines, outgoing, 20, row => `| ${row.count} | ${dependencyNodeKindLabel(row.node)} | ${escapeTable(row.node.display)} ${escapeTable(row.node.title || '')} | \`${dependencyNodeLocation(row.node)}\` |`);
         lines.push('');
     }
 
@@ -2869,9 +2893,9 @@ export function renderDependencyReport(graph: DependencyGraph): string {
     if (incoming.length === 0) {
         lines.push('No incoming dependencies.', '');
     } else {
-        lines.push('| Count | Node | Location |');
-        lines.push('| ---: | --- | --- |');
-        pushLimitedRows(lines, incoming, 20, row => `| ${row.count} | ${escapeTable(row.node.display)} ${escapeTable(row.node.title || '')} | \`${dependencyNodeLocation(row.node)}\` |`);
+        lines.push('| Count | Kind | Node | Location |');
+        lines.push('| ---: | --- | --- | --- |');
+        pushLimitedRows(lines, incoming, 20, row => `| ${row.count} | ${dependencyNodeKindLabel(row.node)} | ${escapeTable(row.node.display)} ${escapeTable(row.node.title || '')} | \`${dependencyNodeLocation(row.node)}\` |`);
         lines.push('');
     }
 
@@ -2882,7 +2906,7 @@ export function renderDependencyReport(graph: DependencyGraph): string {
     });
     lines.push('## Cross-Scope Edges', '');
     if (crossScopeEdges.length === 0) {
-        lines.push('No cross-scope theorem dependencies.', '');
+        lines.push('No cross-scope dependency edges.', '');
     } else {
         lines.push('| Where | From | To | Reference |');
         lines.push('| --- | --- | --- | --- |');
@@ -2896,7 +2920,7 @@ export function renderDependencyReport(graph: DependencyGraph): string {
 
     lines.push('## Cycles', '');
     if (graph.cycles.length === 0) {
-        lines.push('No theorem dependency cycles found.', '');
+        lines.push('No dependency cycles found.', '');
     } else {
         lines.push('| Cycle |');
         lines.push('| --- |');
@@ -2911,13 +2935,17 @@ export function renderDependencyReport(graph: DependencyGraph): string {
         outgoingCounts.set(edge.from, (outgoingCounts.get(edge.from) || 0) + 1);
     }
     const isolated = graph.nodes.filter(node => (incomingCounts.get(node.id) || 0) === 0 && (outgoingCounts.get(node.id) || 0) === 0);
+    const isolatedTheoremLike = isolated.filter(node => !isSupplementalRemarkNode(node));
+    const isolatedRemarks = isolated.filter(isSupplementalRemarkNode);
     lines.push('## Isolated Nodes', '');
+    lines.push(`- Mainline theorem-like: ${isolatedTheoremLike.length}`);
+    lines.push(`- Supplemental remarks: ${isolatedRemarks.length}`, '');
     if (isolated.length === 0) {
-        lines.push('No isolated theorem-like nodes.', '');
+        lines.push('No isolated dependency nodes.', '');
     } else {
-        lines.push('| Node | Location |');
-        lines.push('| --- | --- |');
-        pushLimitedRows(lines, isolated, 100, node => `| ${escapeTable(node.display)} ${escapeTable(node.title || '')} | \`${dependencyNodeLocation(node)}\` |`);
+        lines.push('| Kind | Node | Location |');
+        lines.push('| --- | --- | --- |');
+        pushLimitedRows(lines, isolated, 100, node => `| ${dependencyNodeKindLabel(node)} | ${escapeTable(node.display)} ${escapeTable(node.title || '')} | \`${dependencyNodeLocation(node)}\` |`);
         lines.push('');
     }
 
@@ -2960,6 +2988,7 @@ function dependencyFilteredSummary(graph: DependencyGraph, where: DependencyGrap
     const isCrossBook = (edge: DependencyGraphEdge) => (nodeById.get(edge.from)?.bookKey || '') !== (nodeById.get(edge.to)?.bookKey || '');
     const isCrossVolume = (edge: DependencyGraphEdge) => (nodeById.get(edge.from)?.volumeKey || '') !== (nodeById.get(edge.to)?.volumeKey || '');
     const isCrossChapter = (edge: DependencyGraphEdge) => (nodeById.get(edge.from)?.unitKey || '') !== (nodeById.get(edge.to)?.unitKey || '');
+    const isTheoremLikeEdge = (edge: DependencyGraphEdge) => !isSupplementalRemarkNode(nodeById.get(edge.from)) && !isSupplementalRemarkNode(nodeById.get(edge.to));
     const cycles = dependencyGraphCycles(graph.nodes, edges);
 
     return {
@@ -2968,6 +2997,8 @@ function dependencyFilteredSummary(graph: DependencyGraph, where: DependencyGrap
         outgoing,
         cycles,
         isolated: graph.nodes.filter(node => (incoming.get(node.id) || 0) === 0 && (outgoing.get(node.id) || 0) === 0),
+        theoremLikeEdges: edges.filter(isTheoremLikeEdge).length,
+        supplementalRemarkEdges: edges.filter(edge => !isTheoremLikeEdge(edge)).length,
         crossBookEdges: edges.filter(isCrossBook).length,
         crossVolumeEdges: edges.filter(isCrossVolume).length,
         crossChapterEdges: edges.filter(isCrossChapter).length,
@@ -3006,7 +3037,11 @@ export function renderDependencyGraphSummary(graph: DependencyGraph, where: Depe
         `# Dependency Graph Summary${dependencyWhereSuffix(where)}`,
         '',
         `- Nodes: ${graph.nodes.length}`,
+        `- Theorem-like nodes: ${graph.summary.theoremLikeNodes}`,
+        `- Supplemental fact remarks: ${graph.summary.supplementalRemarkNodes}`,
         `- Explicit edges: ${summary.edges.length}`,
+        `- Mainline theorem-like edges: ${summary.theoremLikeEdges}`,
+        `- Edges involving supplemental remarks: ${summary.supplementalRemarkEdges}`,
         `- Statement edges: ${summary.statementEdges}`,
         `- Proof edges: ${summary.proofEdges}`,
         `- Body edges: ${summary.bodyEdges}`,
@@ -3023,9 +3058,15 @@ export function renderDependencyGraphSummary(graph: DependencyGraph, where: Depe
     if (outgoing.length === 0) {
         lines.push('No outgoing dependencies.', '');
     } else {
-        lines.push('| Count | Node | Location |');
-        lines.push('| ---: | --- | --- |');
-        pushLimitedRows(lines, outgoing, 10, row => `| ${row.count} | ${escapeTable(dependencyNodeTitle(row.node))} | \`${dependencyNodeLocation(row.node)}\` |`);
+        lines.push('| Count | Kind | Node | Location |');
+        lines.push('| ---: | --- | --- | --- |');
+        pushLimitedRows(
+            lines,
+            outgoing,
+            10,
+            row => `| ${row.count} | ${dependencyNodeKindLabel(row.node)} | ${escapeTable(dependencyNodeTitle(row.node))} | \`${dependencyNodeLocation(row.node)}\` |`,
+            remaining => `| ... | ... | ... | ${remaining} more |`
+        );
         lines.push('');
     }
 
@@ -3034,9 +3075,15 @@ export function renderDependencyGraphSummary(graph: DependencyGraph, where: Depe
     if (incoming.length === 0) {
         lines.push('No incoming dependencies.', '');
     } else {
-        lines.push('| Count | Node | Location |');
-        lines.push('| ---: | --- | --- |');
-        pushLimitedRows(lines, incoming, 10, row => `| ${row.count} | ${escapeTable(dependencyNodeTitle(row.node))} | \`${dependencyNodeLocation(row.node)}\` |`);
+        lines.push('| Count | Kind | Node | Location |');
+        lines.push('| ---: | --- | --- | --- |');
+        pushLimitedRows(
+            lines,
+            incoming,
+            10,
+            row => `| ${row.count} | ${dependencyNodeKindLabel(row.node)} | ${escapeTable(dependencyNodeTitle(row.node))} | \`${dependencyNodeLocation(row.node)}\` |`,
+            remaining => `| ... | ... | ... | ${remaining} more |`
+        );
         lines.push('');
     }
 
@@ -3141,14 +3188,23 @@ export function renderDependencyGraphFocus(graph: DependencyGraph, id: string, d
 
 export function renderDependencyGraphIsolated(graph: DependencyGraph, where: DependencyGraphWhereFilter = 'all'): string {
     const summary = dependencyFilteredSummary(graph, where);
-    const lines = [`# Isolated Theorem-Like Nodes${dependencyWhereSuffix(where)}`, '', `Isolated nodes: ${summary.isolated.length}`, ''];
+    const theoremLike = summary.isolated.filter(node => !isSupplementalRemarkNode(node));
+    const remarks = summary.isolated.filter(isSupplementalRemarkNode);
+    const lines = [
+        `# Isolated Dependency Nodes${dependencyWhereSuffix(where)}`,
+        '',
+        `Isolated nodes: ${summary.isolated.length}`,
+        `- Mainline theorem-like: ${theoremLike.length}`,
+        `- Supplemental remarks: ${remarks.length}`,
+        ''
+    ];
     if (summary.isolated.length === 0) {
-        lines.push('No isolated theorem-like nodes.', '');
+        lines.push('No isolated dependency nodes.', '');
         return `${lines.join('\n')}\n`;
     }
-    lines.push('| Node | Location |');
-    lines.push('| --- | --- |');
-    pushLimitedRows(lines, summary.isolated, 500, node => `| ${escapeTable(dependencyNodeTitle(node))} | \`${dependencyNodeLocation(node)}\` |`);
+    lines.push('| Kind | Node | Location |');
+    lines.push('| --- | --- | --- |');
+    pushLimitedRows(lines, summary.isolated, 500, node => `| ${dependencyNodeKindLabel(node)} | ${escapeTable(dependencyNodeTitle(node))} | \`${dependencyNodeLocation(node)}\` |`);
     lines.push('');
     return `${lines.join('\n')}\n`;
 }
@@ -3157,7 +3213,7 @@ export function renderDependencyGraphCycles(graph: DependencyGraph, where: Depen
     const cycles = dependencyGraphCycles(graph.nodes, filteredDependencyEdges(graph, where));
     const lines = [`# Dependency Cycles${dependencyWhereSuffix(where)}`, '', `Cycles: ${cycles.length}`, ''];
     if (cycles.length === 0) {
-        lines.push('No theorem dependency cycles found.', '');
+        lines.push('No dependency cycles found.', '');
         return `${lines.join('\n')}\n`;
     }
     lines.push('| Cycle | IDs |');
@@ -3248,14 +3304,25 @@ export function renderDependencyGraphBridges(graph: DependencyGraph, where: Depe
         .filter(row => row.incoming > 0 && row.outgoing > 0)
         .sort((a, b) => b.crossScope - a.crossScope || (b.incoming + b.outgoing) - (a.incoming + a.outgoing) || dependencyNodeTitle(a.node).localeCompare(dependencyNodeTitle(b.node)));
 
-    const lines = [`# Bridge Candidates${dependencyWhereSuffix(where)}`, '', 'A bridge candidate is a theorem-like node with both incoming and outgoing explicit dependencies. This is structural only, not a domain judgment.', '', `Candidates: ${rows.length}`, ''];
+    const theoremLikeRows = rows.filter(row => !isSupplementalRemarkNode(row.node));
+    const remarkRows = rows.filter(row => isSupplementalRemarkNode(row.node));
+    const lines = [
+        `# Bridge Candidates${dependencyWhereSuffix(where)}`,
+        '',
+        'A bridge candidate has both incoming and outgoing explicit dependencies. This is structural only, not a domain judgment.',
+        '',
+        `Candidates: ${rows.length}`,
+        `- Mainline theorem-like: ${theoremLikeRows.length}`,
+        `- Supplemental remarks: ${remarkRows.length}`,
+        ''
+    ];
     if (rows.length === 0) {
         lines.push('No bridge candidates.', '');
         return `${lines.join('\n')}\n`;
     }
-    lines.push('| Cross-scope | Incoming | Outgoing | Node | Location |');
-    lines.push('| ---: | ---: | ---: | --- | --- |');
-    pushLimitedRows(lines, rows, 200, row => `| ${row.crossScope} | ${row.incoming} | ${row.outgoing} | ${escapeTable(dependencyNodeTitle(row.node))} | \`${dependencyNodeLocation(row.node)}\` |`);
+    lines.push('| Cross-scope | Incoming | Outgoing | Kind | Node | Location |');
+    lines.push('| ---: | ---: | ---: | --- | --- | --- |');
+    pushLimitedRows(lines, rows, 200, row => `| ${row.crossScope} | ${row.incoming} | ${row.outgoing} | ${dependencyNodeKindLabel(row.node)} | ${escapeTable(dependencyNodeTitle(row.node))} | \`${dependencyNodeLocation(row.node)}\` |`);
     lines.push('');
     return `${lines.join('\n')}\n`;
 }
@@ -3286,9 +3353,9 @@ export function renderAgentGuide(state: any): string {
         '- Chapter/page anchors: put `#h-...` / `#tmp-*` on the file\'s unique highest-level heading when the page needs stable refs. The hash is hidden in preview and does not create a section number. Use `@h-...`, `@h-....title`, or `@h-....full` from `reference-map.md` to reference the page.',
         '- Compatibility chapter/page refs: `@chapter:book1/02-main.md`, `@chapter:book1/02-main.md.title`, or `@chapter:book1/02-main.md.full` still work; paths are relative to the formal root that owns `.markdown-formal/`. `@page:path.md` is for intro, summary, and appendix pages. Prefer page hashes when available. `finish` normalizes `./` and `../` input sugar to root-relative paths.',
         '- Theorem-like recall captures the statement before `证明` / `Proof`; keep proofs after an explicit proof marker.',
-        '- Dependency graph: `.markdown-formal/dependency-graph.json` is the canonical explicit theorem-like dependency graph. It uses only `@h-...` references between propositions/lemmas/theorems/corollaries and marks edges as `statement`, `proof`, or `body`; `.markdown-formal/dependency-report.md` is the review view. Use `npm run formal -- graph summary`, `graph impact <h-id>`, `graph upstream <h-id>`, `graph focus <h-id> --depth 2`, `graph bridges`, `graph isolated`, `graph cycles`, or `graph matrix chapter|volume|book` for Markdown analysis. Add `--where statement|proof|body` to filter edge placement. These are structural graph tools, not domain interpretation.',
+        '- Dependency graph: `.markdown-formal/dependency-graph.json` is the canonical explicit dependency graph. It uses only `@h-...` references between propositions/lemmas/theorems/corollaries and proof-backed hash remarks, and marks edges as `statement`, `proof`, or `body`; `.markdown-formal/dependency-report.md` separates mainline theorem-like and supplemental remark statistics. Use `npm run formal -- graph summary`, `graph impact <h-id>`, `graph upstream <h-id>`, `graph focus <h-id> --depth 2`, `graph bridges`, `graph isolated`, `graph cycles`, or `graph matrix chapter|volume|book` for Markdown analysis. Add `--where statement|proof|body` to filter edge placement. These are structural graph tools, not domain interpretation.',
         '- Definitions and project knowledge: lookup is a tool-first, AI-exception workflow. The tool scans standard `定义（Term）：...` / `Definition (Term): ...` definitions and deliberately named concept/glossary appendices; `.markdown-formal/project-analysis.md` records detected concept, notation, and summary pages. Do not refresh `.markdown-formal/definitions.json` after ordinary edits. Use it only for nonstandard phrases, aliases/bilingual lookup, stable multi-paragraph previews, or a boundary the deterministic extractor cannot represent; include Markdown `content` for those entries. Reader task context carries detected sources from the current book. Full rendered lookup previews are only guaranteed for definitions in the currently previewed file; cross-file search is primarily for locating and jumping.',
-        '- Explanatory remarks stay plain: `注（Title）：...` / `Remark (Title): ...`, without hash. Non-mainline fact remarks that need a proof or later citation use `注 #tmp-*（Title）：...`; `> 注 #tmp-*（Title）：...` is also recognized inside standard blockquotes. The hash is only an anchor, renders without a remark number, and still supports recall. Examples stay plain by default; only explicitly cited examples use `例 #tmp-*` / `Example #tmp-*` and remain numbered.',
+        '- Explanatory remarks stay plain: `注（Title）：...` / `Remark (Title): ...`, without hash. Non-mainline fact remarks that need a proof or later citation use `注 #tmp-*（Title）：...`; `> 注 #tmp-*（Title）：...` is also recognized inside standard blockquotes. A hash remark is an unnumbered supplemental dependency node and supports recall; a plain remark never enters the dependency graph or Reader dependency markers. Examples stay plain by default; only explicitly cited examples use `例 #tmp-*` / `Example #tmp-*` and remain numbered.',
         '- Symbols: maintain only project-specific `source`, `pattern`, and `meaning` entries in `.markdown-formal/symbols.json` when explicit notation semantics change; patterns describe the notation itself with balanced delimiters, not whole equations or open-ended formula fragments. Detected notation appendices are context only and do not infer symbol meanings. The navigation symbol table lists symbols matched in the current preview file. Symbols are not inline formula refs and are not searched through the definition search box.',
         '- Appendices use the appendix file prefix, so markers in `appendix-a-*.md` render as `A.1`, `A.2`, etc. `00-introduction.md`, `intro.md`, and `introduction.md` are intro pages, not chapter 0.',
         '- Export: do not compile formal source Markdown directly. Use `npm run formal -- export-md <file-or-dir> --out dist/book.md` to produce one portable Markdown file, `npm run formal -- export-md-split <file-or-dir> --out dist/public` to produce compiled Markdown files while preserving the source tree, `npm run formal -- export-pdf <file-or-dir> --out dist/book.pdf` to call local pandoc after Markdown export, or `npm run formal -- render-pdf dist/book.md --out dist/book.pdf` when a project release flow has already postprocessed the compiled Markdown. PDF rendering reads `.markdown-formal/config.json` `pdf` defaults when present: A4, 2.5cm margins, TOC depth 2, language-aware TOC title, separate TOC page, optional title page metadata, optional publication metadata page, and optional front matter pages. `author` is the cover/PDF metadata author; fuller identity fields are `authorNative`, `authorAliases`, `orcid`, `repository`, `license`, `licenseUrl`, `preferredCitation`, `releaseTag`, `releaseCommit`, and `doi`. When `metadataPage` is true, the generated metadata page is unnumbered, unlisted, and placed after the title page but before the table of contents. Longer AI, license, citation, or provenance statements belong in `frontMatter`, placed after metadata and before the TOC; front matter entries use `source` or `content`, default to `toc: false`, and default to page breaks. Override with `--title`, `--subtitle`, `--author`, `--author-native`, `--author-alias`, `--orcid`, `--repository`, `--license`, `--license-url`, `--preferred-citation`, `--date`, `--release-version`, `--release-tag`, `--release-commit`, `--doi`, `--metadata-page`, `--front-matter`, `--front-matter-title`, `--front-matter-toc`, `--documentclass`, `--title-page`, `--margin`, `--no-toc`, `--toc-depth`, `--paper`, or Pandoc `-V key:value`. No PDF engine is bundled.',
@@ -3297,7 +3364,7 @@ export function renderAgentGuide(state: any): string {
         '',
         '- `.markdown-formal/reference-map.md`: compact display-number, page-anchor, and unnumbered-anchor to hash-ID table.',
         '- `.markdown-formal/reader-index.json`: machine-readable formal entry, page, definition, and symbol snapshot for local reader tooling.',
-        '- `.markdown-formal/dependency-graph.json`: canonical theorem-like dependency graph from explicit `@h-...` references.',
+        '- `.markdown-formal/dependency-graph.json`: canonical graph for theorem-like objects and proof-backed hash remarks, from explicit `@h-...` references.',
         '- `.markdown-formal/dependency-report.md`: human/AI dependency graph review report.',
         '- `.markdown-formal/project-analysis.json` / `.markdown-formal/project-analysis.md`: generated detection of concept/glossary, notation, and summary pages, plus supplemental concept entries. This is derived context, not a hand-maintained source table.',
         '- `.markdown-formal/report.md`: lint/verify details.',

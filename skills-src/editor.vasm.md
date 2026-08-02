@@ -56,7 +56,7 @@ $$
 - 页面需要被引用时，把 hash 放在文件唯一最高级标题；它在预览中隐藏，不产生小节号。
 - 小节只编号和跳转，不提供 recall。命题、引理、定理、推论的 recall 在 `证明` / `Proof` 前停止。
 - 公式、图、表有独立编号；公式 marker 放在 display math 前，hash 不写入公式内部。
-- `注（说明）：...` 默认不加 hash。需要证明、后文引用或稳定锚点的旁支事实才写 `注 #tmp-*（名称）：...`；它不显示“注 x.x”，也不进目录。例默认不加 hash，只有已经被后文引用时才反向加 hash。
+- `注（说明）：...` 默认不加 hash。需要证明、后文引用或稳定锚点的旁支事实才写 `注 #tmp-*（名称）：...`；它不显示“注 x.x”，也不进目录，但会作为补充事实进入显式依赖图。普通注不进入图。例默认不加 hash，只有已经被后文引用时才反向加 hash。
 
 ## 定义、概念页和符号
 
@@ -72,7 +72,7 @@ $$
 
 - 从拥有 `.markdown-formal/config.json` 的 formal root 运行命令。构建、草稿、上下文和外部工程目录写入 `scan.exclude`。
 - 定义查询和符号表默认限制在当前 book；跨 book 引用或查询必须先配置 `lookup.bookDependencies`。
-- 改动已有命题类对象前，按需要运行 `npm run formal -- graph impact <h-id>` 或 `graph focus <h-id> --depth 2`；显式依赖只来自 `@h-...`，AI 推测边不能写进权威依赖图。
+- 改动已有命题类对象或带 hash 补充注释前，按需要运行 `npm run formal -- graph impact <h-id>` 或 `graph focus <h-id> --depth 2`；显式依赖只来自 `@h-...`，报告会将主线对象与补充注释分开统计，AI 推测边不能写进权威依赖图。
 - 旧编号迁移使用 `migrate-text-refs` / `migrate-ids` 的 dry-run 后再 `--apply`。工具不会自动改裸数字或手写章引用；结合上下文改为页面 `@h-...` 或临时 `@chapter:path.md`。
 
 完整命令、PDF 发布和配置字段见项目的 `docs/usage.md`；不要把这些说明复制进写作提示词。

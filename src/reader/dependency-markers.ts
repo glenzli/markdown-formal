@@ -4,18 +4,21 @@ export interface ReaderDependencyGraph {
         display?: string;
         title?: string;
         path?: string;
+        kind?: string;
         sourceReferenceCount?: number;
     }>;
     edges?: Array<{ from?: string; to?: string }>;
 }
 
 export type ReaderDependencyMarkerRole = 'leaf' | 'referenced' | 'bridge';
+export type ReaderDependencyMarkerKind = 'theorem-like' | 'remark';
 
 export interface ReaderDependencyNeighbor {
     id: string;
     display: string;
     title: string;
     filePath: string;
+    kind: ReaderDependencyMarkerKind;
 }
 
 export interface ReaderDependencyMarker {
@@ -24,6 +27,7 @@ export interface ReaderDependencyMarker {
     directDependents: number;
     impactCount: number;
     role: ReaderDependencyMarkerRole;
+    kind: ReaderDependencyMarkerKind;
     upstream: ReaderDependencyNeighbor[];
     downstream: ReaderDependencyNeighbor[];
 }
@@ -54,7 +58,8 @@ function dependencyNeighbor(node: NonNullable<ReaderDependencyGraph['nodes']>[nu
         id: node.id,
         display: node.display || node.title || node.id,
         title: node.title || '',
-        filePath: node.path
+        filePath: node.path,
+        kind: node.kind === 'remark' ? 'remark' : 'theorem-like'
     };
 }
 
@@ -70,10 +75,10 @@ function dependencyNeighbors(
 
 /**
  * Produces the small, page-local graph projection used by Reader markers.
- * Graph direction is source statement -> referenced statement, so reverse
- * adjacency describes the later theorem-like objects affected by a node.
+ * Graph direction is source formal claim -> referenced formal claim, so reverse
+ * adjacency describes the later dependency nodes affected by a node.
  * sourceReferenceCount is separate context: it includes explicit formal
- * references to sections and definitions as well as theorem-like nodes.
+ * references to sections and definitions as well as dependency nodes.
  */
 export function projectReaderDependencyMarkers(
     graph: ReaderDependencyGraph | undefined,
@@ -108,6 +113,7 @@ export function projectReaderDependencyMarkers(
             directDependents,
             impactCount: reachableCount(dependents, node.id),
             role: directDependents === 0 ? 'leaf' : directDependencies > 0 ? 'bridge' : 'referenced',
+            kind: node.kind === 'remark' ? 'remark' : 'theorem-like',
             upstream: dependencyNeighbors(dependencies.get(node.id), nodeById),
             downstream: dependencyNeighbors(dependents.get(node.id), nodeById)
         };

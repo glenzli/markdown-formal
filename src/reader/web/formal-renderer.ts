@@ -77,15 +77,15 @@ function dependencyMarkerText(marker: ReaderDependencyMarker, language: 'zh' | '
     const impact = Math.max(0, marker.impactCount || 0);
     const otherReferences = Math.max(0, (marker.sourceReferenceCount || 0) - dependencies);
     if (language === 'en') {
-        const upstream = dependencies > 0 ? `${dependencies} upstream theorem-like node${dependencies === 1 ? '' : 's'}` : 'no upstream theorem-like nodes';
+        const upstream = dependencies > 0 ? `${dependencies} upstream dependency node${dependencies === 1 ? '' : 's'}` : 'no upstream dependency nodes';
         const supplemental = otherReferences > 0 ? `; ${otherReferences} other formal reference${otherReferences === 1 ? '' : 's'}` : '';
-        if (dependents === 0) return `${upstream}; no downstream theorem-like nodes${supplemental}`;
+        if (dependents === 0) return `${upstream}; no downstream dependency nodes${supplemental}`;
         return `${upstream}; ${dependents} direct downstream node${dependents === 1 ? '' : 's'}; downstream impact ${impact}${supplemental}`;
     }
-    const upstream = dependencies > 0 ? `上游命题类对象 ${dependencies} 项` : '没有上游命题类对象';
-    const supplemental = otherReferences > 0 ? `；另引用 ${otherReferences} 项非命题 formal 对象` : '';
-    if (dependents === 0) return `${upstream}；没有下游命题类对象${supplemental}`;
-    return `${upstream}；下游命题类对象 ${dependents} 项；传递影响 ${impact} 项${supplemental}`;
+    const upstream = dependencies > 0 ? `上游依赖对象 ${dependencies} 项` : '没有上游依赖对象';
+    const supplemental = otherReferences > 0 ? `；另引用 ${otherReferences} 项章节、定义或其他 formal 对象` : '';
+    if (dependents === 0) return `${upstream}；没有下游依赖对象${supplemental}`;
+    return `${upstream}；下游依赖对象 ${dependents} 项；传递影响 ${impact} 项${supplemental}`;
 }
 
 function renderDependencyMarker(id: string, marker: ReaderDependencyMarker, language: 'zh' | 'en'): string {
@@ -104,7 +104,7 @@ function renderDependencyMarker(id: string, marker: ReaderDependencyMarker, lang
     ].join('');
     const label = dependencyMarkerText(marker, language);
     const intensity = marker.impactCount > marker.directDependents ? ' is-propagating' : '';
-    return '<button type="button" class="reader-dependency-marker is-' + marker.role + intensity
+    return '<button type="button" class="reader-dependency-marker is-' + marker.role + ' is-' + marker.kind + intensity
         + '" aria-label="' + escapeHtml(label) + '" data-reader-dependency="' + escapeHtml(id) + '">'
         + svg + '</button>';
 }

@@ -26,7 +26,7 @@ The design target is AI-assisted editing:
 - `@h-...` references that survive insertion, deletion, and chapter reordering.
 - Definition lookup without forcing definitions into the numbering system, including deliberately named concept and glossary appendices.
 - Current-page symbol table for project-specific LaTeX notation.
-- Explicit theorem dependency graph built from `@h-...` references.
+- Explicit dependency graph for theorem-like objects and proof-backed hash remarks, built from `@h-...` references.
 - Markdown and PDF export with title page, publication metadata page, and front matter pages.
 - Reviewed AI workflow artifacts in `skills/`, plus VASMC catalog exports for lockable reuse.
 
@@ -36,7 +36,7 @@ The design target is AI-assisted editing:
 npm run formal -- serve /path/to/writing-project
 ```
 
-The Reader listens only on `127.0.0.1` and never writes project files. Open the printed URL in Codex's local browser side panel or a normal browser for chapter navigation, a table of contents, current-page symbols, definition search, in-text explicit dependency markers for theorem-like objects, recall, and live source refresh. Multi-volume projects naturally collapse to a volume-to-chapter navigation hierarchy. Markers reflect only structural relationships formed by `@h-...`; citation counts do not imply mathematical strength or importance.
+The Reader listens only on `127.0.0.1` and never writes project files. Open the printed URL in Codex's local browser side panel or a normal browser for chapter navigation, a table of contents, current-page symbols, definition search, in-text explicit dependency markers for theorem-like objects and proof-backed hash remarks, recall, and live source refresh. Multi-volume projects naturally collapse to a volume-to-chapter navigation hierarchy. Markers reflect only structural relationships formed by `@h-...`; a hash remark uses a muted supplemental marker, while a plain remark has no graph node. Citation counts do not imply mathematical strength or importance.
 
 If the Codex CLI is installed and signed in locally, Reader can open a read-only, ephemeral local discussion for a text or formula selection. Its first message carries the relative path, source line range, selected Markdown, project root, and tool boundary; later messages retain that context. The discussion never writes the manuscript or local task state. You can also bind a Codex task whose working directory exactly matches the Reader project, then explicitly send a chosen discussion conclusion to that task for verification and further work. Reader does not handle Codex tool approvals; continue in Codex when tools are needed.
 
@@ -269,7 +269,7 @@ The Reader and CLI outputs remain dependency-free after bundling. Development de
 - `@h-...` 引用可承受插入、删除和章节重排。
 - 定义查询不侵入编号系统，并能利用明确命名的概念/术语附录。
 - 当前页符号表用于展示项目特有 LaTeX 记号。
-- 从显式 `@h-...` 引用生成命题依赖图。
+- 从显式 `@h-...` 引用生成主线命题与带 hash 补充注释的依赖图。
 - Markdown/PDF 导出，支持封面、出版元数据页和前置声明页。
 - `skills/` 提供给目标项目 AI 指令融合的规则 artifact；`vasm-catalog/` 提供可由 VASMC 锁定消费的 catalog exports。
 
@@ -281,7 +281,7 @@ The Reader and CLI outputs remain dependency-free after bundling. Development de
 npm run formal -- serve /path/to/writing-project
 ```
 
-它只监听 `127.0.0.1`，不写入项目文件。打开命令打印的 URL 后，可获得章节导航、目录、当前页符号表、定义搜索、命题类对象旁的显式依赖标记、引用回溯和源文件实时刷新。多卷结构会自然折叠成卷到章的导航层级。标记只反映 `@h-...` 形成的结构关系，不把引用次数解释为数学上的强弱或重要性。
+它只监听 `127.0.0.1`，不写入项目文件。打开命令打印的 URL 后，可获得章节导航、目录、当前页符号表、定义搜索、命题类对象和带 hash 补充注释旁的显式依赖标记、引用回溯和源文件实时刷新。多卷结构会自然折叠成卷到章的导航层级。标记只反映 `@h-...` 形成的结构关系，不把引用次数解释为数学上的强弱或重要性。
 
 若本机已安装并登录 Codex CLI，Reader 可为正文或公式选区打开只读、临时的本地讨论浮窗。首条消息携带相对路径、源码行范围、选中 Markdown、项目根和可用工具边界；后续消息保留这一上下文。临时讨论不会写入书稿或本机任务状态。也可绑定一个工作目录与当前 Reader 项目完全一致、且可直接接收输入的 Codex 任务，再将某条临时讨论结论显式发送到任务继续核验和执行。Reader 不承接 Codex 的工具审批，需要工具时应回到 Codex 继续。
 
