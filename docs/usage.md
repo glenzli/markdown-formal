@@ -208,6 +208,29 @@ The project needs `.markdown-formal/config.json`; run `prepare` once to create i
 
 The VS Code package remains available as a legacy compatibility integration, but new features target the Reader first.
 
+### Codex MCP Entry
+
+The Reader remains an independent local client and can also be opened through Codex MCP. MCP only starts or reuses the local Reader and returns a localhost URL that Codex's built-in browser can open; it does not embed or duplicate Reader rendering, indexing, or discussion behavior.
+
+```bash
+markdown-formal mcp
+```
+
+The MCP working directory is the default project. To pin a project root:
+
+```bash
+markdown-formal mcp --root /path/to/project
+```
+
+The repository contains an installable Codex plugin. First make `markdown-formal` available on `PATH` during development, for example with `npm link`, then register the repository root as a marketplace:
+
+```bash
+codex plugin marketplace add /path/to/markdown-formal
+codex plugin add markdown-formal-reader@personal
+```
+
+The plugin calls `open_reader` for the current project or a project-relative Markdown page. If no prepared project is available, it opens Reader's local project launcher. MCP binds only to `127.0.0.1` and does not write manuscript or `.markdown-formal/` artifacts.
+
 ### AI Workflow Integration
 
 AI rules no longer live in a separate public documentation page. Target projects should read the AI artifacts shipped with the package:
@@ -647,6 +670,33 @@ npm run formal -- serve
 项目需要先有 `.markdown-formal/config.json`；首次使用可运行 `prepare`。Reader 不要求预先生成 `reader-index.json`。
 
 旧 VS Code 预览已归档；项目阅读与交互统一通过本地 Reader 提供。
+
+## Codex MCP 入口
+
+Reader 可作为独立本地客户端运行，也可通过 Codex MCP 打开。MCP 只负责启动或复用本机 Reader，并返回可由 Codex 内置浏览器直接访问的 localhost URL；它不嵌入或复制 Reader 的渲染、索引或讨论实现。
+
+CLI 入口是：
+
+```bash
+markdown-formal mcp
+```
+
+默认项目是 MCP 进程的工作目录。若需要固定项目根，可传：
+
+```bash
+markdown-formal mcp --root /path/to/project
+```
+
+仓库包含一个可安装的 Codex plugin。开发时先确保 `markdown-formal` 在 `PATH` 中（例如 `npm link`），然后将仓库根目录注册为 marketplace：
+
+```bash
+codex plugin marketplace add /path/to/markdown-formal
+codex plugin add markdown-formal-reader@personal
+```
+
+发布版本同样可以从安装包根目录添加 marketplace。插件调用 `open_reader`：它可直接打开当前项目或某个项目相对 Markdown 页面；没有可用项目时会打开 Reader 的本机项目启动台。
+
+MCP 与 Reader 一样只绑定 `127.0.0.1`，不写入书稿或 `.markdown-formal/` 产物。
 
 ## AI 工作流接入
 

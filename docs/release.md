@@ -8,9 +8,10 @@
 
 ## 🌍 English
 
-`markdown-formal` releases include four primary surfaces:
+`markdown-formal` releases include five primary surfaces:
 
 - a vendorable CLI and local Reader runtime;
+- a Codex MCP plugin that launches the Reader in a local browser;
 - human-facing public documentation;
 - reviewed AI workflow artifacts that should be merged into target projects;
 - VASMC catalog exports for lockable reuse.
@@ -47,7 +48,9 @@ The `dist/` directory represents the current build output and does not add anoth
 
 ```text
 dist/
+  .agents/plugins/
   cli/
+  plugins/
   skills/
   vasm-catalog/
   docs/
@@ -61,6 +64,7 @@ dist/
 Artifact roles:
 
 - `cli/`: dependency-free CLI runtime and bundled Reader assets for target projects.
+- `.agents/plugins/` and `plugins/`: Codex marketplace and the `markdown-formal-reader` MCP plugin.
 - `skills/`: AI rule and composition guidance artifacts, currently `skills/editor.md` and `skills/integrator.md`.
 - `vasm-catalog/`: catalog for VASMC consumers, including `vasmc-catalog.yaml`, the `editor` export, and the `integrator` export.
 - `docs/`: human-facing documentation.
@@ -92,6 +96,7 @@ npm package entries:
 
 - `bin.markdown-formal`: points to `out/cli/formal-tools.js`.
 - `out/reader/`: local Reader assets served by the CLI `serve` command.
+- `.agents/plugins/` and `plugins/`: the Codex marketplace and `markdown-formal-reader` MCP plugin.
 - `skills/`: `editor.md` and `integrator.md` for plain AI review and integration.
 - `vasm-catalog/`: catalog exports for VASMC consumers.
 - `docs/`: human-facing usage and release documentation.
@@ -126,6 +131,18 @@ markdown-formal serve
 ```
 
 The command listens only on `127.0.0.1`, scans the project read-only, and refreshes after source changes. Recent-project records stay in local user state rather than the project.
+
+### Use the Codex MCP Plugin
+
+The release bundle includes a marketplace and `markdown-formal-reader` plugin. Install the bundled CLI so `markdown-formal` is on `PATH`, then add the release bundle as a marketplace:
+
+```bash
+npm install -g ./cli
+codex plugin marketplace add /path/to/markdown-formal-release
+codex plugin add markdown-formal-reader@personal
+```
+
+The plugin calls `markdown-formal mcp`, which starts or reuses the local Reader and returns its localhost URL for Codex's built-in browser. It does not embed or replace the Reader UI.
 
 ### Vendor CLI
 
@@ -241,7 +258,7 @@ npm run release:check
 
 Default release targets:
 
-- `npm`: publish the `markdown-formal` npm package with CLI, public docs, `skills/`, and `vasm-catalog/`.
+- `npm`: publish the `markdown-formal` npm package with CLI, Reader, Codex MCP plugin, public docs, `skills/`, and `vasm-catalog/`.
 - `github`: push the current branch and release tag to the `github` remote, then create a GitHub release with `gh`.
 - `gitlab`: push the current branch and release tag to the `gitlab` remote, then create a GitLab release with `glab`.
 
@@ -326,7 +343,9 @@ dist/
 
 ```text
 dist/
+  .agents/plugins/
   cli/
+  plugins/
   skills/
   vasm-catalog/
   docs/
@@ -340,6 +359,7 @@ dist/
 各产物职责：
 
 - `cli/`：目标项目使用的无运行时依赖 CLI 与内置 Reader 静态资源。
+- `.agents/plugins/` 与 `plugins/`：Codex marketplace 与 `markdown-formal-reader` MCP plugin。
 - `skills/`：AI 规则与组合指导 artifact，目前包含 `skills/editor.md` 和 `skills/integrator.md`。
 - `vasm-catalog/`：面向 VASMC consumer 的 catalog，包含 `vasmc-catalog.yaml`、`editor` export 和 `integrator` export。
 - `docs/`：面向人的文档。
@@ -371,6 +391,7 @@ npm 包入口：
 
 - `bin.markdown-formal`：指向 `out/cli/formal-tools.js`。
 - `out/reader/`：由 CLI 的 `serve` 命令提供的本地 Reader 静态资源。
+- `.agents/plugins/` 与 `plugins/`：Codex marketplace 和 `markdown-formal-reader` MCP plugin。
 - `skills/`：裸 AI 审阅和融合用的 `editor.md` / `integrator.md`。
 - `vasm-catalog/`：VASMC consumer 使用的 catalog exports。
 - `docs/`：面向人的 usage 和 release 文档。
@@ -405,6 +426,18 @@ markdown-formal serve
 ```
 
 命令只监听 `127.0.0.1`，只读扫描项目，并在源文件变化后刷新页面。最近项目记录保存在用户本机状态目录，不写入项目。
+
+## 使用 Codex MCP plugin
+
+release bundle 也包含 Codex marketplace 和 plugin。先安装 bundle 内的 CLI，使 `markdown-formal` 位于 `PATH`，再将 release 根目录注册为 marketplace：
+
+```bash
+npm install -g ./cli
+codex plugin marketplace add /path/to/markdown-formal-release
+codex plugin add markdown-formal-reader@personal
+```
+
+plugin 调用 `markdown-formal mcp`，返回可在 Codex 内置浏览器直接访问的 localhost URL；它不嵌入或替代 Reader UI，只会启动或复用绑定 `127.0.0.1` 的本地 Reader。
 
 ## Vendoring CLI
 
@@ -521,7 +554,7 @@ npm run release:check
 
 默认发布目标是：
 
-- `npm`：发布 `markdown-formal` npm 包，包内包含 CLI、public docs、`skills/` 与 `vasm-catalog/`。
+- `npm`：发布 `markdown-formal` npm 包，包内包含 CLI、Reader、Codex MCP plugin、public docs、`skills/` 与 `vasm-catalog/`。
 - `github`：推送当前 branch 和 release tag 到 `github` remote，并用 `gh` 创建 GitHub release。
 - `gitlab`：推送当前 branch 和 release tag 到 `gitlab` remote，并用 `glab` 创建 GitLab release。
 

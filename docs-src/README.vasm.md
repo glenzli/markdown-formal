@@ -43,6 +43,14 @@ npm run formal -- serve /path/to/writing-project
 
 若本机已安装并登录 Codex CLI，Reader 可为正文或公式选区打开只读、临时的本地讨论浮窗。首条消息携带相对路径、源码行范围、选中 Markdown、项目根和可用工具边界；后续消息保留这一上下文。临时讨论不会写入书稿或本机任务状态。也可绑定一个工作目录与当前 Reader 项目完全一致、且可直接接收输入的 Codex 任务，再将某条临时讨论结论显式发送到任务继续核验和执行。Reader 不承接 Codex 的工具审批，需要工具时应回到 Codex 继续。
 
+仓库也提供 Codex MCP plugin。它只启动或复用本地 Reader，并返回可在 Codex 内置浏览器直接打开的 localhost URL；不嵌入或复制 Reader 的前端、索引和讨论逻辑：
+
+```bash
+markdown-formal mcp
+```
+
+安装 plugin 后，Codex 可以调用 `open_reader` 打开当前 prepared project 或指定章节；没有绑定项目时则显示本机项目启动台。开发使用 `npm link` 时，确保 `markdown-formal` 在 `PATH` 中即可。
+
 ![多卷章节导航](media/readme/navigation.png)
 
 ![引用 recall 预览](media/readme/recall-preview.png)

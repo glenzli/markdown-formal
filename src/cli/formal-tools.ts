@@ -38,6 +38,7 @@ import {
     type DependencyGraphWhereFilter
 } from '@markdown-formal/core';
 import { startReaderServer } from '../reader/server';
+import { runReaderMcpServer } from '../mcp/reader-mcp-server';
 
 const ROOT = process.cwd();
 const CACHE_DIR = path.join(ROOT, '.markdown-formal');
@@ -2651,6 +2652,7 @@ function printHelp({ all = false } = {}) {
   npm run formal -- graph focus <h-id> [--depth N]
   npm run formal -- graph matrix chapter|volume|book
   npm run formal -- serve [project-dir] [--port 0]  # no project-dir opens the local launcher
+  npm run formal -- mcp [--root project-dir] [--port 0]
   npm run formal -- export-md <file-or-dir> [...] --out <compiled.md>
   npm run formal -- export-md-split <file-or-dir> [...] --out <dir>
   npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--no-toc] [--toc-depth N] [--margin 2.5cm]
@@ -2686,6 +2688,7 @@ Advanced commands:
   npm run formal -- graph bridges|isolated|cycles [--where all|statement|proof|body]
   npm run formal -- graph matrix chapter|volume|book [--where all|statement|proof|body]
   npm run formal -- serve [project-dir] [--port 0]  # no project-dir opens the local launcher
+  npm run formal -- mcp [--root project-dir] [--port 0]
   npm run formal -- export-md <file-or-dir> [...] --out <compiled.md>
   npm run formal -- export-md-split <file-or-dir> [...] --out <dir>
   npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title "Title"] [--subtitle "Subtitle"] [--author Name] [--author-native Name] [--author-alias Alias] [--orcid URL] [--repository URL] [--license Name] [--license-url URL] [--preferred-citation Text] [--date "Revised 2026-06-26"] [--release-version rc.1] [--release-tag v1] [--release-commit abc123] [--doi DOI] [--metadata-page] [--front-matter page.md] [--front-matter-title "AI Statement"] [--front-matter-toc] [--show-version-on-cover] [--documentclass ctexbook] [--title-page] [--no-title-page] [--cover-style simple] [--title-size 32pt] [--subtitle-size 18pt] [--toc-page-break] [--no-toc-page-break] [-V key:value] [--variable key:value] [--keep-md]
@@ -2788,6 +2791,45 @@ async function serveReader(args: string[]): Promise<void> {
     process.once('SIGTERM', close);
 }
 
+function parseReaderMcpArgs(args: string[]): { rootPath?: string; port: number; help?: boolean } {
+    let rootPath: string | undefined;
+    let port = 0;
+    for (let index = 0; index < args.length; index++) {
+        const arg = args[index];
+        if (arg === '--root') {
+            rootPath = args[++index];
+            continue;
+        }
+        if (arg.startsWith('--root=')) {
+            rootPath = arg.slice('--root='.length);
+            continue;
+        }
+        if (arg === '--port') {
+            port = Number(args[++index]);
+            continue;
+        }
+        if (arg.startsWith('--port=')) {
+            port = Number(arg.slice('--port='.length));
+            continue;
+        }
+        if (arg === '--help' || arg === 'help') {
+            console.log('Usage: markdown-formal mcp [--root project-dir] [--port 0]');
+            return { port: 0, help: true };
+        }
+        throw new Error(`Unknown MCP option: ${arg}`);
+    }
+    if (!Number.isInteger(port) || port < 0 || port > 65535) {
+        throw new Error(`Invalid reader port: ${port}`);
+    }
+    return { rootPath: rootPath ? path.resolve(ROOT, rootPath) : undefined, port };
+}
+
+async function serveReaderMcp(args: string[]): Promise<void> {
+    const options = parseReaderMcpArgs(args);
+    if (options.help) return;
+    await runReaderMcpServer(options);
+}
+
 async function main() {
     const [command, ...args] = process.argv.slice(2);
 
@@ -2801,6 +2843,8 @@ async function main() {
         await graph(args);
     } else if (command === 'serve' || command === 'reader') {
         await serveReader(args);
+    } else if (command === 'mcp') {
+        await serveReaderMcp(args);
     } else if (command === 'verify') {
         await verify(args);
     } else if (command === 'finalize') {

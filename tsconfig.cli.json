@@ -16,5 +16,5 @@
       "@markdown-formal/core/*": ["packages/core/src/*"]
     }
   },
-  "include": ["src/cli/**/*", "src/reader/*.ts", "packages/core/src/**/*", "src/node.d.ts"]
+  "include": ["src/cli/**/*", "src/mcp/**/*.ts", "src/reader/*.ts", "packages/core/src/**/*", "src/node.d.ts"]
 }

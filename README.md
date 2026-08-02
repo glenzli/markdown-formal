@@ -40,6 +40,14 @@ The Reader listens only on `127.0.0.1` and never writes project files. Open the 
 
 If the Codex CLI is installed and signed in locally, Reader can open a read-only, ephemeral local discussion for a text or formula selection. Its first message carries the relative path, source line range, selected Markdown, project root, and tool boundary; later messages retain that context. The discussion never writes the manuscript or local task state. You can also bind a Codex task whose working directory exactly matches the Reader project, then explicitly send a chosen discussion conclusion to that task for verification and further work. Reader does not handle Codex tool approvals; continue in Codex when tools are needed.
 
+The repository also ships a Codex MCP plugin. It starts or reuses the local Reader and returns a localhost URL that Codex's built-in browser can open. It does not embed or copy the Reader frontend, indexer, or discussion layer:
+
+```bash
+markdown-formal mcp
+```
+
+After installation, Codex can call `open_reader` for the current prepared project or a named chapter. With no available project, it opens the local project launcher. During development, make `markdown-formal` available on `PATH`, for example with `npm link`.
+
 ![Multi-volume chapter navigation](media/readme/navigation.png)
 
 ![Reference recall preview](media/readme/recall-preview.png)
@@ -276,6 +284,14 @@ npm run formal -- serve /path/to/writing-project
 它只监听 `127.0.0.1`，不写入项目文件。打开命令打印的 URL 后，可获得章节导航、目录、当前页符号表、定义搜索、依赖摘要、引用回溯和源文件实时刷新。多卷结构会自然折叠成卷到章的导航层级。
 
 若本机已安装并登录 Codex CLI，Reader 可为正文或公式选区打开只读、临时的本地讨论浮窗。首条消息携带相对路径、源码行范围、选中 Markdown、项目根和可用工具边界；后续消息保留这一上下文。临时讨论不会写入书稿或本机任务状态。也可绑定一个工作目录与当前 Reader 项目完全一致、且可直接接收输入的 Codex 任务，再将某条临时讨论结论显式发送到任务继续核验和执行。Reader 不承接 Codex 的工具审批，需要工具时应回到 Codex 继续。
+
+仓库也提供 Codex MCP plugin。它只启动或复用本地 Reader，并返回可在 Codex 内置浏览器直接打开的 localhost URL；不嵌入或复制 Reader 的前端、索引和讨论逻辑：
+
+```bash
+markdown-formal mcp
+```
+
+安装 plugin 后，Codex 可以调用 `open_reader` 打开当前 prepared project 或指定章节；没有绑定项目时则显示本机项目启动台。开发使用 `npm link` 时，确保 `markdown-formal` 在 `PATH` 中即可。
 
 ![多卷章节导航](media/readme/navigation.png)
 

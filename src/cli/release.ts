@@ -128,11 +128,12 @@ Language: [English](#english) | [中文](#中文)
 
 ## English
 
-This release bundle contains the local Reader, CLI runtime, documentation, AI workflow artifacts, and a VASMC catalog for lockable reuse.
+This release bundle contains the local Reader, CLI runtime, Codex MCP plugin, documentation, AI workflow artifacts, and a VASMC catalog for lockable reuse.
 
 ### Artifacts
 
 - \`cli/\`: dependency-free CLI runtime and bundled local Reader for target projects.
+- \`.agents/plugins/\` and \`plugins/\`: Codex marketplace and the Reader MCP plugin.
 - \`skills/\`: reviewed AI workflow artifacts.
 - \`vasm-catalog/\`: VASMC catalog exports for lockable reuse.
 - \`docs/\`: usage and release documentation.
@@ -146,6 +147,18 @@ node cli/out/cli/formal-tools.js serve /path/to/project
 \`\`\`
 
 Open the printed localhost URL in your preferred browser or local side panel. The Reader is read-only and binds only to \`127.0.0.1\`.
+
+### Use the Codex MCP Plugin
+
+Install the bundled CLI so \`markdown-formal\` is on \`PATH\`, then add the release bundle as a marketplace:
+
+\`\`\`bash
+npm install -g ./cli
+codex plugin marketplace add /path/to/markdown-formal-release
+codex plugin add markdown-formal-reader@personal
+\`\`\`
+
+The plugin returns a local URL for the browser-based Reader; it does not embed or replace the Reader UI.
 
 ### Vendor CLI
 
@@ -174,11 +187,12 @@ Review \`skills/editor.md\` and \`skills/integrator.md\`, then merge the rules i
 
 ## 中文
 
-这个 release 包包含本地 Reader、CLI 运行时、文档、面向 AI 的工作流 artifact，以及可锁定复用的 VASMC catalog。
+这个 release 包包含本地 Reader、CLI 运行时、Codex MCP plugin、文档、面向 AI 的工作流 artifact，以及可锁定复用的 VASMC catalog。
 
 ### 产物
 
 - \`cli/\`：目标项目使用的无运行时依赖 CLI 与内置本地 Reader。
+- \`.agents/plugins/\` 与 \`plugins/\`：Codex marketplace 和 Reader MCP plugin。
 - \`skills/\`：需要审阅和融合的 AI 工作流 artifact。
 - \`vasm-catalog/\`：供 VASMC consumer 锁定复用的 catalog exports。
 - \`docs/\`：使用和 release 文档。
@@ -192,6 +206,18 @@ node cli/out/cli/formal-tools.js serve /path/to/project
 \`\`\`
 
 在浏览器或本地侧栏中打开命令输出的 localhost URL。Reader 只读，并且只绑定 \`127.0.0.1\`。
+
+### 使用 Codex MCP Plugin
+
+先安装 bundle 内的 CLI，使 \`markdown-formal\` 位于 \`PATH\`，再将 release 根目录作为 marketplace 添加：
+
+\`\`\`bash
+npm install -g ./cli
+codex plugin marketplace add /path/to/markdown-formal-release
+codex plugin add markdown-formal-reader@personal
+\`\`\`
+
+plugin 返回浏览器 Reader 的本地 URL，不嵌入或替代 Reader UI。
 
 ### Vendoring CLI
 
@@ -223,6 +249,8 @@ async function main(): Promise<void> {
     const releaseRoot = DIST_DIR;
     const cliRoot = path.join(releaseRoot, 'cli');
     const catalogRoot = path.join(ROOT, 'vasm-catalog');
+    const marketplaceRoot = path.join(ROOT, '.agents', 'plugins');
+    const pluginRoot = path.join(ROOT, 'plugins');
 
     await requiredPath(path.join(ROOT, 'out', 'cli', 'formal-tools.js'));
     await requiredPath(path.join(ROOT, 'out', 'cli', 'release.js'));
@@ -234,6 +262,8 @@ async function main(): Promise<void> {
     await requiredPath(path.join(ROOT, 'LICENSE'));
     await requiredPath(path.join(ROOT, 'docs', 'usage.md'));
     await requiredPath(path.join(ROOT, 'docs', 'release.md'));
+    await requiredPath(path.join(marketplaceRoot, 'marketplace.json'));
+    await requiredPath(path.join(pluginRoot, 'markdown-formal-reader', '.codex-plugin', 'plugin.json'));
 
     await cleanDir(releaseRoot);
 
@@ -241,6 +271,8 @@ async function main(): Promise<void> {
     await copyFile(path.join(ROOT, 'LICENSE'), path.join(releaseRoot, 'LICENSE'));
     await copyDir(path.join(ROOT, 'media', 'readme'), path.join(releaseRoot, 'media', 'readme'));
     await copyDir(path.join(ROOT, 'skills'), path.join(releaseRoot, 'skills'));
+    await copyDir(marketplaceRoot, path.join(releaseRoot, '.agents', 'plugins'));
+    await copyDir(pluginRoot, path.join(releaseRoot, 'plugins'));
     await copyDir(catalogRoot, path.join(releaseRoot, 'vasm-catalog'));
     await copyPublicDocs(path.join(releaseRoot, 'docs'));
     await writeText(path.join(releaseRoot, 'INSTALL.md'), releaseInstallDoc(pkg));
@@ -271,6 +303,12 @@ async function main(): Promise<void> {
                 skillsPath: 'cli/skills',
                 vasmCatalogPath: 'cli/vasm-catalog/vasmc-catalog.yaml',
                 install: 'Copy this directory into tools/markdown-formal and run node tools/markdown-formal/out/cli/formal-tools.js.'
+            },
+            codexMcpPlugin: {
+                marketplace: '.agents/plugins/marketplace.json',
+                plugin: 'plugins/markdown-formal-reader',
+                command: 'markdown-formal mcp',
+                mode: 'Codex MCP launcher that returns a localhost URL for the independent browser-based Reader; install cli/ first so markdown-formal is on PATH.'
             },
             skills: {
                 path: 'skills',

@@ -203,6 +203,33 @@ npm run formal -- serve
 
 旧 VS Code 预览已归档；项目阅读与交互统一通过本地 Reader 提供。
 
+## Codex MCP 入口
+
+Reader 可作为独立本地客户端运行，也可通过 Codex MCP 打开。MCP 只负责启动或复用本机 Reader，并返回可由 Codex 内置浏览器直接访问的 localhost URL；它不嵌入或复制 Reader 的渲染、索引或讨论实现。
+
+CLI 入口是：
+
+```bash
+markdown-formal mcp
+```
+
+默认项目是 MCP 进程的工作目录。若需要固定项目根，可传：
+
+```bash
+markdown-formal mcp --root /path/to/project
+```
+
+仓库包含一个可安装的 Codex plugin。开发时先确保 `markdown-formal` 在 `PATH` 中（例如 `npm link`），然后将仓库根目录注册为 marketplace：
+
+```bash
+codex plugin marketplace add /path/to/markdown-formal
+codex plugin add markdown-formal-reader@personal
+```
+
+发布版本同样可以从安装包根目录添加 marketplace。插件调用 `open_reader`：它可直接打开当前项目或某个项目相对 Markdown 页面；没有可用项目时会打开 Reader 的本机项目启动台。
+
+MCP 与 Reader 一样只绑定 `127.0.0.1`，不写入书稿或 `.markdown-formal/` 产物。
+
 ## AI 工作流接入
 
 AI 规则不再放在单独的 public doc 中。目标项目应直接读取随包发布的 AI artifacts：

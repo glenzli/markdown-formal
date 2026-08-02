@@ -109,6 +109,54 @@ async function stopReader(child) {
     if (child.exitCode === null) child.kill('SIGKILL');
 }
 
+async function startMcp(root) {
+    const child = spawn('node', [cliPath, 'mcp'], {
+        cwd: root,
+        env: { ...process.env },
+        stdio: ['pipe', 'pipe', 'pipe']
+    });
+    const pending = new Map();
+    let nextId = 1;
+    let buffer = '';
+    let stderr = '';
+
+    child.stdout.on('data', chunk => {
+        buffer += String(chunk);
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            const message = JSON.parse(line);
+            if (message.id !== undefined && pending.has(message.id)) {
+                const { resolve, reject, timer } = pending.get(message.id);
+                clearTimeout(timer);
+                pending.delete(message.id);
+                if (message.error) reject(new Error(message.error.message));
+                else resolve(message.result);
+            }
+        }
+    });
+    child.stderr.on('data', chunk => { stderr += String(chunk); });
+
+    const request = (method, params = {}) => new Promise((resolve, reject) => {
+        const id = nextId++;
+        const timer = setTimeout(() => {
+            pending.delete(id);
+            reject(new Error(`MCP ${method} timed out.\n${stderr}`));
+        }, 5000);
+        pending.set(id, { resolve, reject, timer });
+        child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
+    });
+
+    await request('initialize', {
+        protocolVersion: '2025-03-26',
+        capabilities: {},
+        clientInfo: { name: 'markdown-formal-test', version: '1.0.0' }
+    });
+    child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
+    return { child, request };
+}
+
 async function read(root, filePath) {
     return fs.readFile(path.join(root, filePath), 'utf8');
 }
@@ -1156,6 +1204,38 @@ async function testReaderServer() {
     }
 }
 
+async function testReaderMcpServer() {
+    const root = await makeWorkspace('reader-mcp');
+    await fs.writeFile(path.join(root, 'book1', '01-foundations.md'), [
+        '# #h-1111111111111111 Foundations',
+        '',
+        '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
+        ''
+    ].join('\n'));
+    const prepare = runCli(root, ['prepare']);
+    assert.equal(prepare.status, 0, combinedOutput(prepare));
+
+    const mcp = await startMcp(root);
+    try {
+        const tools = await mcp.request('tools/list');
+        const openReader = tools.tools.find(tool => tool.name === 'open_reader');
+        assert.ok(openReader);
+        assert.equal(openReader._meta, undefined);
+
+        const launch = await mcp.request('tools/call', {
+            name: 'open_reader',
+            arguments: { pagePath: 'book1/01-foundations.md' }
+        });
+        assert.equal(launch.isError, undefined);
+        assert.equal(launch.structuredContent.rootPath, await fs.realpath(root));
+        assert.equal(launch.structuredContent.pagePath, 'book1/01-foundations.md');
+        assert.match(launch.structuredContent.url, /^http:\/\/127\.0\.0\.1:\d+\/\?path=book1%2F01-foundations\.md$/);
+        assert.match(launch.content[0].text, /Codex's local browser/);
+    } finally {
+        await stopReader(mcp.child);
+    }
+}
+
 async function testReaderCodexTaskBinding() {
     const root = await makeWorkspace('reader-codex');
     await fs.writeFile(path.join(root, 'book1', '01-foundations.md'), [
@@ -1835,6 +1915,7 @@ const tests = [
     ['page title uses unique highest heading', testPageTitleUsesUniqueHighestHeading],
     ['perf-dummy thresholds', testPerfDummyThresholds],
     ['local Reader server', testReaderServer],
+    ['local Reader MCP server', testReaderMcpServer],
     ['local Reader Codex task binding', testReaderCodexTaskBinding],
     ['local Reader launcher', testReaderLauncher],
     ['page heading formatting', testPageHeadingFormatting],
