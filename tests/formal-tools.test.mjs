@@ -1105,6 +1105,192 @@ async function testReaderServer() {
     }
 }
 
+async function testReaderCodexTaskBinding() {
+    const root = await makeWorkspace('reader-codex');
+    await fs.writeFile(path.join(root, 'book1', '01-foundations.md'), [
+        '# #h-1111111111111111 Foundations',
+        '',
+        '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
+        ''
+    ].join('\n'));
+    assert.equal(runCli(root, ['prepare']).status, 0);
+
+    const fakeCodex = path.join(root, 'fake-codex.mjs');
+    await fs.writeFile(fakeCodex, `#!/usr/bin/env node
+let buffer = '';
+const cwd = process.env.MARKDOWN_FORMAL_FAKE_CODEX_CWD;
+const write = value => process.stdout.write(JSON.stringify(value) + '\\n');
+const thread = {
+  id: 'task-reader-fixture', cwd, name: 'Reader fixture task', preview: 'Discuss the formal source',
+  updatedAt: 1, canAcceptDirectInput: true
+};
+const temporaryThread = {
+  id: 'temporary-reader-fixture', cwd, name: 'Temporary Reader discussion', preview: 'Ephemeral selection discussion',
+  updatedAt: 1, canAcceptDirectInput: true, ephemeral: true
+};
+const temporaryTurns = [];
+const receive = message => {
+  if (message.method === 'initialize') return write({ id: message.id, result: { platformFamily: 'test' } });
+  if (message.method === 'thread/list') return write({ id: message.id, result: { data: [thread] } });
+  if (message.method === 'thread/resume') return write({ id: message.id, result: { thread, cwd } });
+  if (message.method === 'thread/start') {
+    if (message.params.ephemeral !== true || message.params.sandbox !== 'read-only' || message.params.approvalPolicy !== 'never') {
+      return write({ id: message.id, error: { message: 'Temporary Reader discussions must be ephemeral and read-only.' } });
+    }
+    return write({ id: message.id, result: { thread: temporaryThread, cwd } });
+  }
+  if (message.method === 'thread/read') {
+    if (message.params.threadId !== temporaryThread.id || message.params.includeTurns !== true) {
+      return write({ id: message.id, error: { message: 'Unexpected Reader discussion refresh.' } });
+    }
+    return write({ id: message.id, result: { thread: { ...temporaryThread, turns: temporaryTurns } } });
+  }
+  if (message.method === 'turn/start') {
+    if (!message.params.additionalContext?.['markdown-formal-reader-selection']?.value) {
+      return write({ id: message.id, error: { message: 'Reader selection context was missing.' } });
+    }
+    const isTemporary = message.params.threadId === temporaryThread.id;
+    const turn = { id: (isTemporary ? 'turn-temporary-fixture' : 'turn-reader-fixture'), status: 'completed' };
+    return setTimeout(() => {
+      const response = isTemporary ? 'Temporary Reader context received.' : 'Reader context received.';
+      if (isTemporary) temporaryTurns.push({
+        id: turn.id + '-' + temporaryTurns.length,
+        items: [
+          { type: 'userMessage', id: 'user-' + temporaryTurns.length, content: message.params.input },
+          { type: 'agentMessage', id: 'assistant-' + temporaryTurns.length, text: response }
+        ]
+      });
+      write({ method: 'item/agentMessage/delta', params: { threadId: message.params.threadId, turnId: turn.id, itemId: 'message', delta: response } });
+      write({ id: message.id, result: { turn } });
+      write({ method: 'turn/completed', params: { threadId: message.params.threadId, turn } });
+    }, 30);
+  }
+};
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', chunk => {
+  buffer += chunk;
+  let index = buffer.indexOf('\\n');
+  while (index >= 0) {
+    const line = buffer.slice(0, index).trim();
+    buffer = buffer.slice(index + 1);
+    if (line) receive(JSON.parse(line));
+    index = buffer.indexOf('\\n');
+  }
+});
+`);
+    await fs.chmod(fakeCodex, 0o755);
+    const env = {
+        MARKDOWN_FORMAL_READER_STATE: path.join(root, 'reader-projects.json'),
+        MARKDOWN_FORMAL_READER_TASKS: path.join(root, 'reader-task-bindings.json'),
+        MARKDOWN_FORMAL_CODEX_COMMAND: fakeCodex,
+        MARKDOWN_FORMAL_FAKE_CODEX_CWD: root
+    };
+    const reader = await startReader(root, { env });
+    try {
+        const state = await (await fetch(reader.url + '/api/state')).json();
+        assert.equal(typeof state.requestToken, 'string');
+        assert.equal(state.codex.binding, undefined);
+
+        const blocked = await fetch(reader.url + '/api/codex/tasks');
+        assert.equal(blocked.status, 403);
+        const headers = { 'x-markdown-formal-reader-token': state.requestToken, 'content-type': 'application/json' };
+        const tasks = await (await fetch(reader.url + '/api/codex/tasks', { headers })).json();
+        assert.equal(tasks.tasks.length, 1);
+        assert.equal(tasks.tasks[0].taskId, 'task-reader-fixture');
+
+        const bound = await (await fetch(reader.url + '/api/codex/binding', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ taskId: 'task-reader-fixture' })
+        })).json();
+        assert.equal(bound.binding.taskName, 'Reader fixture task');
+
+        const turnRequest = () => fetch(reader.url + '/api/codex/turn', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                prompt: 'Explain this statement.',
+                selection: {
+                    filePath: 'book1/01-foundations.md',
+                    startLine: 3,
+                    endLine: 3,
+                    markdown: '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
+                    text: 'Finite cover'
+                }
+            })
+        });
+        const turnResponses = await Promise.all([turnRequest(), turnRequest()]);
+        assert.deepEqual(turnResponses.map(response => response.status).sort(), [200, 500]);
+        const completed = turnResponses.find(response => response.status === 200);
+        assert.ok(completed);
+        const turn = await completed.json();
+        assert.equal(turn.taskId, 'task-reader-fixture');
+        assert.equal(turn.message, 'Reader context received.');
+
+        const temporary = await (await fetch(reader.url + '/api/codex/discussions', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                prompt: 'Explain the selected theorem without editing files.',
+                selection: {
+                    filePath: 'book1/01-foundations.md',
+                    startLine: 3,
+                    endLine: 3,
+                    markdown: '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
+                    text: 'Finite cover'
+                }
+            })
+        })).json();
+        assert.match(temporary.discussionId, /^[a-f0-9]{36}$/);
+        assert.equal(temporary.message, 'Temporary Reader context received.');
+
+        const continuation = await (await fetch(reader.url + '/api/codex/discussions/' + temporary.discussionId + '/turn', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ prompt: 'State the key implication.' })
+        })).json();
+        assert.equal(continuation.discussionId, temporary.discussionId);
+        assert.equal(continuation.message, 'Temporary Reader context received.');
+
+        const refreshed = await (await fetch(reader.url + '/api/codex/discussions/' + temporary.discussionId + '/refresh', {
+            method: 'POST',
+            headers,
+            body: '{}'
+        })).json();
+        assert.equal(refreshed.discussionId, temporary.discussionId);
+        assert.equal(refreshed.synchronized, true);
+        assert.deepEqual(refreshed.messages, [
+            { role: 'user', text: 'Explain the selected theorem without editing files.' },
+            { role: 'assistant', text: 'Temporary Reader context received.' },
+            { role: 'user', text: 'State the key implication.' },
+            { role: 'assistant', text: 'Temporary Reader context received.' }
+        ]);
+
+        const injected = await (await fetch(reader.url + '/api/codex/discussions/' + temporary.discussionId + '/inject', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ conclusion: 'The theorem supplies a finite subcover.' })
+        })).json();
+        assert.equal(injected.taskId, 'task-reader-fixture');
+        assert.equal(injected.message, 'Reader context received.');
+
+        const closed = await fetch(reader.url + '/api/codex/discussions/' + temporary.discussionId + '/close', {
+            method: 'POST',
+            headers,
+            body: '{}'
+        });
+        assert.equal(closed.status, 200);
+        const unavailable = await fetch(reader.url + '/api/codex/discussions/' + temporary.discussionId + '/turn', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ prompt: 'Should fail.' })
+        });
+        assert.equal(unavailable.status, 404);
+    } finally {
+        await stopReader(reader.child);
+    }
+}
+
 async function testReaderLauncher() {
     const root = await makeWorkspace('reader-launcher');
     await fs.writeFile(path.join(root, 'book1', '01-foundations.md'), [
@@ -1575,6 +1761,7 @@ const tests = [
     ['perf-dummy thresholds', testPerfDummyThresholds],
     ['preview ignore hover patterns', testPreviewIgnoreHoverPatterns],
     ['local Reader server', testReaderServer],
+    ['local Reader Codex task binding', testReaderCodexTaskBinding],
     ['local Reader launcher', testReaderLauncher],
     ['page heading formatting', testPageHeadingFormatting],
     ['export-md compiles formal syntax', testExportMarkdownCompilesFormalSyntax],

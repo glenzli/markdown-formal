@@ -41,6 +41,8 @@ npm run formal -- serve /path/to/writing-project
 
 它只监听 `127.0.0.1`，不写入项目文件。打开命令打印的 URL 后，可获得章节导航、目录、当前页符号表、定义搜索、依赖摘要、引用回溯和源文件实时刷新。多卷结构会自然折叠成卷到章的导航层级。
 
+若本机已安装并登录 Codex CLI，Reader 可为正文或公式选区打开只读、临时的本地讨论浮窗。首条消息携带相对路径、源码行范围、选中 Markdown、项目根和可用工具边界；后续消息保留这一上下文。临时讨论不会写入书稿或本机任务状态。也可绑定一个工作目录与当前 Reader 项目完全一致、且可直接接收输入的 Codex 任务，再将某条临时讨论结论显式发送到任务继续核验和执行。Reader 不承接 Codex 的工具审批，需要工具时应回到 Codex 继续。
+
 ![多卷章节导航](media/readme/navigation.png)
 
 ![引用 recall 预览](media/readme/recall-preview.png)

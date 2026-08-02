@@ -193,6 +193,8 @@ npm run formal -- serve
 - 依赖摘要；
 - 源文件改动后的实时刷新。
 
+若本机 Codex CLI 已安装并登录，可在选中正文或公式后打开 Reader 的临时讨论浮窗。首条消息会附带相对路径、源码行范围、选中 Markdown、项目根和只读工具边界；后续消息保留该上下文。临时讨论是不可持久化的，不写入书稿或本机任务状态。也可绑定一个工作目录与当前项目完全一致的任务，再将任一临时讨论结论显式发送到该任务，由任务核验并继续执行。绑定记录仅写入本机用户状态目录，不写入书稿。Reader 不承接 Codex 的工具审批，任务需要工具时应回到 Codex 继续。
+
 项目需要先有 `.markdown-formal/config.json`；首次使用可运行 `prepare`。Reader 不要求预先生成 `preview-cache.json`。
 
 VS Code 包仍可作为 legacy compatibility integration 使用，但新功能以 Reader 为优先目标。

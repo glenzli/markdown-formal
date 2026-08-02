@@ -11,11 +11,13 @@ import {
 } from './formal-renderer';
 import {
     ReaderSourceActions,
-    type ReaderDefinitionMatch
+    type ReaderDefinitionMatch,
+    type ReaderDiscussionSelection
 } from './source-actions';
 import { ReaderRecallPopover } from './recall-popover';
 import { copyReaderText } from './reader-clipboard';
 import { readerIcon, replaceReaderButtonIcon, type ReaderIconName } from './reader-icons';
+import { ReaderDiscussionDialog } from './reader-discussion';
 import { ReaderToolbarPanel } from './reader-toolbar-panel';
 
 type Language = 'zh' | 'en';
@@ -36,7 +38,21 @@ interface ReaderState {
     pages: ReaderPage[];
     definitions: DefinitionSummary[];
     issues: Array<{ severity: string; code: string; message: string }>;
+    requestToken?: string;
+    codex?: { binding?: ReaderTaskBinding };
     recentProjects?: Array<{ index: number; rootName: string; openedAt: string }>;
+}
+
+interface ReaderTaskBinding {
+    taskId: string;
+    taskName: string;
+    boundAt: string;
+}
+
+interface ReaderTaskSummary {
+    taskId: string;
+    taskName: string;
+    preview: string;
 }
 
 interface ReaderPagePayload {
@@ -97,7 +113,37 @@ const words = {
         noRecentProjects: '还没有最近打开的项目。',
         projectLauncherTitle: '打开 Markdown Formal 项目',
         projectLauncherDescription: '选择一个已包含 .markdown-formal/config.json 的项目目录。',
-        projectSelectionCancelled: '尚未选择项目。'
+        projectSelectionCancelled: '尚未选择项目。',
+        tasks: '任务讨论',
+        discussWithTask: '临时讨论',
+        bindTask: '绑定 Codex 任务',
+        changeTask: '更换任务',
+        unbindTask: '解绑任务',
+        reloadTasks: '刷新任务',
+        noTasks: '当前项目没有可绑定的 Codex 任务。',
+        taskSelectionRequired: '先在正文中选中一段内容，再发送到任务。',
+        selectedContext: '将附带当前选区',
+        taskPrompt: '输入要在此任务中讨论的问题',
+        sendToTask: '发送',
+        loadingTasks: '正在读取当前项目的 Codex 任务…',
+        taskWaiting: 'Codex 正在处理该选区…',
+        taskUnavailable: '无法连接 Codex app-server。请确认 Codex CLI 已安装并已登录。',
+        taskResponseEmpty: '该任务已完成，但没有返回文本回复。',
+        taskApprovalNote: 'Reader 不处理工具审批；需要工具操作时，请在 Codex 中继续此任务。',
+        temporaryDiscussion: '临时讨论',
+        temporaryDiscussionContext: '发送给 Codex 的上下文',
+        temporaryDiscussionAccess: '工作区访问',
+        temporaryDiscussionTools: 'Codex 可在当前项目根目录内使用只读工具查询文件。临时讨论以只读沙盒启动，Reader 不转交工具审批。',
+        temporaryDiscussionPrompt: '就此选区提问',
+        temporaryDiscussionSend: '发送',
+        temporaryDiscussionEmpty: '临时讨论没有返回文本回复。',
+        temporaryDiscussionReadOnly: '这是一段不落盘的只读临时讨论。首条消息会携带下方源码、位置和项目根；后续消息保留该上下文。',
+        temporaryDiscussionBoundTask: '打开绑定任务',
+        temporaryDiscussionNoTask: '先在任务面板中绑定 Codex 任务',
+        temporaryDiscussionInject: '将此结论发送到绑定任务',
+        temporaryDiscussionInjecting: '正在将该结论发送到绑定任务…',
+        temporaryDiscussionInjected: '结论已发送到绑定任务。',
+        temporaryDiscussionRefresh: '刷新讨论'
     },
     en: {
         contents: 'Contents',
@@ -139,7 +185,37 @@ const words = {
         noRecentProjects: 'No recent projects yet.',
         projectLauncherTitle: 'Open a Markdown Formal project',
         projectLauncherDescription: 'Choose a project folder containing .markdown-formal/config.json.',
-        projectSelectionCancelled: 'No project was selected.'
+        projectSelectionCancelled: 'No project was selected.',
+        tasks: 'Task discussion',
+        discussWithTask: 'Temporary discussion',
+        bindTask: 'Bind Codex task',
+        changeTask: 'Change task',
+        unbindTask: 'Unbind task',
+        reloadTasks: 'Refresh tasks',
+        noTasks: 'No Codex task can be bound to this project.',
+        taskSelectionRequired: 'Select a passage in the document before sending it to a task.',
+        selectedContext: 'The current selection will be attached',
+        taskPrompt: 'Ask this task about the selection',
+        sendToTask: 'Send',
+        loadingTasks: 'Loading Codex tasks for this project…',
+        taskWaiting: 'Codex is working with this selection…',
+        taskUnavailable: 'Could not reach Codex app-server. Confirm that the Codex CLI is installed and signed in.',
+        taskResponseEmpty: 'The task completed without a text response.',
+        taskApprovalNote: 'Reader does not handle tool approvals; continue this task in Codex when tools are needed.',
+        temporaryDiscussion: 'Temporary discussion',
+        temporaryDiscussionContext: 'Context sent to Codex',
+        temporaryDiscussionAccess: 'Workspace access',
+        temporaryDiscussionTools: 'Codex can inspect files under the current project root with read-only workspace tools. The temporary discussion starts in the read-only sandbox, and Reader does not forward tool approvals.',
+        temporaryDiscussionPrompt: 'Ask about this selection',
+        temporaryDiscussionSend: 'Send',
+        temporaryDiscussionEmpty: 'The temporary discussion returned no text response.',
+        temporaryDiscussionReadOnly: 'This is an ephemeral, read-only discussion. Its first message includes the source, location, and project root below; later messages retain that context.',
+        temporaryDiscussionBoundTask: 'Open bound task',
+        temporaryDiscussionNoTask: 'Bind a Codex task in the task panel first',
+        temporaryDiscussionInject: 'Send this conclusion to the bound task',
+        temporaryDiscussionInjecting: 'Sending this conclusion to the bound task…',
+        temporaryDiscussionInjected: 'The conclusion was sent to the bound task.',
+        temporaryDiscussionRefresh: 'Refresh discussion'
     }
 } as const;
 
@@ -200,8 +276,11 @@ class ReaderApplication {
     private liveStatus!: HTMLElement;
     private sourceActions!: ReaderSourceActions;
     private recallPopover!: ReaderRecallPopover;
+    private discussionDialog!: ReaderDiscussionDialog;
     private toolbarPanel!: ReaderToolbarPanel;
     private realtimeEvents: EventSource | undefined;
+    private taskBinding: ReaderTaskBinding | undefined;
+    private pendingTaskSelection: ReaderDiscussionSelection | undefined;
 
     async start(): Promise<void> {
         this.buildShell();
@@ -237,7 +316,7 @@ class ReaderApplication {
             '<button id="reader-navigation-toggle" class="icon-button reader-navigation-toggle" type="button"></button>',
             '<div class="reader-history"><button id="reader-back" class="icon-button" aria-label="Back"></button><button id="reader-forward" class="icon-button" aria-label="Forward"></button></div>',
             '<div id="reader-page-title" class="reader-page-title"></div>',
-            '<div class="reader-tools"><button class="tool-button" data-panel="contents" aria-label="Contents"></button><button class="tool-button" data-panel="definitions" aria-label="Definitions"></button><button class="tool-button" data-panel="symbols" aria-label="Symbols"></button><button class="tool-button" data-panel="formulas" aria-label="Formulas"></button></div>',
+            '<div class="reader-tools"><button class="tool-button" data-panel="contents" aria-label="Contents"></button><button class="tool-button" data-panel="definitions" aria-label="Definitions"></button><button class="tool-button" data-panel="symbols" aria-label="Symbols"></button><button class="tool-button" data-panel="formulas" aria-label="Formulas"></button><button class="tool-button" data-panel="tasks" aria-label="Task discussion"></button></div>',
             '<div class="reader-type-control"><button type="button" class="type-size-button" data-font-size="-1" aria-label="Decrease text size">A−</button><output id="reader-font-size" aria-live="polite">' + this.fontSize + 'px</output><button type="button" class="type-size-button" data-font-size="1" aria-label="Increase text size">A+</button></div>',
             '<span id="reader-live" class="reader-live" aria-live="polite"></span>',
             '</header><article id="reader-article" class="reader-article"></article></main>',
@@ -257,6 +336,8 @@ class ReaderApplication {
             fetchDefinition: index => this.fetchJson<any>('/api/definition?index=' + index),
             renderDefinition: definition => this.renderDefinitionContent(definition),
             locateDefinition: definition => this.locateDefinition(definition),
+            taskSelection: selection => this.openTaskDiscussion(selection),
+            discussSelection: selection => this.openTemporaryDiscussion(selection),
             labels: () => {
                 const dictionary = this.dictionary();
                 return {
@@ -267,7 +348,9 @@ class ReaderApplication {
                     locate: dictionary.jump,
                     copied: dictionary.copied,
                     noDefinitions: dictionary.noDefinitions,
-                    refineDefinitionQuery: dictionary.refineDefinitionQuery
+                    refineDefinitionQuery: dictionary.refineDefinitionQuery,
+                    taskDiscussion: dictionary.tasks,
+                    discussWithTask: dictionary.discussWithTask
                 };
             }
         });
@@ -277,6 +360,13 @@ class ReaderApplication {
             labels: () => ({ recall: this.dictionary().recall })
         });
         this.toolbarPanel = new ReaderToolbarPanel(() => ({ close: this.dictionary().close }));
+        this.discussionDialog = new ReaderDiscussionDialog({
+            postJson: (url, value) => this.postJson(url, value),
+            renderMarkdown: (markdown, filePath) => renderFormalMarkdown(this.markdown, markdown, this.renderOptions(filePath)),
+            labels: () => this.dictionary(),
+            hasBoundTask: () => !!this.taskBinding,
+            openTaskPanel: () => this.openTaskPanel()
+        });
     }
 
     private dictionary() {
@@ -284,16 +374,25 @@ class ReaderApplication {
     }
 
     private async fetchJson<T>(url: string): Promise<T> {
-        const response = await fetch(url, { cache: 'no-store' });
+        const response = await fetch(url, {
+            cache: 'no-store',
+            headers: url.startsWith('/api/codex/') && this.state?.requestToken
+                ? { 'x-markdown-formal-reader-token': this.state.requestToken }
+                : undefined
+        });
         if (!response.ok) throw new Error(await response.text());
         return response.json() as Promise<T>;
     }
 
     private async postJson<T>(url: string, value: unknown = {}): Promise<T> {
+        const headers: Record<string, string> = { 'content-type': 'application/json' };
+        if (url.startsWith('/api/codex/') && this.state?.requestToken) {
+            headers['x-markdown-formal-reader-token'] = this.state.requestToken;
+        }
         const response = await fetch(url, {
             method: 'POST',
             cache: 'no-store',
-            headers: { 'content-type': 'application/json' },
+            headers,
             body: JSON.stringify(value)
         });
         if (!response.ok) throw new Error(await response.text());
@@ -306,6 +405,7 @@ class ReaderApplication {
 
     private applyState(state: ReaderState): void {
         this.state = state;
+        this.taskBinding = state.codex?.binding;
         const dictionary = this.dictionary();
         (this.root.querySelector('#reader-project-name') as HTMLElement).textContent = this.state.rootName;
         (this.root.querySelector('#reader-page-filter') as HTMLInputElement).placeholder = dictionary.search;
@@ -449,7 +549,8 @@ class ReaderApplication {
             ['[data-panel="contents"]', 'contents'],
             ['[data-panel="definitions"]', 'definition'],
             ['[data-panel="symbols"]', 'sigma'],
-            ['[data-panel="formulas"]', 'formulas']
+            ['[data-panel="formulas"]', 'formulas'],
+            ['[data-panel="tasks"]', 'task']
         ];
         icons.forEach(([selector, icon]) => {
             const button = this.root.querySelector<HTMLElement>(selector);
@@ -551,7 +652,11 @@ class ReaderApplication {
         this.article.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((heading, index) => {
             if (!heading.id) heading.id = 'reader-heading-' + index;
         });
-        this.sourceActions.bind(this.article, { source: this.page.content, formulas: rendered.formulas });
+        this.sourceActions.bind(this.article, {
+            filePath: this.page.filePath,
+            source: this.page.content,
+            formulas: rendered.formulas
+        });
         this.recallPopover.bind(this.article);
     }
 
@@ -579,7 +684,169 @@ class ReaderApplication {
             if (view === 'definitions') this.renderDefinitions(content);
             if (view === 'symbols') this.renderSymbols(content);
             if (view === 'formulas') this.renderFormulas(content);
+            if (view === 'tasks') this.renderTasks(content);
         });
+    }
+
+    private openTemporaryDiscussion(selection: ReaderDiscussionSelection): void {
+        this.pendingTaskSelection = selection;
+        this.discussionDialog.open(selection);
+    }
+
+    private openTaskDiscussion(selection: ReaderDiscussionSelection): void {
+        this.pendingTaskSelection = selection;
+        this.openTaskPanel();
+    }
+
+    private openTaskPanel(): void {
+        const trigger = this.root.querySelector<HTMLElement>('[data-panel="tasks"]');
+        if (trigger) this.openPanel('tasks', trigger);
+    }
+
+    private renderTasks(container: HTMLElement): void {
+        container.replaceChildren();
+        if (!this.taskBinding) {
+            this.renderTaskPicker(container);
+            return;
+        }
+
+        const binding = document.createElement('section');
+        binding.className = 'reader-task-binding';
+        const name = document.createElement('strong');
+        name.textContent = this.taskBinding.taskName || this.taskBinding.taskId;
+        const controls = document.createElement('div');
+        controls.className = 'reader-detail-actions';
+        controls.append(
+            this.panelIconButton('reload', this.dictionary().changeTask, () => {
+                void this.postJson('/api/codex/unbind').then(() => {
+                    this.taskBinding = undefined;
+                    this.renderTasks(container);
+                }, error => this.renderTaskError(container, error));
+            }),
+            this.panelIconButton('x', this.dictionary().unbindTask, () => {
+                void this.postJson('/api/codex/unbind').then(() => {
+                    this.taskBinding = undefined;
+                    this.pendingTaskSelection = undefined;
+                    this.renderTasks(container);
+                }, error => this.renderTaskError(container, error));
+            })
+        );
+        binding.append(name, controls);
+        container.append(binding);
+
+        const selection = this.pendingTaskSelection;
+        if (!selection) {
+            container.append(this.emptyState(this.dictionary().taskSelectionRequired));
+            return;
+        }
+
+        const context = document.createElement('div');
+        context.className = 'reader-task-context';
+        const contextLabel = document.createElement('span');
+        contextLabel.textContent = this.dictionary().selectedContext;
+        const coordinates = document.createElement('strong');
+        coordinates.textContent = selection.filePath + ':' + selection.startLine + '–' + selection.endLine;
+        const excerpt = document.createElement('code');
+        excerpt.textContent = selection.markdown.replace(/\s+/g, ' ').trim();
+        context.append(contextLabel, coordinates, excerpt);
+
+        const prompt = document.createElement('textarea');
+        prompt.className = 'reader-task-prompt';
+        prompt.rows = 3;
+        prompt.placeholder = this.dictionary().taskPrompt;
+        const send = document.createElement('button');
+        send.type = 'button';
+        send.className = 'reader-task-send';
+        send.textContent = this.dictionary().sendToTask;
+        const response = document.createElement('div');
+        response.className = 'reader-task-response';
+        send.addEventListener('click', () => {
+            const value = prompt.value.trim();
+            if (!value) {
+                prompt.focus();
+                return;
+            }
+            send.disabled = true;
+            prompt.disabled = true;
+            response.textContent = this.dictionary().taskWaiting;
+            void this.postJson<{ taskId: string; message: string }>('/api/codex/turn', {
+                prompt: value,
+                selection
+            }).then(result => {
+                if (!response.isConnected) return;
+                response.innerHTML = result.message
+                    ? renderFormalMarkdown(this.markdown, result.message, this.renderOptions(selection.filePath))
+                    : '<p>' + escapeHtml(this.dictionary().taskResponseEmpty) + '</p>';
+                const note = document.createElement('p');
+                note.className = 'reader-task-approval-note';
+                note.textContent = this.dictionary().taskApprovalNote;
+                response.append(note);
+                this.toolbarPanel.reposition();
+            }, error => this.renderTaskError(response, error)).finally(() => {
+                send.disabled = false;
+                prompt.disabled = false;
+            });
+        });
+        container.append(context, prompt, send, response);
+        window.requestAnimationFrame(() => prompt.focus());
+    }
+
+    private renderTaskPicker(container: HTMLElement): void {
+        const heading = document.createElement('p');
+        heading.className = 'reader-panel-summary';
+        heading.textContent = this.dictionary().bindTask;
+        const refresh = document.createElement('button');
+        refresh.type = 'button';
+        refresh.className = 'reader-definition-scope';
+        refresh.textContent = this.dictionary().reloadTasks;
+        const results = document.createElement('div');
+        results.className = 'reader-panel-list reader-task-list';
+        const load = async () => {
+            refresh.disabled = true;
+            results.replaceChildren(this.emptyState(this.dictionary().loadingTasks));
+            try {
+                const payload = await this.fetchJson<{ tasks: ReaderTaskSummary[] }>('/api/codex/tasks');
+                results.replaceChildren();
+                if (!payload.tasks.length) {
+                    results.append(this.emptyState(this.dictionary().noTasks));
+                    return;
+                }
+                payload.tasks.forEach(task => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'reader-task-entry';
+                    const name = document.createElement('strong');
+                    name.textContent = task.taskName || task.taskId;
+                    const preview = document.createElement('span');
+                    preview.textContent = task.preview || task.taskId;
+                    button.append(name, preview);
+                    button.addEventListener('click', () => {
+                        void this.postJson<{ binding?: ReaderTaskBinding }>('/api/codex/binding', { taskId: task.taskId }).then(result => {
+                            this.taskBinding = result.binding;
+                            this.renderTasks(container);
+                        }, error => this.renderTaskError(container, error));
+                    });
+                    results.append(button);
+                });
+            } catch (error) {
+                this.renderTaskError(results, error, this.dictionary().taskUnavailable);
+            } finally {
+                refresh.disabled = false;
+                this.toolbarPanel.reposition();
+            }
+        };
+        refresh.addEventListener('click', () => void load());
+        container.append(heading, refresh, results);
+        void load();
+    }
+
+    private renderTaskError(container: HTMLElement, error: unknown, fallback = ''): void {
+        if (!container.isConnected) return;
+        const message = document.createElement('p');
+        message.className = 'reader-task-error';
+        message.textContent = fallback || (error instanceof Error ? error.message : String(error));
+        container.replaceChildren(message);
+        this.toolbarPanel.reposition();
     }
 
     private renderContents(container: HTMLElement): void {

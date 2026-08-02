@@ -20,6 +20,17 @@ export interface ReaderSourceActionLabels {
     copied: string;
     noDefinitions: string;
     refineDefinitionQuery: string;
+    taskDiscussion: string;
+    discussWithTask: string;
+}
+
+export interface ReaderDiscussionSelection {
+    filePath: string;
+    startLine: number;
+    endLine: number;
+    text: string;
+    markdown: string;
+    sourceLines: string;
 }
 
 export interface ReaderSourceActionsHost {
@@ -27,10 +38,13 @@ export interface ReaderSourceActionsHost {
     fetchDefinition(index: number): Promise<any>;
     renderDefinition(definition: any): string;
     locateDefinition(definition: ReaderDefinitionMatch): void;
+    taskSelection(selection: ReaderDiscussionSelection): void;
+    discussSelection(selection: ReaderDiscussionSelection): void;
     labels(): ReaderSourceActionLabels;
 }
 
 interface SourceDocument {
+    filePath: string;
     source: string;
     formulas: ReaderFormula[];
 }
@@ -160,7 +174,7 @@ export class ReaderSourceActions {
         const formulaElement = closestReaderElement(event.target as Node, '[data-reader-formula]');
         if (!formulaElement?.dataset.readerFormula) return;
         const formula = this.sourceDocument?.formulas.find(item => item.id === formulaElement.dataset.readerFormula);
-        if (formula) this.showFormulaActions(formula, formulaElement.getBoundingClientRect());
+        if (formula) this.showFormulaActions(formula, formulaElement.getBoundingClientRect(), this.sourceRangeFor(formulaElement, formula));
     };
 
     constructor(private readonly host: ReaderSourceActionsHost) {
@@ -207,7 +221,7 @@ export class ReaderSourceActions {
         this.popover = undefined;
     }
 
-    private selectedSource(): { text: string; markdown?: string; sourceLines: string; rect: DOMRect } | undefined {
+    private selectedSource(): { text: string; markdown?: string; sourceLines: string; rect: DOMRect; startLine: number; endLine: number } | undefined {
         if (!this.article || !this.sourceDocument) return undefined;
         const selection = window.getSelection();
         if (!selection || selection.isCollapsed || !selection.toString().trim()) return undefined;
@@ -230,7 +244,9 @@ export class ReaderSourceActions {
             markdown: selectedMarkdownFragment(sourceLines, sourceSelection)
                 ?? selectedMarkdownFragment(sourceLines, text),
             sourceLines,
-            rect
+            rect,
+            startLine,
+            endLine
         };
     }
 
@@ -240,8 +256,8 @@ export class ReaderSourceActions {
         if (formula?.dataset.readerFormula) {
             const item = this.sourceDocument?.formulas.find(candidate => candidate.id === formula.dataset.readerFormula);
             const rect = selection ? selectionRect(selection) : undefined;
-            if (item) {
-                this.showFormulaActions(item, rect || formula.getBoundingClientRect());
+                if (item) {
+                this.showFormulaActions(item, rect || formula.getBoundingClientRect(), this.sourceRangeFor(formula, item));
                 return;
             }
         }
@@ -265,6 +281,22 @@ export class ReaderSourceActions {
             actions.append(this.iconButton('copy-line', labels.copySourceLines, async button => {
                 await this.copyAndMark(button, selected.sourceLines);
             }));
+            const discussionSelection = {
+                filePath: this.sourceDocument?.filePath || '',
+                startLine: selected.startLine,
+                endLine: selected.endLine,
+                text: selected.text,
+                markdown: selected.markdown || selected.text,
+                sourceLines: selected.sourceLines
+            };
+            actions.append(this.iconButton('task', labels.taskDiscussion, () => {
+                this.host.taskSelection(discussionSelection);
+                this.dismiss();
+            }));
+            actions.append(this.iconButton('discuss', labels.discussWithTask, () => {
+                this.host.discussSelection(discussionSelection);
+                this.dismiss();
+            }));
             if (definitions.length > 0) {
                 actions.append(this.iconButton('definition', labels.lookupDefinition, () => {
                     this.showDefinitionLookup(selected.text, selected.rect, definitions);
@@ -274,7 +306,20 @@ export class ReaderSourceActions {
         }, true);
     }
 
-    private showFormulaActions(formula: ReaderFormula, rect: DOMRect): void {
+    private sourceRangeFor(element: HTMLElement, formula: ReaderFormula): { startLine: number; endLine: number; sourceLines: string } | undefined {
+        if (!this.article || !this.sourceDocument) return undefined;
+        const sourceElement = closestReaderElement(element, '[data-source-start-line]');
+        const startLine = formula.sourceStartLine || Number(sourceElement?.dataset.sourceStartLine);
+        const endLine = formula.sourceEndLine || Number(sourceElement?.dataset.sourceEndLine);
+        if (!Number.isInteger(startLine) || !Number.isInteger(endLine) || startLine < 1 || endLine < startLine) return undefined;
+        return {
+            startLine,
+            endLine,
+            sourceLines: this.sourceDocument.source.split(/\r?\n/).slice(startLine - 1, endLine).join('\n')
+        };
+    }
+
+    private showFormulaActions(formula: ReaderFormula, rect: DOMRect, sourceRange?: { startLine: number; endLine: number; sourceLines: string }): void {
         const labels = this.host.labels();
         this.openPopover(rect, popover => {
             const actions = document.createElement('div');
@@ -284,6 +329,27 @@ export class ReaderSourceActions {
                     await this.copyAndMark(button, formula.latex);
                 })
             );
+            const range = sourceRange || (formula.sourceStartLine && formula.sourceEndLine
+                ? { startLine: formula.sourceStartLine, endLine: formula.sourceEndLine, sourceLines: formula.source }
+                : undefined);
+            if (range) {
+                const discussionSelection = {
+                    filePath: this.sourceDocument?.filePath || '',
+                    startLine: range.startLine,
+                    endLine: range.endLine,
+                    text: formula.latex,
+                    markdown: formula.source,
+                    sourceLines: range.sourceLines
+                };
+                actions.append(this.iconButton('task', labels.taskDiscussion, () => {
+                    this.host.taskSelection(discussionSelection);
+                    this.dismiss();
+                }));
+                actions.append(this.iconButton('discuss', labels.discussWithTask, () => {
+                    this.host.discussSelection(discussionSelection);
+                    this.dismiss();
+                }));
+            }
             popover.append(actions);
         }, true);
     }

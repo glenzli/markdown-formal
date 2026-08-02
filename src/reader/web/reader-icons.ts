@@ -8,8 +8,11 @@ import {
     FunctionSquare,
     ListTree,
     LocateFixed,
+    MessageSquarePlus,
+    MessageSquareText,
     PanelLeftClose,
     PanelLeftOpen,
+    RefreshCw,
     Sigma,
     X,
     type IconNode
@@ -24,10 +27,13 @@ export type ReaderIconName =
     | 'chevron-right'
     | 'copy-source'
     | 'copy-line'
+    | 'discuss'
     | 'formulas'
     | 'contents'
+    | 'task'
     | 'navigation-close'
     | 'navigation-open'
+    | 'reload'
     | 'sigma'
     | 'x';
 
@@ -40,10 +46,13 @@ const ICONS: Record<ReaderIconName, IconNode> = {
     'chevron-right': ChevronRight,
     'copy-source': Copy,
     'copy-line': Copy,
+    discuss: MessageSquarePlus,
     formulas: FunctionSquare,
     contents: ListTree,
+    task: MessageSquareText,
     'navigation-close': PanelLeftClose,
     'navigation-open': PanelLeftOpen,
+    reload: RefreshCw,
     sigma: Sigma,
     x: X
 };
