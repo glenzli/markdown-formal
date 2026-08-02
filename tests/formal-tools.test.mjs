@@ -356,6 +356,76 @@ async function testStructuredDefinitionMarkerContent() {
     assert.doesNotMatch(definition.content, /定义后的普通正文/);
 }
 
+async function testProjectKnowledgeAnalysis() {
+    const root = await makeWorkspace('project-knowledge');
+    await fs.writeFile(path.join(root, 'book1', '01-foundations.md'), [
+        '# Foundations',
+        '',
+        'Compactness is used throughout this chapter.',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', 'appendix-b-core-concepts.md'), [
+        '# Appendix B: Core Concepts',
+        '',
+        '| Term | Definition |',
+        '| --- | --- |',
+        '| Compactness | Every open cover admits a finite subcover. |',
+        '| Spectral gap | A positive separation in the relevant spectrum. |',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', 'appendix-a-symbols.md'), [
+        '# Appendix A: Symbols',
+        '',
+        'Notation reference.',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', 'summary.md'), '# Summary\n');
+
+    const prepare = runCli(root, ['prepare']);
+    assert.equal(prepare.status, 0, combinedOutput(prepare));
+    assert.match(combinedOutput(prepare), /Project knowledge: 1 concept\/glossary sources, 1 notation sources, 2 supplemental definitions/);
+
+    const analysis = JSON.parse(await read(root, '.markdown-formal/project-analysis.json'));
+    assert.deepEqual(analysis.summary, {
+        conceptSources: 1,
+        notationSources: 1,
+        summaryPages: 1,
+        extractedDefinitions: 2
+    });
+    assert.deepEqual(analysis.sources.map(source => source.kind), ['notation-appendix', 'concept-appendix', 'summary-page']);
+    const report = await read(root, '.markdown-formal/project-analysis.md');
+    assert.match(report, /appendix-b-core-concepts\.md/);
+    assert.match(report, /Supplemental definitions extracted from concept sources: 2/);
+
+    const readerIndex = JSON.parse(await read(root, '.markdown-formal/reader-index.json'));
+    const compactness = readerIndex.definitions.find(definition => definition.title === 'Compactness');
+    assert.deepEqual(compactness && {
+        filePath: compactness.filePath,
+        line: compactness.line,
+        content: compactness.content,
+        origin: compactness.origin
+    }, {
+        filePath: 'book1/appendix-b-core-concepts.md',
+        line: 5,
+        content: 'Every open cover admits a finite subcover.',
+        origin: 'concept-appendix'
+    });
+
+    const reader = await startReader(root);
+    try {
+        const state = await (await fetch(reader.url + '/api/state')).json();
+        assert.equal(state.projectAnalysis.summary.extractedDefinitions, 2);
+        const readerDefinition = state.definitions.find(definition => definition.title === 'Compactness');
+        const detail = await (await fetch(reader.url + '/api/definition?index=' + readerDefinition.index)).json();
+        assert.equal(detail.origin, 'concept-appendix');
+        assert.match(detail.content, /finite subcover/);
+        const endpointAnalysis = await (await fetch(reader.url + '/api/project-analysis')).json();
+        assert.equal(endpointAnalysis.summary.conceptSources, 1);
+    } finally {
+        await stopReader(reader.child);
+    }
+}
+
 async function testSymbolCache() {
     const root = await makeWorkspace('symbols');
     await fs.mkdir(path.join(root, '.markdown-formal'), { recursive: true });
@@ -1094,6 +1164,23 @@ async function testReaderCodexTaskBinding() {
         '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
         ''
     ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', 'appendix-b-core-concepts.md'), [
+        '# Appendix B: Core Concepts',
+        '',
+        '| Term | Definition |',
+        '| --- | --- |',
+        '| Finite cover | Every open cover has a finite subcover. |',
+        ''
+    ].join('\n'));
+    await fs.mkdir(path.join(root, 'book2'), { recursive: true });
+    await fs.writeFile(path.join(root, 'book2', 'appendix-b-core-concepts.md'), [
+        '# Appendix B: Core Concepts',
+        '',
+        '| Term | Definition |',
+        '| --- | --- |',
+        '| Unrelated term | A definition from another book. |',
+        ''
+    ].join('\n'));
     assert.equal(runCli(root, ['prepare']).status, 0);
 
     const fakeCodex = path.join(root, 'fake-codex.mjs');
@@ -1127,8 +1214,14 @@ const receive = message => {
     return write({ id: message.id, result: { thread: { ...temporaryThread, turns: temporaryTurns } } });
   }
   if (message.method === 'turn/start') {
-    if (!message.params.additionalContext?.['markdown-formal-reader-selection']?.value) {
+    const selectionContext = message.params.additionalContext?.['markdown-formal-reader-selection']?.value;
+    if (!selectionContext) {
       return write({ id: message.id, error: { message: 'Reader selection context was missing.' } });
+    }
+    const parsedContext = JSON.parse(selectionContext);
+    const projectKnowledge = parsedContext.projectKnowledge || parsedContext.originalContext?.projectKnowledge;
+    if (projectKnowledge?.summary?.conceptSources !== 1 || projectKnowledge?.sources?.[0]?.filePath !== 'book1/appendix-b-core-concepts.md') {
+      return write({ id: message.id, error: { message: 'Reader project knowledge context was missing.' } });
     }
     const isTemporary = message.params.threadId === temporaryThread.id;
     const turn = { id: (isTemporary ? 'turn-temporary-fixture' : 'turn-reader-fixture'), status: 'completed' };
@@ -1723,6 +1816,7 @@ const tests = [
     ['migrate-text-refs report', testMigrateTextRefsReport],
     ['custom dictionary text refs', testCustomDictionaryTextRefs],
     ['structured definition marker content', testStructuredDefinitionMarkerContent],
+    ['project knowledge analysis', testProjectKnowledgeAnalysis],
     ['symbol cache', testSymbolCache],
     ['warns unbalanced symbol pattern', testWarnsUnbalancedSymbolPattern],
     ['recall boundaries and optional blocks', testRecallBoundariesAndOptionalBlocks],

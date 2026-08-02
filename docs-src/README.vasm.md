@@ -25,7 +25,7 @@ vasm:
 
 - 章节、页面、小节、命题类对象、公式、图、表的稳定编号。
 - `@h-...` 引用可承受插入、删除和章节重排。
-- 定义查询不侵入编号系统。
+- 定义查询不侵入编号系统，并能利用明确命名的概念/术语附录。
 - 当前页符号表用于展示项目特有 LaTeX 记号。
 - 从显式 `@h-...` 引用生成命题依赖图。
 - Markdown/PDF 导出，支持封面、出版元数据页和前置声明页。
@@ -76,6 +76,7 @@ tools/markdown-formal/
   config.json
   definitions.json
   symbols.json
+  project-analysis.md
 ```
 
 添加项目脚本：
@@ -157,9 +158,10 @@ npm run formal -- paths
 - `#h-...` 和 `#tmp-*` 只用于声明位置。
 - 正文引用使用 `@h-...`、`@h-....title` 或 `@h-....full`。
 - 新增声明使用 `tmp-1`、`tmp-2` 等；`finish` 会替换为正式 hash。
-- 定义不加 hash。标准 `定义（术语）：...` 和 `Definition (Term): ...` 会自动扫描。
+- 定义不加 hash。标准 `定义（术语）：...` / `Definition (Term): ...`，以及明确命名的概念/术语附录，会由工具自动扫描。
+- `.markdown-formal/project-analysis.md` 是生成的知识页摘要，不是手工源；Reader 会随内容变化在内存中重建它。
 - AI 只为例外定义维护 `.markdown-formal/definitions.json`。
-- 只有项目特有符号约定进入 `.markdown-formal/symbols.json`。
+- 只有发生显式语义变化的项目特有符号约定进入 `.markdown-formal/symbols.json`。
 
 ### 文档入口
 

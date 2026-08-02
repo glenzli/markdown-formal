@@ -1,4 +1,8 @@
 import * as path from 'node:path';
+import { analyzeProjectKnowledge, type ProjectKnowledgeSourceKind, type ProjectStructureAnalysis } from './project-knowledge';
+
+export { analyzeProjectKnowledge } from './project-knowledge';
+export type { ProjectKnowledgeAnalysis, ProjectKnowledgeDefinition, ProjectKnowledgeSource, ProjectKnowledgeSourceKind, ProjectStructureAnalysis } from './project-knowledge';
 
 export interface LabelData {
     type: string;
@@ -20,7 +24,10 @@ export interface LabelData {
     content?: string;
     startLine?: number;
     endLine?: number;
+    definitionOrigin?: DefinitionOrigin;
 }
+
+export type DefinitionOrigin = 'standard' | 'manual' | Extract<ProjectKnowledgeSourceKind, 'concept-appendix' | 'glossary'>;
 
 export interface PageData {
     id?: string;
@@ -60,6 +67,7 @@ export interface FormalDefinition {
     line: number;
     label: LabelData;
     aliases?: string[];
+    origin?: DefinitionOrigin;
 }
 
 export interface RuntimeDefinitionData {
@@ -74,6 +82,7 @@ export interface RuntimeDefinitionData {
     volumeKey?: string;
     volumeTitle?: string;
     volumeOrder?: number;
+    origin?: DefinitionOrigin;
 }
 
 export interface FormalSymbolInput {
@@ -2027,6 +2036,8 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
 
     const customDefinitionResult = parseFormalDefinitions(definitionsInput, files, config);
     for (const customDefinition of customDefinitionResult.definitions) {
+        customDefinition.origin = 'manual';
+        customDefinition.label.definitionOrigin = 'manual';
         const existing = definitions.find(def => (
             def.type === 'def'
             && def.file === customDefinition.file
@@ -2041,6 +2052,46 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
     }
     issues.push(...customDefinitionResult.issues);
 
+    const projectKnowledge = analyzeProjectKnowledge(files, definitions);
+    const knowledgeOrigins = new Map<string, Extract<ProjectKnowledgeSourceKind, 'concept-appendix' | 'glossary'>>(projectKnowledge.project.sources
+        .filter((source): source is typeof source & { kind: Extract<ProjectKnowledgeSourceKind, 'concept-appendix' | 'glossary'> } => source.kind === 'concept-appendix' || source.kind === 'glossary')
+        .map(source => [source.filePath, source.kind]));
+    for (const definition of definitions) {
+        if (definition.type !== 'def' || definition.origin) continue;
+        const origin = knowledgeOrigins.get(definition.file);
+        definition.origin = origin || 'standard';
+        definition.label.definitionOrigin = definition.origin;
+    }
+    for (const candidate of projectKnowledge.definitions) {
+        const book = inferBookInfo(candidate.filePath, config);
+        const volume = inferVolumeInfo(candidate.filePath, config);
+        const label: LabelData = {
+            type: 'def',
+            title: candidate.title,
+            filePath: candidate.filePath,
+            bookKey: book.key,
+            bookTitle: book.title,
+            bookOrder: book.order,
+            content: candidate.content,
+            startLine: candidate.line - 1,
+            endLine: candidate.line - 1,
+            definitionOrigin: candidate.origin
+        };
+        if (volume) {
+            label.volumeKey = volume.key;
+            label.volumeTitle = volume.title;
+            label.volumeOrder = volume.order;
+        }
+        definitions.push({
+            type: 'def',
+            title: candidate.title,
+            file: candidate.filePath,
+            line: candidate.line,
+            label,
+            origin: candidate.origin
+        });
+    }
+
     const symbolResult = parseFormalSymbols(symbolsInput, files);
     issues.push(...symbolResult.issues);
     issues.push(...lintDefinitions(definitions));
@@ -2051,7 +2102,7 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
     definitions.sort(compareDefinitionRecords);
     pages.sort(comparePages);
     const dependencyGraph = buildDependencyGraph({ config, labels, definitions, references }, files);
-    return { config, files: files.map(file => file.filePath), labels, pages, definitions, references, pageReferences, symbols: symbolResult.symbols, issues, dependencyGraph };
+    return { config, files: files.map(file => file.filePath), labels, pages, definitions, references, pageReferences, symbols: symbolResult.symbols, issues, dependencyGraph, projectAnalysis: projectKnowledge.project };
 }
 
 function collectMarkerStarts(content: string, filePath: string): any[] {
@@ -2439,7 +2490,8 @@ export function buildRuntimeDefinitions(definitions: FormalDefinition[]): Runtim
             bookOrder: def.label.bookOrder,
             volumeKey: def.label.volumeKey,
             volumeTitle: def.label.volumeTitle,
-            volumeOrder: def.label.volumeOrder
+            volumeOrder: def.label.volumeOrder,
+            origin: def.origin || def.label.definitionOrigin || 'standard'
         }));
 }
 
@@ -2448,8 +2500,40 @@ export function buildReaderIndex(state: any) {
         entries: state.labels,
         pages: state.pages,
         definitions: buildRuntimeDefinitions(state.definitions || []),
-        symbols: state.symbols || []
+        symbols: state.symbols || [],
+        projectAnalysis: state.projectAnalysis || undefined
     };
+}
+
+export function renderProjectAnalysis(analysis: ProjectStructureAnalysis | undefined): string {
+    const project = analysis || {
+        schemaVersion: 1,
+        generatedBy: 'markdown-formal' as const,
+        sources: [],
+        summary: { conceptSources: 0, notationSources: 0, summaryPages: 0, extractedDefinitions: 0 }
+    };
+    const lines = [
+        '# Project Knowledge Analysis',
+        '',
+        'Generated from file names, page structure, concept tables, and concept-entry headings. It is a derived reading aid, not source content.',
+        '',
+        `- Concept or glossary sources: ${project.summary.conceptSources}`,
+        `- Notation appendix sources: ${project.summary.notationSources}`,
+        `- Summary pages: ${project.summary.summaryPages}`,
+        `- Supplemental definitions extracted from concept sources: ${project.summary.extractedDefinitions}`,
+        ''
+    ];
+    if (project.sources.length === 0) {
+        lines.push('No dedicated knowledge pages were detected. Standard definition markers remain indexed automatically.', '');
+        return `${lines.join('\n')}\n`;
+    }
+    lines.push('## Detected Sources', '');
+    lines.push('| Kind | File | Title | Confidence | Derived definitions |');
+    lines.push('| --- | --- | --- | --- | ---: |');
+    project.sources.forEach(source => lines.push(`| ${source.kind} | \`${source.filePath}\` | ${escapeTable(source.title)} | ${source.confidence} | ${source.extractedDefinitions} |`));
+    lines.push('', '## Maintenance Boundary', '');
+    lines.push('- The scanner and Reader refresh this analysis when Markdown or the optional definition/symbol source tables change.', '- Do not copy ordinary definitions into `.markdown-formal/definitions.json` just to keep this index fresh.', '- Use `.markdown-formal/definitions.json` only for deliberate lookup overrides: nonstandard wording, aliases, bilingual lookup, or a boundary the deterministic extractor cannot represent.', '- Detected notation appendices are supplied as project context; symbol patterns and meanings still require an explicit reviewed source entry.', '');
+    return `${lines.join('\n')}\n`;
 }
 
 function buildDocumentMap(documents: FormalDocument[]): Map<string, string> {
@@ -3194,9 +3278,9 @@ export function renderAgentGuide(state: any): string {
         '- Compatibility chapter/page refs: `@chapter:book1/02-main.md`, `@chapter:book1/02-main.md.title`, or `@chapter:book1/02-main.md.full` still work; paths are relative to the formal root that owns `.markdown-formal/`. `@page:path.md` is for intro, summary, and appendix pages. Prefer page hashes when available. `finish` normalizes `./` and `../` input sugar to root-relative paths.',
         '- Theorem-like recall captures the statement before `证明` / `Proof`; keep proofs after an explicit proof marker.',
         '- Dependency graph: `.markdown-formal/dependency-graph.json` is the canonical explicit theorem-like dependency graph. It uses only `@h-...` references between propositions/lemmas/theorems/corollaries and marks edges as `statement`, `proof`, or `body`; `.markdown-formal/dependency-report.md` is the review view. Use `npm run formal -- graph summary`, `graph impact <h-id>`, `graph upstream <h-id>`, `graph focus <h-id> --depth 2`, `graph bridges`, `graph isolated`, `graph cycles`, or `graph matrix chapter|volume|book` for Markdown analysis. Add `--where statement|proof|body` to filter edge placement. These are structural graph tools, not domain interpretation.',
-        '- Definitions: lookup is a tool-first, AI-exception workflow. The tool scans standard `定义（Term）：...` / `Definition (Term): ...` definitions with structural range heuristics. When editing a file, AI only updates `.markdown-formal/definitions.json` for nonstandard phrases, aliases/bilingual lookup, stable multi-paragraph previews, or boundaries the heuristic may get wrong; include Markdown `content` for those entries. Full rendered lookup previews are only guaranteed for definitions in the currently previewed file; cross-file search is primarily for locating and jumping.',
+        '- Definitions and project knowledge: lookup is a tool-first, AI-exception workflow. The tool scans standard `定义（Term）：...` / `Definition (Term): ...` definitions and deliberately named concept/glossary appendices; `.markdown-formal/project-analysis.md` records detected concept, notation, and summary pages. Do not refresh `.markdown-formal/definitions.json` after ordinary edits. Use it only for nonstandard phrases, aliases/bilingual lookup, stable multi-paragraph previews, or a boundary the deterministic extractor cannot represent; include Markdown `content` for those entries. Reader task context carries detected sources from the current book. Full rendered lookup previews are only guaranteed for definitions in the currently previewed file; cross-file search is primarily for locating and jumping.',
         '- Explanatory remarks stay plain: `注（Title）：...` / `Remark (Title): ...`, without hash. Non-mainline fact remarks that need a proof or later citation use `注 #tmp-*（Title）：...`; `> 注 #tmp-*（Title）：...` is also recognized inside standard blockquotes. The hash is only an anchor, renders without a remark number, and still supports recall. Examples stay plain by default; only explicitly cited examples use `例 #tmp-*` / `Example #tmp-*` and remain numbered.',
-        '- Symbols: maintain only project-specific `source`, `pattern`, and `meaning` entries in `.markdown-formal/symbols.json`; patterns describe the notation itself with balanced delimiters, not whole equations or open-ended formula fragments. The navigation symbol table lists symbols matched in the current preview file. Symbols are not inline formula refs and are not searched through the definition search box.',
+        '- Symbols: maintain only project-specific `source`, `pattern`, and `meaning` entries in `.markdown-formal/symbols.json` when explicit notation semantics change; patterns describe the notation itself with balanced delimiters, not whole equations or open-ended formula fragments. Detected notation appendices are context only and do not infer symbol meanings. The navigation symbol table lists symbols matched in the current preview file. Symbols are not inline formula refs and are not searched through the definition search box.',
         '- Appendices use the appendix file prefix, so markers in `appendix-a-*.md` render as `A.1`, `A.2`, etc. `00-introduction.md`, `intro.md`, and `introduction.md` are intro pages, not chapter 0.',
         '- Export: do not compile formal source Markdown directly. Use `npm run formal -- export-md <file-or-dir> --out dist/book.md` to produce one portable Markdown file, `npm run formal -- export-md-split <file-or-dir> --out dist/public` to produce compiled Markdown files while preserving the source tree, `npm run formal -- export-pdf <file-or-dir> --out dist/book.pdf` to call local pandoc after Markdown export, or `npm run formal -- render-pdf dist/book.md --out dist/book.pdf` when a project release flow has already postprocessed the compiled Markdown. PDF rendering reads `.markdown-formal/config.json` `pdf` defaults when present: A4, 2.5cm margins, TOC depth 2, language-aware TOC title, separate TOC page, optional title page metadata, optional publication metadata page, and optional front matter pages. `author` is the cover/PDF metadata author; fuller identity fields are `authorNative`, `authorAliases`, `orcid`, `repository`, `license`, `licenseUrl`, `preferredCitation`, `releaseTag`, `releaseCommit`, and `doi`. When `metadataPage` is true, the generated metadata page is unnumbered, unlisted, and placed after the title page but before the table of contents. Longer AI, license, citation, or provenance statements belong in `frontMatter`, placed after metadata and before the TOC; front matter entries use `source` or `content`, default to `toc: false`, and default to page breaks. Override with `--title`, `--subtitle`, `--author`, `--author-native`, `--author-alias`, `--orcid`, `--repository`, `--license`, `--license-url`, `--preferred-citation`, `--date`, `--release-version`, `--release-tag`, `--release-commit`, `--doi`, `--metadata-page`, `--front-matter`, `--front-matter-title`, `--front-matter-toc`, `--documentclass`, `--title-page`, `--margin`, `--no-toc`, `--toc-depth`, `--paper`, or Pandoc `-V key:value`. No PDF engine is bundled.',
         '',
@@ -3206,10 +3290,11 @@ export function renderAgentGuide(state: any): string {
         '- `.markdown-formal/reader-index.json`: machine-readable formal entry, page, definition, and symbol snapshot for local reader tooling.',
         '- `.markdown-formal/dependency-graph.json`: canonical theorem-like dependency graph from explicit `@h-...` references.',
         '- `.markdown-formal/dependency-report.md`: human/AI dependency graph review report.',
+        '- `.markdown-formal/project-analysis.json` / `.markdown-formal/project-analysis.md`: generated detection of concept/glossary, notation, and summary pages, plus supplemental concept entries. This is derived context, not a hand-maintained source table.',
         '- `.markdown-formal/report.md`: lint/verify details.',
         '- `.markdown-formal/audit.md`: advisory AI cleanup list generated by `audit`.',
         '- `.markdown-formal/text-ref-migration.md`: generated only after text-reference migration.',
-        '- `.markdown-formal/definitions.json` / `.markdown-formal/symbols.json`: optional AI-maintained source tables for definition lookup exceptions and project-specific notation.',
+        '- `.markdown-formal/definitions.json` / `.markdown-formal/symbols.json`: optional reviewed source tables for definition lookup overrides and project-specific notation.',
         '- `.markdown-formal/config.json`: explicit formal-project configuration. Use `scan.exclude` when project-root scans must ignore build, draft, context, or generated Markdown directories; use `lookup.bookDependencies` to permit intentional cross-book lookups and refs. The Reader scans project content in memory and remains opt-in through this config.',
         '',
         '## Migration',

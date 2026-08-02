@@ -26,6 +26,7 @@ import {
     renderDependencyGraphSummary,
     renderDependencyGraphUpstream,
     renderDependencyReport,
+    renderProjectAnalysis,
     renderReferenceMap,
     renderReport,
     scanFormalDocuments,
@@ -153,6 +154,8 @@ async function writeArtifacts(state) {
     await fs.writeFile(path.join(CACHE_DIR, 'dependency-graph.json'), `${JSON.stringify(state.dependencyGraph, null, 2)}\n`, 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'dependency-report.md'), renderDependencyReport(state.dependencyGraph), 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'reference-map.md'), renderReferenceMap(state.definitions, state.config, state.pages), 'utf8');
+    await fs.writeFile(path.join(CACHE_DIR, 'project-analysis.json'), `${JSON.stringify(state.projectAnalysis || {}, null, 2)}\n`, 'utf8');
+    await fs.writeFile(path.join(CACHE_DIR, 'project-analysis.md'), renderProjectAnalysis(state.projectAnalysis), 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'agent-guide.md'), renderAgentGuide(state), 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'report.md'), renderReport(state), 'utf8');
     await removeStaleArtifact('definition-index.md');
@@ -176,6 +179,10 @@ function printSummary(action, state) {
     const warnings = state.issues.filter(issue => issue.severity !== 'error');
     const status = errors.length > 0 ? 'ERROR' : warnings.length > 0 ? 'WARN' : 'OK';
     console.log(`${status} ${action}: ${Object.keys(state.labels).length} preview entries, ${state.pages.length} pages, ${errors.length} errors, ${warnings.length} warnings`);
+    const knowledge = state.projectAnalysis?.summary;
+    if (knowledge?.conceptSources || knowledge?.notationSources || knowledge?.summaryPages) {
+        console.log(`Project knowledge: ${knowledge.conceptSources} concept/glossary sources, ${knowledge.notationSources} notation sources, ${knowledge.extractedDefinitions} supplemental definitions`);
+    }
     if (errors.length > 0 || warnings.length > 0) {
         console.log('Report: .markdown-formal/report.md');
         [...errors, ...warnings].slice(0, 5).forEach(issue => {

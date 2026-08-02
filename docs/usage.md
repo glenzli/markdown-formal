@@ -19,8 +19,9 @@ The short version:
 ### Core Model
 
 - Stable numbering: source stores stable `#h-...` markers, new objects start as `#tmp-*`, prose references use only `@h-...`, `@h-....title`, or `@h-....full`, and reader-facing numbers are rendered by the tool.
-- Definition lookup: definitions do not get hash IDs or refs; the tool scans standard `定义（术语）：...` / `Definition (Term): ...` entries, and AI maintains `.markdown-formal/definitions.json` only for nonstandard definitions, aliases, bilingual lookup, and unreliable boundaries.
-- Symbol table: `.markdown-formal/symbols.json` records only project-defined special LaTeX notation, not generic variables, complete derivations, or one-off symbols.
+- Definition lookup: definitions do not get hash IDs or refs; the tool scans standard `定义（术语）：...` / `Definition (Term): ...` entries and deliberately named concept/glossary appendices. AI maintains `.markdown-formal/definitions.json` only for missing lookup entries, nonstandard definitions, aliases, bilingual lookup, and unreliable boundaries.
+- Project knowledge: `.markdown-formal/project-analysis.json` / `.markdown-formal/project-analysis.md` are generated summaries of concept/glossary, notation, and summary pages. Reader rebuilds them in memory and sends current-book sources with Codex discussion context.
+- Symbol table: `.markdown-formal/symbols.json` records only project-defined special LaTeX notation with an explicit semantic change, not generic variables, complete derivations, or one-off symbols.
 - Dependency graph: explicit theorem-like dependencies come from `@h-...`; the canonical data is `.markdown-formal/dependency-graph.json`; AI- or prover-suggested edges must be stored separately as suggested data.
 - Export: ordinary Markdown/PDF does not consume formal source directly; use `export-md` or `export-md-split` to lower markers/refs first, then run project-specific postprocessing and `render-pdf`.
 - Tool loop: run `prepare` before writing or migration, `finish <file-or-dir>` after editing, and `verify` before committing generated or migrated content.
@@ -114,6 +115,10 @@ Definition (Bounded operator): A linear map \(T:X\to Y\) is bounded if ...
 定义（有界算子）：若线性映射 \(T:X\to Y\) 满足 ...
 ```
 
+The tool also recognizes deliberately named concept or terminology appendices, such as `appendix-*-concepts.md`, glossary, terminology, or their Chinese equivalents. In those pages, `Term | Definition` / `术语 | 定义` tables and deepest concept-entry headings become supplemental lookup entries. `prepare` writes `.markdown-formal/project-analysis.json` and `.markdown-formal/project-analysis.md`; Reader rebuilds the same structure in memory and supplies current-book sources to Codex discussions.
+
+These are derived reading aids, not new writing sources. The tool does not infer terms or symbol meaning from ordinary prose.
+
 Use `.markdown-formal/definitions.json` only for exceptions:
 
 - nonstandard prose definitions;
@@ -137,7 +142,7 @@ Example:
 
 ### Symbols
 
-Project-specific notation belongs in `.markdown-formal/symbols.json`.
+Only project-specific notation whose semantics have explicitly changed belongs in `.markdown-formal/symbols.json`.
 
 ```json
 [
@@ -150,7 +155,7 @@ Project-specific notation belongs in `.markdown-formal/symbols.json`.
 ]
 ```
 
-Do not index generic variables, standard notation, or complete derivation formulas.
+Do not index generic variables, standard notation, or complete derivation formulas. A detected notation appendix appears in project knowledge context, but does not automatically produce a `pattern` or `meaning`.
 
 ### Normal Workflow
 
@@ -348,12 +353,6 @@ Common `.markdown-formal/config.json`:
       "advanced-book": ["foundations-book"]
     }
   },
-  "preview": {
-    "ignoreHover": [
-      "appendix-*-concepts.md",
-      "book/**/glossary.md"
-    ]
-  },
   "render": {
     "pageHeadingStyle": "label-title"
   }
@@ -460,8 +459,9 @@ local engine is installed.
 ## 核心模型
 
 - 稳定编号：源码保存稳定 `#h-...`，新增对象先写 `#tmp-*`；正文引用只用 `@h-...`、`@h-....title` 或 `@h-....full`，读者编号由工具渲染。
-- 定义查询：定义不加 hash、不参与 ref；工具自动扫描标准 `定义（术语）：...` / `Definition (Term): ...`，AI 只为非标准定义、别名、中英互查和不可靠边界维护 `.markdown-formal/definitions.json`。
-- 符号表：`.markdown-formal/symbols.json` 只记录项目明确约定的特殊 LaTeX 记号，不索引通用变量、完整推导公式或一次性符号。
+- 定义查询：定义不加 hash、不参与 ref；工具自动扫描标准 `定义（术语）：...` / `Definition (Term): ...`，并在发现概念/术语附录时利用其表格和末级条目建立补充索引。AI 只为查询缺失、非标准定义、别名、中英互查和不可靠边界维护 `.markdown-formal/definitions.json`。
+- 项目知识：`.markdown-formal/project-analysis.json` / `.markdown-formal/project-analysis.md` 是工具生成的概念附录、符号附录和 summary 页面摘要；Reader 在内存中按内容变化重建，并把同 book 来源交给任务讨论。
+- 符号表：`.markdown-formal/symbols.json` 只记录项目明确约定且发生语义变化的特殊 LaTeX 记号，不索引通用变量、完整推导公式或一次性符号。
 - 依赖图：命题/引理/定理/推论之间的显式依赖来自 `@h-...`，权威数据是 `.markdown-formal/dependency-graph.json`；AI 或证明器推测出的边必须另存为 suggested 数据。
 - 导出：普通 Markdown/PDF 不直接消费 formal 源；先用 `export-md` 或 `export-md-split` 降级 marker/ref，项目级后处理之后再用 `render-pdf`。
 - 工具闭环：写作或迁移前运行 `prepare`，编辑后运行 `finish <file-or-dir>`，提交生成或迁移内容前运行 `verify`。
@@ -555,6 +555,10 @@ Table #tmp-7 (Parameter ranges):
 Definition (Bounded operator): A linear map \(T:X\to Y\) is bounded if ...
 ```
 
+工具还会识别明确命名的概念/术语附录，例如 `appendix-*-concepts.md`、glossary、terminology 或中文概念表。此类页面中，`术语 | 定义` / `Term | Definition` 表格与最末级概念条目会作为补充查询条目。`prepare` 会生成 `.markdown-formal/project-analysis.json` 和 `.markdown-formal/project-analysis.md`，列出被采用的概念、符号和 summary 页面；Reader 在内存中同步重建这份结构，并把当前 book 的来源带入 Codex 讨论上下文。
+
+这些条目是派生索引，不是新的写作源，也不会由工具从普通正文猜测术语或符号含义。
+
 只有例外情况才写入 `.markdown-formal/definitions.json`：
 
 - 非标准行文定义；
@@ -578,7 +582,7 @@ Definition (Bounded operator): A linear map \(T:X\to Y\) is bounded if ...
 
 ## 符号表
 
-项目特有记号写入 `.markdown-formal/symbols.json`。
+只有项目明确约定且语义发生变化的记号才写入 `.markdown-formal/symbols.json`。
 
 ```json
 [
@@ -591,7 +595,7 @@ Definition (Bounded operator): A linear map \(T:X\to Y\) is bounded if ...
 ]
 ```
 
-不要索引普通变量、通用记号或完整推导公式。
+不要索引普通变量、通用记号或完整推导公式。检测到的符号/记号附录会出现在项目知识摘要中，但不会自动推导 `pattern` 或 `meaning`。
 
 ## 常规流程
 
@@ -788,12 +792,6 @@ multi-volume-book/
     "bookDependencies": {
       "advanced-book": ["foundations-book"]
     }
-  },
-  "preview": {
-    "ignoreHover": [
-      "appendix-*-concepts.md",
-      "book/**/glossary.md"
-    ]
   },
   "render": {
     "pageHeadingStyle": "label-title"

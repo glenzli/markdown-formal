@@ -110,6 +110,10 @@ Table #tmp-7 (Parameter ranges):
 Definition (Bounded operator): A linear map \(T:X\to Y\) is bounded if ...
 ```
 
+工具还会识别明确命名的概念/术语附录，例如 `appendix-*-concepts.md`、glossary、terminology 或中文概念表。此类页面中，`术语 | 定义` / `Term | Definition` 表格与最末级概念条目会作为补充查询条目。`prepare` 会生成 `.markdown-formal/project-analysis.json` 和 `.markdown-formal/project-analysis.md`，列出被采用的概念、符号和 summary 页面；Reader 在内存中同步重建这份结构，并把当前 book 的来源带入 Codex 讨论上下文。
+
+这些条目是派生索引，不是新的写作源，也不会由工具从普通正文猜测术语或符号含义。
+
 只有例外情况才写入 `.markdown-formal/definitions.json`：
 
 - 非标准行文定义；
@@ -133,7 +137,7 @@ Definition (Bounded operator): A linear map \(T:X\to Y\) is bounded if ...
 
 ## 符号表
 
-项目特有记号写入 `.markdown-formal/symbols.json`。
+只有项目明确约定且语义发生变化的记号才写入 `.markdown-formal/symbols.json`。
 
 ```json
 [
@@ -146,7 +150,7 @@ Definition (Bounded operator): A linear map \(T:X\to Y\) is bounded if ...
 ]
 ```
 
-不要索引普通变量、通用记号或完整推导公式。
+不要索引普通变量、通用记号或完整推导公式。检测到的符号/记号附录会出现在项目知识摘要中，但不会自动推导 `pattern` 或 `meaning`。
 
 ## 常规流程
 
@@ -343,12 +347,6 @@ multi-volume-book/
     "bookDependencies": {
       "advanced-book": ["foundations-book"]
     }
-  },
-  "preview": {
-    "ignoreHover": [
-      "appendix-*-concepts.md",
-      "book/**/glossary.md"
-    ]
   },
   "render": {
     "pageHeadingStyle": "label-title"

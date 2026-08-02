@@ -336,7 +336,8 @@ function stateProjection(snapshot: WorkspaceSnapshot, rootPath: string): Record<
         pages: pages.map((page: PageData) => decoratePage(page, snapshot.state.config)),
         definitions: definitions.map(definitionSummary),
         issues: snapshot.state.issues || [],
-        dependencySummary: snapshot.state.dependencyGraph?.summary || {}
+        dependencySummary: snapshot.state.dependencyGraph?.summary || {},
+        projectAnalysis: snapshot.state.projectAnalysis || { schemaVersion: 1, sources: [], summary: {} }
     };
 }
 
@@ -375,6 +376,7 @@ async function readerStateProjection(
         definitions: [],
         issues: [],
         dependencySummary: {},
+        projectAnalysis: { schemaVersion: 1, sources: [], summary: {} },
         requestToken,
         codex: { binding: undefined },
         recentProjects: recentProjects.map((project, index) => ({
@@ -382,6 +384,31 @@ async function readerStateProjection(
             rootName: project.rootName,
             openedAt: project.openedAt
         }))
+    };
+}
+
+function projectKnowledgeContext(snapshot: WorkspaceSnapshot, filePath: string): Record<string, unknown> {
+    const analysis = snapshot.state.projectAnalysis || { schemaVersion: 1, sources: [] };
+    const currentPage = (snapshot.state.pages || []).find((page: PageData) => page.filePath === filePath);
+    const pagesByPath = new Map<string, PageData>((snapshot.state.pages || []).map((page: PageData) => [page.filePath, page]));
+    const sources = (analysis.sources || []).filter((source: any) => {
+        const sourcePage = pagesByPath.get(source.filePath);
+        return !currentPage?.bookKey || !sourcePage?.bookKey || sourcePage.bookKey === currentPage.bookKey;
+    }).map((source: any) => ({
+        kind: source.kind,
+        filePath: source.filePath,
+        title: source.title,
+        confidence: source.confidence,
+        extractedDefinitions: source.extractedDefinitions
+    }));
+    return {
+        summary: {
+            conceptSources: sources.filter((source: any) => source.kind === 'concept-appendix' || source.kind === 'glossary').length,
+            notationSources: sources.filter((source: any) => source.kind === 'notation-appendix').length,
+            summaryPages: sources.filter((source: any) => source.kind === 'summary-page').length,
+            extractedDefinitions: sources.reduce((count: number, source: any) => count + Number(source.extractedDefinitions || 0), 0)
+        },
+        sources
     };
 }
 
@@ -464,7 +491,8 @@ function selectionContext(snapshot: WorkspaceSnapshot, body: any): Record<string
             sourceLines
         },
         directReferences: Array.from(new Set(directReferences)),
-        anchors: Array.from(new Set(anchors))
+        anchors: Array.from(new Set(anchors)),
+        projectKnowledge: projectKnowledgeContext(snapshot, filePath)
     };
 }
 
@@ -862,6 +890,11 @@ export async function startReaderServer(options: FormalReaderServerOptions): Pro
                     return;
                 }
                 sendJson(response, 200, { index, ...definition, labels: labelsForContent(snapshot, definition.content || '') });
+                return;
+            }
+
+            if (url.pathname === '/api/project-analysis') {
+                sendJson(response, 200, snapshot.state.projectAnalysis || { schemaVersion: 1, sources: [], summary: {} });
                 return;
             }
 
