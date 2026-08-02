@@ -1158,6 +1158,8 @@ async function testReaderServer() {
         '',
         'Proof: direct.',
         '',
+        '命题 #h-4444444444444444（Consequence）：By @h-3333333333333333 and @h-2222222222222222, the conclusion follows.',
+        '',
         'By @h-3333333333333333, the conclusion follows.',
         ''
     ].join('\n'));
@@ -1182,6 +1184,34 @@ async function testReaderServer() {
         assert.match(page.content, /Finite cover/);
         assert.equal(page.page.displayHeading, '第 1 章 Foundations');
         assert.equal(page.labels['h-3333333333333333'].content, undefined);
+        assert.deepEqual(page.dependencyMarkers['h-3333333333333333'], {
+            directDependencies: 0,
+            sourceReferenceCount: 0,
+            directDependents: 1,
+            impactCount: 1,
+            role: 'referenced',
+            upstream: [],
+            downstream: [{
+                id: 'h-4444444444444444',
+                display: '命题 1.2',
+                title: 'Consequence',
+                filePath: 'book1/01-foundations.md'
+            }]
+        });
+        assert.deepEqual(page.dependencyMarkers['h-4444444444444444'], {
+            directDependencies: 1,
+            sourceReferenceCount: 2,
+            directDependents: 0,
+            impactCount: 0,
+            role: 'leaf',
+            upstream: [{
+                id: 'h-3333333333333333',
+                display: '定理 1.1',
+                title: 'Finite cover',
+                filePath: 'book1/01-foundations.md'
+            }],
+            downstream: []
+        });
 
         const recall = await (await fetch(reader.url + '/api/recall?id=h-3333333333333333')).json();
         assert.match(recall.content, /Finite cover/);

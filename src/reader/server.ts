@@ -16,6 +16,7 @@ import {
     type RuntimeDefinitionData
 } from '@markdown-formal/core';
 import { CodexAppServerClient, type CodexThreadSummary } from './codex-app-server';
+import { projectReaderDependencyMarkers } from './dependency-markers';
 import { ReaderProjectRegistry } from './projects';
 import { ReaderTaskBindingRegistry, type ReaderTaskBinding } from './task-bindings';
 import { ReaderTemporaryDiscussionRegistry } from './temporary-discussions';
@@ -854,6 +855,7 @@ export async function startReaderServer(options: FormalReaderServerOptions): Pro
                     page: rawPage ? decoratePage(rawPage, snapshot.state.config) : undefined,
                     content,
                     labels: labelsForContent(snapshot, [content, ...symbols.map(symbol => symbol.meaning)].join('\n')),
+                    dependencyMarkers: projectReaderDependencyMarkers(snapshot.state.dependencyGraph, filePath),
                     symbols
                 }));
                 return;

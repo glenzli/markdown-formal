@@ -165,6 +165,7 @@ export interface DependencyGraphNode {
     chapter?: number;
     appendix?: string;
     number?: number;
+    sourceReferenceCount?: number;
 }
 
 export interface DependencyGraphEdge {
@@ -2716,12 +2717,19 @@ export function buildDependencyGraph(state: any, documents: FormalDocument[]): D
         .sort(compareDefinitionRecords);
     const nodeById = new Map(theoremDefinitions.map(def => [def.id as string, dependencyGraphNode(def, config)]));
     const blocksByFile = dependencySourceBlocks(theoremDefinitions, documents);
+    const sourceReferences = new Map<string, Set<string>>();
     const edges: DependencyGraphEdge[] = [];
     const diagnostics: DependencyGraphDiagnostic[] = [];
 
     for (const ref of references) {
-        const target = nodeById.get(ref.id);
         const sourceBlock = findDependencySourceBlock(blocksByFile.get(ref.file), ref.line);
+        if (sourceBlock) {
+            const targets = sourceReferences.get(sourceBlock.id) || new Set<string>();
+            targets.add(ref.id);
+            sourceReferences.set(sourceBlock.id, targets);
+        }
+
+        const target = nodeById.get(ref.id);
         if (!target) continue;
         if (!sourceBlock) {
             diagnostics.push({
@@ -2742,6 +2750,11 @@ export function buildDependencyGraph(state: any, documents: FormalDocument[]): D
             path: ref.file,
             line: ref.line
         });
+    }
+
+    for (const [id, targets] of sourceReferences) {
+        const node = nodeById.get(id);
+        if (node) node.sourceReferenceCount = targets.size;
     }
 
     const nodes = [...nodeById.values()].sort((a, b) => (

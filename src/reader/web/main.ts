@@ -5,6 +5,7 @@ import {
     renderFormalInline,
     renderReaderFormula,
     renderFormalMarkdown,
+    type ReaderDependencyMarker,
     type ReaderFormula,
     type ReaderLabel,
     type ReaderPage
@@ -15,6 +16,7 @@ import {
     type ReaderDiscussionSelection
 } from './source-actions';
 import { ReaderRecallPopover } from './recall-popover';
+import { ReaderDependencyPopover } from './reader-dependency-popover';
 import { copyReaderText } from './reader-clipboard';
 import { readerIcon, replaceReaderButtonIcon, type ReaderIconName } from './reader-icons';
 import { ReaderDiscussionDialog } from './reader-discussion';
@@ -61,6 +63,7 @@ interface ReaderPagePayload {
     page?: ReaderPage;
     content: string;
     labels: Record<string, ReaderLabel>;
+    dependencyMarkers?: Record<string, ReaderDependencyMarker>;
     formulas?: ReaderFormula[];
     symbols: Array<{
         index: number;
@@ -96,6 +99,12 @@ const words = {
         source: '来源',
         jump: '定位',
         recall: '引用回溯',
+        dependency: '命题依赖',
+        upstreamStatements: '上游命题',
+        downstreamStatements: '下游命题',
+        noUpstreamStatements: '没有直接引用的命题类对象',
+        noDownstreamStatements: '尚未被其他命题类对象引用',
+        otherFormalReferences: (count: number) => `另引用 ${count} 项章节、定义或其他 formal 对象`,
         live: '实时同步',
         noContents: '当前页面没有标题',
         close: '关闭',
@@ -168,6 +177,12 @@ const words = {
         source: 'Source',
         jump: 'Locate',
         recall: 'Recall',
+        dependency: 'Statement dependencies',
+        upstreamStatements: 'Upstream statements',
+        downstreamStatements: 'Downstream statements',
+        noUpstreamStatements: 'No directly referenced theorem-like nodes',
+        noDownstreamStatements: 'Not referenced by other theorem-like nodes',
+        otherFormalReferences: (count: number) => `${count} additional section, definition, or other formal reference${count === 1 ? '' : 's'}`,
         live: 'Live',
         noContents: 'No headings on this page',
         close: 'Close',
@@ -276,6 +291,7 @@ class ReaderApplication {
     private liveStatus!: HTMLElement;
     private sourceActions!: ReaderSourceActions;
     private recallPopover!: ReaderRecallPopover;
+    private dependencyPopover!: ReaderDependencyPopover;
     private discussionDialog!: ReaderDiscussionDialog;
     private toolbarPanel!: ReaderToolbarPanel;
     private realtimeEvents: EventSource | undefined;
@@ -358,6 +374,21 @@ class ReaderApplication {
             fetchRecall: id => this.fetchJson<any>('/api/recall?id=' + encodeURIComponent(id)),
             renderRecall: recall => renderFormalMarkdown(this.markdown, recall.content || '', this.renderOptions(recall.filePath, recall.labels || {})),
             labels: () => ({ recall: this.dictionary().recall })
+        });
+        this.dependencyPopover = new ReaderDependencyPopover({
+            markerFor: id => this.page?.dependencyMarkers?.[id],
+            openTarget: target => this.openDependencyTarget(target.filePath, target.id),
+            labels: () => {
+                const dictionary = this.dictionary();
+                return {
+                    dependency: dictionary.dependency,
+                    upstream: dictionary.upstreamStatements,
+                    downstream: dictionary.downstreamStatements,
+                    noUpstream: dictionary.noUpstreamStatements,
+                    noDownstream: dictionary.noDownstreamStatements,
+                    otherFormalReferences: dictionary.otherFormalReferences
+                };
+            }
         });
         this.toolbarPanel = new ReaderToolbarPanel(() => ({ close: this.dictionary().close }));
         this.discussionDialog = new ReaderDiscussionDialog({
@@ -489,8 +520,9 @@ class ReaderApplication {
         forward.setAttribute('aria-label', dictionary.forward);
         this.root.querySelectorAll<HTMLElement>('[data-panel]').forEach(button => {
             const view = button.dataset.panel as keyof typeof dictionary;
-            button.dataset.tooltip = dictionary[view] || '';
-            button.setAttribute('aria-label', dictionary[view] || '');
+            const label = typeof dictionary[view] === 'string' ? dictionary[view] : '';
+            button.dataset.tooltip = label;
+            button.setAttribute('aria-label', label);
         });
         const fontSize = this.root.querySelector('.reader-type-control') as HTMLElement;
         fontSize.setAttribute('aria-label', dictionary.fontSize);
@@ -645,7 +677,8 @@ class ReaderApplication {
             currentFilePath: this.page.filePath,
             labels: this.page.labels,
             pages: this.state.pages,
-            language: this.state.language
+            language: this.state.language,
+            dependencyMarkers: this.page.dependencyMarkers
         });
         this.page.formulas = rendered.formulas;
         this.article.innerHTML = rendered.html;
@@ -658,6 +691,16 @@ class ReaderApplication {
             formulas: rendered.formulas
         });
         this.recallPopover.bind(this.article);
+        this.dependencyPopover.bind(this.article);
+    }
+
+    private openDependencyTarget(filePath: string, id: string): void {
+        const anchor = 'formal-' + id;
+        if (filePath === this.currentPath) {
+            this.scrollToAnchor(anchor);
+            return;
+        }
+        void this.openPage(filePath, 'push', anchor);
     }
 
     private scrollToAnchor(anchor: string): void {
@@ -678,7 +721,8 @@ class ReaderApplication {
     private openPanel(view: string, trigger: HTMLElement): void {
         if (!this.state) return;
         const dictionary = this.dictionary();
-        const title = dictionary[view as keyof typeof dictionary] || view;
+        const candidate = dictionary[view as keyof typeof dictionary];
+        const title = typeof candidate === 'string' ? candidate : view;
         this.toolbarPanel.open(view, trigger, title, content => {
             if (view === 'contents') this.renderContents(content);
             if (view === 'definitions') this.renderDefinitions(content);

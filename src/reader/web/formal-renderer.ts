@@ -1,5 +1,6 @@
 import MarkdownIt from 'markdown-it';
 import katex from 'katex';
+import type { ReaderDependencyMarker } from '../dependency-markers';
 
 export interface ReaderLabel {
     type: string;
@@ -21,11 +22,14 @@ export interface ReaderPage {
     line?: number;
 }
 
+export type { ReaderDependencyMarker } from '../dependency-markers';
+
 export interface FormalRenderOptions {
     currentFilePath: string;
     labels: Record<string, ReaderLabel>;
     pages: ReaderPage[];
     language: 'zh' | 'en';
+    dependencyMarkers?: Record<string, ReaderDependencyMarker>;
 }
 
 export interface ReaderFormula {
@@ -65,6 +69,44 @@ function escapeHtml(value: string): string {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+function dependencyMarkerText(marker: ReaderDependencyMarker, language: 'zh' | 'en'): string {
+    const dependencies = Math.max(0, marker.directDependencies || 0);
+    const dependents = Math.max(0, marker.directDependents || 0);
+    const impact = Math.max(0, marker.impactCount || 0);
+    const otherReferences = Math.max(0, (marker.sourceReferenceCount || 0) - dependencies);
+    if (language === 'en') {
+        const upstream = dependencies > 0 ? `${dependencies} upstream theorem-like node${dependencies === 1 ? '' : 's'}` : 'no upstream theorem-like nodes';
+        const supplemental = otherReferences > 0 ? `; ${otherReferences} other formal reference${otherReferences === 1 ? '' : 's'}` : '';
+        if (dependents === 0) return `${upstream}; no downstream theorem-like nodes${supplemental}`;
+        return `${upstream}; ${dependents} direct downstream node${dependents === 1 ? '' : 's'}; downstream impact ${impact}${supplemental}`;
+    }
+    const upstream = dependencies > 0 ? `上游命题类对象 ${dependencies} 项` : '没有上游命题类对象';
+    const supplemental = otherReferences > 0 ? `；另引用 ${otherReferences} 项非命题 formal 对象` : '';
+    if (dependents === 0) return `${upstream}；没有下游命题类对象${supplemental}`;
+    return `${upstream}；下游命题类对象 ${dependents} 项；传递影响 ${impact} 项${supplemental}`;
+}
+
+function renderDependencyMarker(id: string, marker: ReaderDependencyMarker, language: 'zh' | 'en'): string {
+    const hasInput = marker.directDependencies > 0;
+    const hasOutput = marker.directDependents > 0;
+    const centerY = hasInput || hasOutput ? 8 : 10;
+    const outputPath = !hasOutput ? '' : marker.directDependents > 1
+        ? '<path d="M8 10.35v4.05m0 0L4.4 18m3.6-3.6 3.6 3.6" />'
+        : '<path d="M8 10.35v7.7" />';
+    const svg = [
+        '<svg viewBox="0 0 16 20" aria-hidden="true" focusable="false">',
+        hasInput ? '<path d="M8 1.5v4.15" />' : '',
+        `<circle cx="8" cy="${centerY}" r="2.35" />`,
+        outputPath,
+        '</svg>'
+    ].join('');
+    const label = dependencyMarkerText(marker, language);
+    const intensity = marker.impactCount > marker.directDependents ? ' is-propagating' : '';
+    return '<button type="button" class="reader-dependency-marker is-' + marker.role + intensity
+        + '" aria-label="' + escapeHtml(label) + '" data-reader-dependency="' + escapeHtml(id) + '">'
+        + svg + '</button>';
 }
 
 function hasOddBackslashPrefix(value: string, index: number): boolean {
@@ -331,6 +373,12 @@ function installFormalRules(markdown: MarkdownIt): void {
             if (!markerId) continue;
             open.attrSet('id', 'formal-' + markerId);
             open.attrJoin('class', 'formal-anchor');
+            const dependencyMarker = state.env.readerDependencyMarkers?.[markerId] as ReaderDependencyMarker | undefined;
+            if (dependencyMarker && Array.isArray(token.children)) {
+                const markerToken = new token.constructor('html_inline', '', 0);
+                markerToken.content = renderDependencyMarker(markerId, dependencyMarker, state.env.readerLanguage || 'zh');
+                token.children.push(markerToken);
+            }
         }
     });
 }
@@ -385,6 +433,7 @@ function renderEnvironment(options: FormalRenderOptions, markersByLine: Record<n
         readerLabels: options.labels,
         readerPagesByPath: Object.fromEntries(options.pages.map(page => [page.filePath, page])),
         readerMarkersByLine: markersByLine,
+        readerDependencyMarkers: options.dependencyMarkers || {},
         readerLanguage: options.language,
         readerFormulas: formulas
     };
