@@ -277,7 +277,14 @@ button { cursor: pointer; }
 .reader-article table { display: block; overflow-x: auto; border-collapse: collapse; font-size: .92em; }
 .reader-article th, .reader-article td { border: 1px solid #d8dcde; padding: .38em .65em; }
 .reader-article th { background: #f2f4f4; font-family: Inter, sans-serif; }
-.reader-formula { border-radius: 3px; cursor: text; transition: box-shadow 140ms ease, background-color 140ms ease; }
+.reader-formula {
+    border-radius: 3px;
+    cursor: text;
+    overflow-wrap: normal;
+    white-space: nowrap;
+    word-break: normal;
+    transition: box-shadow 140ms ease, background-color 140ms ease;
+}
 .reader-formula.is-display { display: block; overflow-x: auto; }
 .reader-formula:hover { background: rgba(54, 101, 145, .045); }
 .reader-formula.is-highlighted { background: rgba(57, 129, 191, .14); box-shadow: 0 0 0 4px rgba(57, 129, 191, .12); }
