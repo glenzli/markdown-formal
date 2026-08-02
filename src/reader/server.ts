@@ -15,6 +15,7 @@ import {
     type PageData,
     type RuntimeDefinitionData
 } from '@markdown-formal/core';
+import { ReaderProjectRegistry } from './projects';
 
 const nodeFs = require('node:fs');
 const http = require('node:http');
@@ -51,13 +52,15 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 export interface FormalReaderServerOptions {
-    rootPath: string;
+    rootPath?: string;
     port?: number;
     staticRoot?: string;
+    recentProjectsPath?: string;
+    chooseProjectDirectory?: () => Promise<string | undefined>;
 }
 
 export interface FormalReaderServer {
-    rootPath: string;
+    rootPath?: string;
     port: number;
     url: string;
     close(): Promise<void>;
@@ -120,6 +123,32 @@ function labelsForContent(snapshot: WorkspaceSnapshot, content: string): Record<
         if (snapshot.state.labels?.[match[1]]) ids.add(match[1]);
     }
     return Object.fromEntries(Array.from(ids, id => [id, labelSummary(snapshot.state.labels[id], snapshot.state.config, pagesByPath)]));
+}
+
+/** `LabelData.startLine` is zero-based, matching the formal scanner. */
+function sectionRecallPreview(content: string, startLine: number): string {
+    const lines = content.split(/\r?\n/);
+    const start = Math.max(0, Math.min(lines.length - 1, startLine));
+    const heading = lines[start]?.match(/^\s{0,3}(#{1,6})\s+/);
+    if (!heading) return '';
+
+    const level = heading[1].length;
+    const preview: string[] = [lines[start]];
+    let chars = preview[0].length;
+    let inDisplayMath = false;
+    for (let index = start + 1; index < lines.length; index++) {
+        const line = lines[index];
+        const nextHeading = line.match(/^\s{0,3}(#{1,6})\s+/);
+        if (nextHeading && nextHeading[1].length <= level) break;
+        preview.push(line);
+        chars += line.length + 1;
+
+        const trimmed = line.trim();
+        if (trimmed === '$$' || trimmed === '\\[' || trimmed === '\\]') inDisplayMath = !inDisplayMath;
+        if (chars >= 1200 && !inDisplayMath && !trimmed) break;
+        if (chars >= 1800 && !inDisplayMath) break;
+    }
+    return preview.join('\n').trim();
 }
 
 function definitionSummary(definition: RuntimeDefinitionData, index: number): Record<string, unknown> {
@@ -305,6 +334,57 @@ function stateProjection(snapshot: WorkspaceSnapshot, rootPath: string): Record<
     };
 }
 
+async function readerStateProjection(workspace: ReaderWorkspace | undefined, rootPath: string | undefined, projects: ReaderProjectRegistry): Promise<Record<string, unknown>> {
+    if (workspace && rootPath) {
+        return { available: true, ...stateProjection(workspace.current(), rootPath) };
+    }
+    const recentProjects = await projects.list();
+    return {
+        available: false,
+        revision: 0,
+        refreshedAt: '',
+        rootName: '',
+        language: 'zh',
+        pages: [],
+        definitions: [],
+        issues: [],
+        dependencySummary: {},
+        recentProjects: recentProjects.map((project, index) => ({
+            index,
+            rootName: project.rootName,
+            openedAt: project.openedAt
+        }))
+    };
+}
+
+async function readJsonRequest(request: any, maximumBytes = 4096): Promise<any> {
+    return new Promise((resolve, reject) => {
+        let body = '';
+        let received = 0;
+        request.on('data', (chunk: unknown) => {
+            received += Buffer.byteLength(String(chunk));
+            if (received > maximumBytes) {
+                reject(new Error('Request body is too large.'));
+                request.destroy();
+                return;
+            }
+            body += String(chunk);
+        });
+        request.once('error', reject);
+        request.once('end', () => {
+            if (!body.trim()) {
+                resolve({});
+                return;
+            }
+            try {
+                resolve(JSON.parse(body));
+            } catch (_error) {
+                reject(new Error('Request body must be JSON.'));
+            }
+        });
+    });
+}
+
 function resolveWorkspacePath(rootPath: string, relativePath: string): string | undefined {
     const normalized = toPosix(relativePath || '').replace(/^\/+/, '');
     if (!normalized) return undefined;
@@ -350,24 +430,74 @@ async function sendWorkspaceAsset(response: any, workspace: ReaderWorkspace, req
 }
 
 export async function startReaderServer(options: FormalReaderServerOptions): Promise<FormalReaderServer> {
-    const rootPath = path.resolve(options.rootPath);
     const staticRoot = options.staticRoot || path.resolve(__dirname, '..', 'reader');
     if (!(await pathExists(staticRoot))) {
         throw new Error(`Reader UI bundle is missing at ${staticRoot}. Run npm run build:reader.`);
     }
 
-    const workspace = new ReaderWorkspace(rootPath);
-    await workspace.start();
-    const eventResponses = new Set<any>();
-    const unsubscribe = workspace.onChange(({ snapshot, changedPaths }) => {
-        const event = `event: workspace-update\ndata: ${JSON.stringify({ revision: snapshot.revision, refreshedAt: snapshot.refreshedAt, changedPaths })}\n\n`;
-        eventResponses.forEach(response => response.write(event));
+    const projects = new ReaderProjectRegistry({
+        stateFilePath: options.recentProjectsPath,
+        chooseDirectory: options.chooseProjectDirectory
     });
+    let rootPath: string | undefined;
+    let workspace: ReaderWorkspace | undefined;
+    let unsubscribe = () => {};
+    const eventResponses = new Set<any>();
+
+    const broadcast = (snapshot: WorkspaceSnapshot | undefined, changedPaths: string[], projectChanged = false): void => {
+        const event = `event: workspace-update\ndata: ${JSON.stringify({
+            revision: snapshot?.revision || 0,
+            refreshedAt: snapshot?.refreshedAt || '',
+            changedPaths,
+            projectChanged
+        })}\n\n`;
+        eventResponses.forEach(response => response.write(event));
+    };
+
+    const activateProject = async (inputPath: string): Promise<void> => {
+        const project = await projects.remember(inputPath);
+        const nextWorkspace = new ReaderWorkspace(project.rootPath);
+        await nextWorkspace.start();
+        const previousWorkspace = workspace;
+        const previousUnsubscribe = unsubscribe;
+        workspace = nextWorkspace;
+        rootPath = project.rootPath;
+        unsubscribe = nextWorkspace.onChange(({ snapshot, changedPaths }) => broadcast(snapshot, changedPaths));
+        previousUnsubscribe();
+        await previousWorkspace?.close();
+        broadcast(nextWorkspace.current(), [], true);
+    };
+
+    if (options.rootPath) await activateProject(options.rootPath);
 
     const server = http.createServer(async (request: any, response: any) => {
         try {
             const url = new URL(request.url || '/', 'http://127.0.0.1');
-            const snapshot = workspace.current();
+
+            if (request.method === 'POST' && url.pathname === '/api/projects/pick') {
+                const selectedPath = await projects.choose();
+                if (selectedPath) await activateProject(selectedPath);
+                sendJson(response, 200, await readerStateProjection(workspace, rootPath, projects));
+                return;
+            }
+
+            if (request.method === 'POST' && url.pathname === '/api/projects/recent') {
+                const body = await readJsonRequest(request);
+                const index = Number(body?.index);
+                if (!Number.isInteger(index) || index < 0) {
+                    sendText(response, 400, 'Recent project index must be a non-negative integer.');
+                    return;
+                }
+                const recentProjects = await projects.list();
+                const selectedProject = recentProjects[index];
+                if (!selectedProject) {
+                    sendText(response, 404, 'Recent project not found.');
+                    return;
+                }
+                await activateProject(selectedProject.rootPath);
+                sendJson(response, 200, await readerStateProjection(workspace, rootPath, projects));
+                return;
+            }
 
             if (request.method !== 'GET') {
                 sendText(response, 405, 'Reader is read-only.');
@@ -375,9 +505,38 @@ export async function startReaderServer(options: FormalReaderServerOptions): Pro
             }
 
             if (url.pathname === '/api/state') {
-                sendJson(response, 200, stateProjection(snapshot, rootPath));
+                sendJson(response, 200, await readerStateProjection(workspace, rootPath, projects));
                 return;
             }
+
+            if (url.pathname === '/api/events') {
+                const snapshot = workspace?.current();
+                response.writeHead(200, {
+                    'cache-control': 'no-cache',
+                    connection: 'keep-alive',
+                    'content-type': 'text/event-stream'
+                });
+                response.write(`event: workspace-update\ndata: ${JSON.stringify({
+                    revision: snapshot?.revision || 0,
+                    refreshedAt: snapshot?.refreshedAt || '',
+                    changedPaths: [],
+                    initial: true,
+                    projectChanged: !!workspace
+                })}\n\n`);
+                eventResponses.add(response);
+                request.on('close', () => eventResponses.delete(response));
+                return;
+            }
+
+            if (!workspace || !rootPath) {
+                if (url.pathname.startsWith('/api/')) {
+                    sendText(response, 409, 'Choose a Markdown Formal project first.');
+                    return;
+                }
+                await sendStaticFile(response, staticRoot, url.pathname);
+                return;
+            }
+            const snapshot = workspace.current();
 
             if (url.pathname === '/api/page') {
                 const filePath = toPosix(url.searchParams.get('path') || '').replace(/^\/+/, '');
@@ -402,7 +561,11 @@ export async function startReaderServer(options: FormalReaderServerOptions): Pro
             if (url.pathname === '/api/recall') {
                 const id = url.searchParams.get('id') || '';
                 const label = snapshot.state.labels?.[id];
-                if (!label || !label.content) {
+                const document = label ? snapshot.documents.get(label.filePath) : undefined;
+                const content = label?.content || (label?.type === 'section' && document && label.startLine
+                    ? sectionRecallPreview(document, label.startLine)
+                    : '');
+                if (!label || !content) {
                     sendText(response, 404, 'Recall content not found.');
                     return;
                 }
@@ -410,8 +573,9 @@ export async function startReaderServer(options: FormalReaderServerOptions): Pro
                 sendJson(response, 200, {
                     id,
                     ...label,
+                    content,
                     display: displayLabel(label, snapshot.state.config, pagesByPath),
-                    labels: labelsForContent(snapshot, label.content)
+                    labels: labelsForContent(snapshot, content)
                 });
                 return;
             }
@@ -430,18 +594,6 @@ export async function startReaderServer(options: FormalReaderServerOptions): Pro
 
             if (url.pathname === '/api/graph') {
                 sendJson(response, 200, snapshot.state.dependencyGraph || {});
-                return;
-            }
-
-            if (url.pathname === '/api/events') {
-                response.writeHead(200, {
-                    'cache-control': 'no-cache',
-                    connection: 'keep-alive',
-                    'content-type': 'text/event-stream'
-                });
-                response.write(`event: workspace-update\ndata: ${JSON.stringify({ revision: snapshot.revision, refreshedAt: snapshot.refreshedAt, changedPaths: [], initial: true })}\n\n`);
-                eventResponses.add(response);
-                request.on('close', () => eventResponses.delete(response));
                 return;
             }
 
@@ -469,14 +621,16 @@ export async function startReaderServer(options: FormalReaderServerOptions): Pro
     const url = `http://127.0.0.1:${port}`;
 
     return {
-        rootPath,
+        get rootPath() {
+            return rootPath;
+        },
         port,
         url,
         async close() {
             unsubscribe();
             eventResponses.forEach(response => response.end());
             eventResponses.clear();
-            await workspace.close();
+            await workspace?.close();
             await new Promise<void>((resolve, reject) => server.close((error: Error | undefined) => error ? reject(error) : resolve()));
         }
     };

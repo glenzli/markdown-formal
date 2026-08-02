@@ -1,4 +1,7 @@
 import type { ReaderFormula } from './formal-renderer';
+import { copyReaderText } from './reader-clipboard';
+import { readerIcon, type ReaderIconName } from './reader-icons';
+import { closestReaderElement, positionReaderPopover } from './reader-popover';
 
 export interface ReaderDefinitionMatch {
     index: number;
@@ -10,8 +13,8 @@ export interface ReaderDefinitionMatch {
 
 export interface ReaderSourceActionLabels {
     copyLatex: string;
-    copyMarkdown: string;
-    copySource: string;
+    copySelectedMarkdown: string;
+    copySourceLines: string;
     lookupDefinition: string;
     locate: string;
     copied: string;
@@ -32,6 +35,72 @@ interface SourceDocument {
     formulas: ReaderFormula[];
 }
 
+function selectedMarkdownFragment(source: string, selection: string): string | undefined {
+    if (!selection || selection.includes('\n')) return source.includes(selection) ? selection : undefined;
+
+    const wrapped = [
+        `**${selection}**`,
+        `__${selection}__`,
+        `*${selection}*`,
+        `_${selection}_`,
+        `\`${selection}\``
+    ].find(candidate => source.includes(candidate));
+    if (wrapped) return wrapped;
+
+    const linkStart = source.indexOf(`[${selection}](`);
+    if (linkStart >= 0) {
+        const linkEnd = source.indexOf(')', linkStart + selection.length + 3);
+        if (linkEnd >= 0) return source.slice(linkStart, linkEnd + 1);
+    }
+
+    const offset = source.indexOf(selection);
+    return offset >= 0 ? source.slice(offset, offset + selection.length) : undefined;
+}
+
+function selectedRangeMarkdown(range: Range, formulas: ReaderFormula[]): string {
+    const formulaSource = new Map(formulas.map(formula => [formula.id, formula.source]));
+
+    const readNode = (node: Node): string => {
+        if (node.nodeType === 3) {
+            return node.textContent ?? '';
+        }
+        if (node.nodeType !== 1 && node.nodeType !== 11) {
+            return '';
+        }
+
+        const element = node.nodeType === 1 ? node as HTMLElement : undefined;
+        const formulaId = element?.dataset.readerFormula;
+        if (formulaId) {
+            return formulaSource.get(formulaId) ?? element.textContent ?? '';
+        }
+        if (element?.dataset.formalRef) {
+            return `@${element.dataset.formalRef}`;
+        }
+
+        const content = Array.from(node.childNodes).map(readNode).join('');
+        switch (element?.tagName.toLowerCase()) {
+            case 'strong':
+            case 'b':
+                return `**${content}**`;
+            case 'em':
+            case 'i':
+                return `*${content}*`;
+            case 'del':
+            case 's':
+            case 'strike':
+                return `~~${content}~~`;
+            case 'code':
+                return `\`${content}\``;
+            case 'br':
+                return '\n';
+            default:
+                return content;
+        }
+    };
+
+    return readNode(range.cloneContents()).trim();
+}
+
 function isMeaningfulDefinitionQuery(value: string): boolean {
     const compact = value.replace(/\s+/g, '');
     const cjkCount = Array.from(compact).filter(character => /[\u3400-\u9fff]/.test(character)).length;
@@ -43,48 +112,6 @@ function selectionRect(selection: Selection): DOMRect | undefined {
     if (selection.rangeCount === 0) return undefined;
     const rect = selection.getRangeAt(0).getBoundingClientRect();
     return rect.width || rect.height ? rect : undefined;
-}
-
-function closestElement(node: Node | null, selector: string): HTMLElement | undefined {
-    const element = node?.nodeType === Node.ELEMENT_NODE ? node as HTMLElement : node?.parentElement;
-    const match = element?.closest<HTMLElement>(selector);
-    return match || undefined;
-}
-
-function positionPopover(popover: HTMLElement, targetRect: DOMRect): void {
-    const gutter = 12;
-    const maxWidth = Math.min(420, window.innerWidth - gutter * 2);
-    popover.style.maxWidth = maxWidth + 'px';
-    popover.style.visibility = 'hidden';
-    popover.style.left = gutter + 'px';
-    popover.style.top = gutter + 'px';
-    document.body.append(popover);
-    const rect = popover.getBoundingClientRect();
-    const preferredTop = targetRect.bottom + 10;
-    const top = preferredTop + rect.height <= window.innerHeight - gutter
-        ? preferredTop
-        : Math.max(gutter, targetRect.top - rect.height - 10);
-    const left = Math.max(gutter, Math.min(targetRect.left, window.innerWidth - rect.width - gutter));
-    popover.style.left = left + 'px';
-    popover.style.top = top + 'px';
-    popover.style.visibility = '';
-}
-
-async function copyText(value: string): Promise<boolean> {
-    try {
-        await navigator.clipboard.writeText(value);
-        return true;
-    } catch (_error) {
-        const fallback = document.createElement('textarea');
-        fallback.value = value;
-        fallback.style.position = 'fixed';
-        fallback.style.opacity = '0';
-        document.body.append(fallback);
-        fallback.select();
-        const copied = document.execCommand('copy');
-        fallback.remove();
-        return copied;
-    }
 }
 
 export class ReaderSourceActions {
@@ -102,21 +129,24 @@ export class ReaderSourceActions {
         if (event.key === 'Escape') this.dismiss();
     };
     private readonly onResize = () => this.dismiss();
-    private readonly onScroll = () => this.dismiss();
+    private readonly onScroll = (event: Event) => {
+        if (this.popover?.contains(event.target as Node | null)) return;
+        this.dismiss();
+    };
     private readonly onMouseUp = (event: MouseEvent) => {
-        if (closestElement(event.target as Node, '[data-reader-formula]')) return;
+        if (closestReaderElement(event.target as Node, '[data-reader-formula]')) return;
         window.setTimeout(() => this.showSelectionActions(), 0);
     };
     private readonly onSelectionChange = () => {
         const selection = window.getSelection();
         if (!selection || selection.isCollapsed || !selection.toString().trim()) return;
-        const formula = closestElement(selection.anchorNode, '[data-reader-formula]');
+        const formula = closestReaderElement(selection.anchorNode, '[data-reader-formula]');
         if (formula && this.article?.contains(formula)) {
             window.clearTimeout(this.selectionTimer);
             this.selectionTimer = window.setTimeout(() => this.showSelectionActions(), 100);
             return;
         }
-        const start = closestElement(selection.anchorNode, '[data-source-start-line]');
+        const start = closestReaderElement(selection.anchorNode, '[data-source-start-line]');
         if (!start || !this.article?.contains(start)) return;
         window.clearTimeout(this.selectionTimer);
         this.selectionTimer = window.setTimeout(() => this.showSelectionActions(), 100);
@@ -127,7 +157,7 @@ export class ReaderSourceActions {
         }
     };
     private readonly onArticleClick = (event: MouseEvent) => {
-        const formulaElement = closestElement(event.target as Node, '[data-reader-formula]');
+        const formulaElement = closestReaderElement(event.target as Node, '[data-reader-formula]');
         if (!formulaElement?.dataset.readerFormula) return;
         const formula = this.sourceDocument?.formulas.find(item => item.id === formulaElement.dataset.readerFormula);
         if (formula) this.showFormulaActions(formula, formulaElement.getBoundingClientRect());
@@ -177,25 +207,36 @@ export class ReaderSourceActions {
         this.popover = undefined;
     }
 
-    private selectedSource(): { text: string; source: string; rect: DOMRect } | undefined {
+    private selectedSource(): { text: string; markdown?: string; sourceLines: string; rect: DOMRect } | undefined {
         if (!this.article || !this.sourceDocument) return undefined;
         const selection = window.getSelection();
         if (!selection || selection.isCollapsed || !selection.toString().trim()) return undefined;
-        const start = closestElement(selection.anchorNode, '[data-source-start-line]');
-        const end = closestElement(selection.focusNode, '[data-source-start-line]');
+        const start = closestReaderElement(selection.anchorNode, '[data-source-start-line]');
+        const end = closestReaderElement(selection.focusNode, '[data-source-start-line]');
         if (!start || !end || !this.article.contains(start) || !this.article.contains(end)) return undefined;
         const startLine = Math.min(Number(start.dataset.sourceStartLine), Number(end.dataset.sourceStartLine));
         const endLine = Math.max(Number(start.dataset.sourceEndLine), Number(end.dataset.sourceEndLine));
         if (!Number.isInteger(startLine) || !Number.isInteger(endLine) || startLine < 1 || endLine < startLine) return undefined;
-        const source = this.sourceDocument.source.split(/\r?\n/).slice(startLine - 1, endLine).join('\n');
+        const sourceLines = this.sourceDocument.source.split(/\r?\n/).slice(startLine - 1, endLine).join('\n');
         const rect = selectionRect(selection);
-        if (!source || !rect) return undefined;
-        return { text: selection.toString().trim(), source, rect };
+        const text = selection.toString().trim();
+        if (!sourceLines || !rect) return undefined;
+        const sourceSelection = selectedRangeMarkdown(
+            selection.getRangeAt(0),
+            this.sourceDocument.formulas
+        );
+        return {
+            text,
+            markdown: selectedMarkdownFragment(sourceLines, sourceSelection)
+                ?? selectedMarkdownFragment(sourceLines, text),
+            sourceLines,
+            rect
+        };
     }
 
     private showSelectionActions(): void {
         const selection = window.getSelection();
-        const formula = closestElement(selection?.anchorNode || null, '[data-reader-formula]');
+        const formula = closestReaderElement(selection?.anchorNode || null, '[data-reader-formula]');
         if (formula?.dataset.readerFormula) {
             const item = this.sourceDocument?.formulas.find(candidate => candidate.id === formula.dataset.readerFormula);
             const rect = selection ? selectionRect(selection) : undefined;
@@ -210,40 +251,44 @@ export class ReaderSourceActions {
             return;
         }
         const labels = this.host.labels();
+        const definitions = isMeaningfulDefinitionQuery(selected.text)
+            ? this.host.getDefinitions(selected.text)
+            : [];
         this.openPopover(selected.rect, popover => {
             const actions = document.createElement('div');
             actions.className = 'reader-source-actions';
-            actions.append(
-                this.actionButton(labels.copyMarkdown, async button => {
-                    await this.copyAndMark(button, selected.source);
-                }),
-                this.actionButton(labels.lookupDefinition, () => this.showDefinitionLookup(selected.text, selected.rect))
-            );
+            if (selected.markdown) {
+                actions.append(this.iconButton('copy-source', labels.copySelectedMarkdown, async button => {
+                    await this.copyAndMark(button, selected.markdown as string);
+                }));
+            }
+            actions.append(this.iconButton('copy-line', labels.copySourceLines, async button => {
+                await this.copyAndMark(button, selected.sourceLines);
+            }));
+            if (definitions.length > 0) {
+                actions.append(this.iconButton('definition', labels.lookupDefinition, () => {
+                    this.showDefinitionLookup(selected.text, selected.rect, definitions);
+                }));
+            }
             popover.append(actions);
-        });
+        }, true);
     }
 
     private showFormulaActions(formula: ReaderFormula, rect: DOMRect): void {
         const labels = this.host.labels();
         this.openPopover(rect, popover => {
-            const preview = document.createElement('code');
-            preview.className = 'reader-formula-source';
-            preview.textContent = formula.latex;
             const actions = document.createElement('div');
             actions.className = 'reader-source-actions';
             actions.append(
-                this.actionButton(labels.copyLatex, async button => {
+                this.iconButton('copy', labels.copyLatex, async button => {
                     await this.copyAndMark(button, formula.latex);
-                }),
-                this.actionButton(labels.copySource, async button => {
-                    await this.copyAndMark(button, formula.source);
                 })
             );
-            popover.append(preview, actions);
-        });
+            popover.append(actions);
+        }, true);
     }
 
-    private showDefinitionLookup(query: string, rect: DOMRect): void {
+    private showDefinitionLookup(query: string, rect: DOMRect, matches?: ReaderDefinitionMatch[]): void {
         const labels = this.host.labels();
         if (!isMeaningfulDefinitionQuery(query)) {
             this.openPopover(rect, popover => {
@@ -254,8 +299,8 @@ export class ReaderSourceActions {
             });
             return;
         }
-        const matches = this.host.getDefinitions(query);
-        if (matches.length === 0) {
+        const results = matches || this.host.getDefinitions(query);
+        if (results.length === 0) {
             this.openPopover(rect, popover => {
                 const message = document.createElement('p');
                 message.className = 'reader-source-message';
@@ -264,14 +309,14 @@ export class ReaderSourceActions {
             });
             return;
         }
-        if (matches.length === 1) {
-            void this.showDefinitionDetail(matches[0], rect);
+        if (results.length === 1) {
+            void this.showDefinitionDetail(results[0], rect);
             return;
         }
         this.openPopover(rect, popover => {
             const list = document.createElement('div');
             list.className = 'reader-definition-choices';
-            matches.slice(0, 7).forEach(match => {
+            results.slice(0, 7).forEach(match => {
                 const button = document.createElement('button');
                 button.type = 'button';
                 button.textContent = match.title;
@@ -299,43 +344,55 @@ export class ReaderSourceActions {
         }
         if (requestId !== this.definitionRequestId) return;
         this.openPopover(rect, popover => {
+            const header = document.createElement('header');
+            header.className = 'reader-definition-header';
             const title = document.createElement('strong');
             title.className = 'reader-definition-title';
             title.textContent = definition.title || match.title;
             const content = document.createElement('div');
             content.className = 'reader-inline-definition';
             content.innerHTML = this.host.renderDefinition(definition);
-            const locate = this.actionButton(this.host.labels().locate, () => {
+            const locate = this.iconButton('locate', this.host.labels().locate, () => {
                 this.host.locateDefinition(match);
                 this.dismiss();
             });
-            popover.append(title, content, locate);
+            header.append(title, locate);
+            popover.append(header, content);
         });
     }
 
-    private openPopover(rect: DOMRect, populate: (popover: HTMLElement) => void): void {
+    private openPopover(rect: DOMRect, populate: (popover: HTMLElement) => void, compact = false): void {
         this.dismiss();
         const popover = document.createElement('section');
         popover.className = 'reader-source-popover';
+        if (compact) popover.classList.add('is-actions-only');
         populate(popover);
         this.popover = popover;
-        positionPopover(popover, rect);
+        positionReaderPopover(popover, rect, { maxWidth: 460 });
     }
 
-    private actionButton(label: string, action: (button: HTMLButtonElement) => void | Promise<void>): HTMLButtonElement {
+    private iconButton(icon: ReaderIconName, label: string, action: (button: HTMLButtonElement) => void | Promise<void>): HTMLButtonElement {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'reader-source-action';
-        button.textContent = label;
+        button.append(readerIcon(icon));
+        button.dataset.tooltip = label;
+        button.setAttribute('aria-label', label);
         button.addEventListener('click', () => void action(button));
         return button;
     }
 
     private async copyAndMark(button: HTMLButtonElement, value: string): Promise<void> {
-        const copied = await copyText(value);
+        const copied = await copyReaderText(value);
         if (!copied) return;
-        const label = button.textContent;
-        button.textContent = this.host.labels().copied;
-        window.setTimeout(() => { button.textContent = label; }, 1200);
+        const label = button.dataset.tooltip || button.getAttribute('aria-label') || '';
+        button.classList.add('is-copied');
+        button.dataset.tooltip = this.host.labels().copied;
+        button.setAttribute('aria-label', this.host.labels().copied);
+        window.setTimeout(() => {
+            button.classList.remove('is-copied');
+            button.dataset.tooltip = label;
+            button.setAttribute('aria-label', label);
+        }, 1200);
     }
 }

@@ -1,4 +1,5 @@
 import type { ReaderLabel } from './formal-renderer';
+import { closestReaderElement, positionReaderPopover } from './reader-popover';
 
 export interface ReaderRecallPopoverLabels {
     recall: string;
@@ -18,29 +19,8 @@ interface ReaderRecallPayload {
     labels?: Record<string, ReaderLabel>;
 }
 
-function closestReference(node: Node | null): HTMLAnchorElement | undefined {
-    const element = node?.nodeType === Node.ELEMENT_NODE ? node as HTMLElement : node?.parentElement;
-    return element?.closest<HTMLAnchorElement>('a[data-formal-ref]') || undefined;
-}
-
-function positionPopover(popover: HTMLElement, targetRect: DOMRect): void {
-    const gutter = 12;
-    popover.style.visibility = 'hidden';
-    popover.style.left = gutter + 'px';
-    popover.style.top = gutter + 'px';
-    const rect = popover.getBoundingClientRect();
-    const top = targetRect.bottom + 10 + rect.height <= window.innerHeight - gutter
-        ? targetRect.bottom + 10
-        : Math.max(gutter, targetRect.top - rect.height - 10);
-    const left = Math.max(gutter, Math.min(targetRect.left, window.innerWidth - rect.width - gutter));
-    popover.style.left = left + 'px';
-    popover.style.top = top + 'px';
-    popover.style.visibility = '';
-}
-
 export class ReaderRecallPopover {
     private article: HTMLElement | undefined;
-    private container: HTMLElement | undefined;
     private popover: HTMLElement | undefined;
     private activeReference: HTMLAnchorElement | undefined;
     private showTimer: number | undefined;
@@ -48,17 +28,17 @@ export class ReaderRecallPopover {
     private requestId = 0;
     private readonly cache = new Map<string, ReaderRecallPayload>();
     private readonly onPointerOver = (event: PointerEvent) => {
-        const reference = closestReference(event.target as Node);
+        const reference = closestReaderElement<HTMLAnchorElement>(event.target as Node, 'a[data-formal-ref]');
         if (!reference?.dataset.formalRef || !this.article?.contains(reference)) return;
         if (reference.contains(event.relatedTarget as Node | null)) return;
         this.cancelClose();
         if (this.activeReference !== reference) this.dismiss();
         this.activeReference = reference;
         window.clearTimeout(this.showTimer);
-        this.showTimer = window.setTimeout(() => void this.show(reference), 420);
+        this.showTimer = window.setTimeout(() => void this.show(reference), 320);
     };
     private readonly onPointerOut = (event: PointerEvent) => {
-        const reference = closestReference(event.target as Node);
+        const reference = closestReaderElement<HTMLAnchorElement>(event.target as Node, 'a[data-formal-ref]');
         if (!reference || reference.contains(event.relatedTarget as Node | null)) return;
         if (this.popover?.contains(event.relatedTarget as Node | null)) return;
         this.scheduleClose();
@@ -72,10 +52,9 @@ export class ReaderRecallPopover {
         window.addEventListener('resize', this.onViewportChange);
     }
 
-    bind(article: HTMLElement, container: HTMLElement): void {
+    bind(article: HTMLElement): void {
         if (this.article && this.article !== article) this.unbindArticle(this.article);
         this.article = article;
-        this.container = container;
         article.removeEventListener('pointerover', this.onPointerOver);
         article.removeEventListener('pointerout', this.onPointerOut);
         article.addEventListener('pointerover', this.onPointerOver);
@@ -119,8 +98,7 @@ export class ReaderRecallPopover {
         popover.append(header, content);
         this.dismissPopover();
         this.popover = popover;
-        this.container?.append(popover);
-        positionPopover(popover, reference.getBoundingClientRect());
+        positionReaderPopover(popover, reference.getBoundingClientRect(), { maxWidth: 520 });
     }
 
     private remember(id: string, recall: ReaderRecallPayload): void {

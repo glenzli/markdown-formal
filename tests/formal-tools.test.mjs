@@ -66,9 +66,13 @@ function waitFor(condition, timeoutMs = 3000) {
     });
 }
 
-async function startReader(root) {
-    const child = spawn('node', [cliPath, 'serve', root, '--port', '0'], {
+async function startReader(root, { projectPath = root, env = {} } = {}) {
+    const args = ['serve'];
+    if (projectPath) args.push(projectPath);
+    args.push('--port', '0');
+    const child = spawn('node', [cliPath, ...args], {
         cwd: root,
+        env: { ...process.env, ...env },
         stdio: ['ignore', 'pipe', 'pipe']
     });
     let output = '';
@@ -1061,7 +1065,9 @@ async function testReaderServer() {
     const prepare = runCli(root, ['prepare']);
     assert.equal(prepare.status, 0, combinedOutput(prepare));
 
-    const reader = await startReader(root);
+    const reader = await startReader(root, {
+        env: { MARKDOWN_FORMAL_READER_STATE: path.join(root, 'reader-projects.json') }
+    });
     try {
         const readerDocumentResponse = await fetch(reader.url + '/');
         const contentSecurityPolicy = readerDocumentResponse.headers.get('content-security-policy') || '';
@@ -1082,6 +1088,11 @@ async function testReaderServer() {
         assert.match(recall.content, /Finite cover/);
         assert.equal(recall.display, '定理 1.1');
 
+        const sectionRecall = await (await fetch(reader.url + '/api/recall?id=h-2222222222222222')).json();
+        assert.match(sectionRecall.content, /Compactness/);
+        assert.match(sectionRecall.content, /Finite cover/);
+        assert.equal(sectionRecall.display, '§ 1.1');
+
         const initialRevision = state.revision;
         await fs.appendFile(chapterPath, '\nA live update.\n');
         const refreshed = await waitFor(async () => {
@@ -1091,6 +1102,46 @@ async function testReaderServer() {
         assert.ok(refreshed.revision > initialRevision);
     } finally {
         await stopReader(reader.child);
+    }
+}
+
+async function testReaderLauncher() {
+    const root = await makeWorkspace('reader-launcher');
+    await fs.writeFile(path.join(root, 'book1', '01-foundations.md'), [
+        '# Foundations',
+        '',
+        'A Reader launcher fixture.',
+        ''
+    ].join('\n'));
+    const prepare = runCli(root, ['prepare']);
+    assert.equal(prepare.status, 0, combinedOutput(prepare));
+
+    const recentStatePath = path.join(root, 'reader-projects.json');
+    const env = { MARKDOWN_FORMAL_READER_STATE: recentStatePath };
+    const boundReader = await startReader(root, { env });
+    await stopReader(boundReader.child);
+
+    const launcher = await startReader(root, { projectPath: null, env });
+    try {
+        const initial = await (await fetch(launcher.url + '/api/state')).json();
+        assert.equal(initial.available, false);
+        assert.equal(initial.recentProjects.length, 1);
+        assert.equal(initial.recentProjects[0].rootName, path.basename(root));
+        assert.equal('rootPath' in initial.recentProjects[0], false);
+
+        const selected = await (await fetch(launcher.url + '/api/projects/recent', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ index: 0 })
+        })).json();
+        assert.equal(selected.available, true);
+        assert.equal(selected.pages.length, 1);
+        assert.equal(selected.rootName, path.basename(root));
+
+        const page = await (await fetch(launcher.url + '/api/page?path=book1%2F01-foundations.md')).json();
+        assert.match(page.content, /launcher fixture/);
+    } finally {
+        await stopReader(launcher.child);
     }
 }
 
@@ -1524,6 +1575,7 @@ const tests = [
     ['perf-dummy thresholds', testPerfDummyThresholds],
     ['preview ignore hover patterns', testPreviewIgnoreHoverPatterns],
     ['local Reader server', testReaderServer],
+    ['local Reader launcher', testReaderLauncher],
     ['page heading formatting', testPageHeadingFormatting],
     ['export-md compiles formal syntax', testExportMarkdownCompilesFormalSyntax],
     ['export-md-split compiles files', testExportMarkdownSplitCompilesFiles],

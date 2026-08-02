@@ -124,7 +124,13 @@ Or use the vendored release CLI:
 node tools/markdown-formal/out/cli/formal-tools.js serve .
 ```
 
-The command listens only on `127.0.0.1`, scans the project read-only, and refreshes after source changes. New features belong in the Reader before the VS Code compatibility layer.
+Omit the project directory to open the local launcher and choose a target from the native folder chooser or recent projects:
+
+```bash
+markdown-formal serve
+```
+
+The command listens only on `127.0.0.1`, scans the project read-only, and refreshes after source changes. Recent-project records stay in local user state rather than the project. New features belong in the Reader before the VS Code compatibility layer.
 
 ### Optional Legacy VS Code Extension
 
@@ -433,7 +439,13 @@ markdown-formal serve .
 node tools/markdown-formal/out/cli/formal-tools.js serve .
 ```
 
-命令只监听 `127.0.0.1`，只读扫描项目，并在源文件变化后刷新页面。新能力应优先加到 Reader，而不是 VS Code compatibility layer。
+省略项目目录可打开本机启动台，并从系统目录选择器或最近项目中选择目标：
+
+```bash
+markdown-formal serve
+```
+
+命令只监听 `127.0.0.1`，只读扫描项目，并在源文件变化后刷新页面。最近项目记录保存在用户本机状态目录，不写入项目。新能力应优先加到 Reader，而不是 VS Code compatibility layer。
 
 ## 可选 Legacy VS Code 扩展
 

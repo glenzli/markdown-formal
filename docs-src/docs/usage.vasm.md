@@ -176,6 +176,14 @@ Reader 是 `markdown-formal` 的主阅读界面。它在内存中扫描已经存
 npm run formal -- serve /path/to/project
 ```
 
+也可以不传项目路径，打开本机项目启动台：
+
+```bash
+npm run formal -- serve
+```
+
+启动台可以从系统目录选择器选择项目，或重开最近项目。选择的目录必须已有 `.markdown-formal/config.json`；最近记录只保存在本机用户状态目录，不写入项目源码或 `.markdown-formal/`。网页只提交最近项目的索引，目录路径始终由本地 Reader 服务处理。
+
 命令会打印一个仅绑定 `127.0.0.1` 的本地 URL。可在 Codex 的本地浏览器侧栏或普通浏览器中打开。Reader 提供：
 
 - 多书/多卷/章节导航；

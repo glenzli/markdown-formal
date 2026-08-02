@@ -3,6 +3,7 @@ import {
     createFormalRenderer,
     renderFormalDocument,
     renderFormalInline,
+    renderReaderFormula,
     renderFormalMarkdown,
     type ReaderFormula,
     type ReaderLabel,
@@ -13,6 +14,9 @@ import {
     type ReaderDefinitionMatch
 } from './source-actions';
 import { ReaderRecallPopover } from './recall-popover';
+import { copyReaderText } from './reader-clipboard';
+import { readerIcon, replaceReaderButtonIcon, type ReaderIconName } from './reader-icons';
+import { ReaderToolbarPanel } from './reader-toolbar-panel';
 
 type Language = 'zh' | 'en';
 
@@ -25,13 +29,14 @@ interface DefinitionSummary {
 }
 
 interface ReaderState {
+    available?: boolean;
     revision: number;
     rootName: string;
     language: Language;
     pages: ReaderPage[];
     definitions: DefinitionSummary[];
     issues: Array<{ severity: string; code: string; message: string }>;
-    dependencySummary: Record<string, number>;
+    recentProjects?: Array<{ index: number; rootName: string; openedAt: string }>;
 }
 
 interface ReaderPagePayload {
@@ -57,15 +62,21 @@ const words = {
         definitions: '定义',
         symbols: '符号',
         formulas: '公式',
-        graph: '依赖',
         back: '返回',
         forward: '前进',
+        showNavigation: '展开书籍导航',
+        hideNavigation: '折叠书籍导航',
         search: '筛选章节',
         searchDefinitions: '搜索定义',
+        searchAllDefinitions: '全书检索',
+        showChapterDefinitions: '返回本章定义',
         searchFormulas: '搜索当前页公式',
         noDefinitions: '没有匹配的定义',
+        noChapterDefinitions: '本章没有提及可检索定义',
         noSymbols: '当前页没有已索引的项目符号',
         noFormulas: '当前页没有可搜索的公式',
+        previousPage: '上一页',
+        nextPage: '下一页',
         source: '来源',
         jump: '定位',
         recall: '引用回溯',
@@ -73,29 +84,41 @@ const words = {
         noContents: '当前页面没有标题',
         close: '关闭',
         copyLatex: '复制 LaTeX',
-        copyMarkdown: '复制 Markdown',
-        copySource: '复制公式源码',
+        copySelectedMarkdown: '复制选中 Markdown',
+        copySourceLines: '复制所在行 Markdown',
         lookupDefinition: '查定义',
         copied: '已复制',
         refineDefinitionQuery: '请选择完整的术语',
         decreaseFont: '减小字号',
         increaseFont: '增大字号',
-        fontSize: '正文大小'
+        fontSize: '正文大小',
+        chooseProject: '选择项目目录',
+        recentProjects: '最近打开的项目',
+        noRecentProjects: '还没有最近打开的项目。',
+        projectLauncherTitle: '打开 Markdown Formal 项目',
+        projectLauncherDescription: '选择一个已包含 .markdown-formal/config.json 的项目目录。',
+        projectSelectionCancelled: '尚未选择项目。'
     },
     en: {
         contents: 'Contents',
         definitions: 'Definitions',
         symbols: 'Symbols',
         formulas: 'Formulas',
-        graph: 'Dependencies',
         back: 'Back',
         forward: 'Forward',
+        showNavigation: 'Show book navigation',
+        hideNavigation: 'Hide book navigation',
         search: 'Filter pages',
         searchDefinitions: 'Search definitions',
+        searchAllDefinitions: 'Search all definitions',
+        showChapterDefinitions: 'Back to chapter definitions',
         searchFormulas: 'Search formulas on this page',
         noDefinitions: 'No matching definitions',
+        noChapterDefinitions: 'No indexed definitions are mentioned in this chapter',
         noSymbols: 'No indexed project notation occurs on this page',
         noFormulas: 'No searchable formulas occur on this page',
+        previousPage: 'Previous page',
+        nextPage: 'Next page',
         source: 'Source',
         jump: 'Locate',
         recall: 'Recall',
@@ -103,14 +126,20 @@ const words = {
         noContents: 'No headings on this page',
         close: 'Close',
         copyLatex: 'Copy LaTeX',
-        copyMarkdown: 'Copy Markdown',
-        copySource: 'Copy formula source',
+        copySelectedMarkdown: 'Copy selected Markdown',
+        copySourceLines: 'Copy source lines',
         lookupDefinition: 'Find definition',
         copied: 'Copied',
         refineDefinitionQuery: 'Select a fuller term',
         decreaseFont: 'Decrease text size',
         increaseFont: 'Increase text size',
-        fontSize: 'Text size'
+        fontSize: 'Text size',
+        chooseProject: 'Choose project folder',
+        recentProjects: 'Recent projects',
+        noRecentProjects: 'No recent projects yet.',
+        projectLauncherTitle: 'Open a Markdown Formal project',
+        projectLauncherDescription: 'Choose a project folder containing .markdown-formal/config.json.',
+        projectSelectionCancelled: 'No project was selected.'
     }
 } as const;
 
@@ -131,10 +160,11 @@ function normalizeQuery(value: string): string {
     return value.normalize('NFKC').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
 }
 
-const DEFAULT_FONT_SIZE = 18;
-const MIN_FONT_SIZE = 15;
+const DEFAULT_FONT_SIZE = 14;
+const MIN_FONT_SIZE = 12;
 const MAX_FONT_SIZE = 24;
 const FONT_SIZE_STORAGE_KEY = 'markdown-formal.reader.font-size';
+const NAVIGATION_STORAGE_KEY = 'markdown-formal.reader.navigation-collapsed';
 
 function storedFontSize(): number {
     try {
@@ -142,6 +172,14 @@ function storedFontSize(): number {
         return Number.isInteger(value) ? Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, value)) : DEFAULT_FONT_SIZE;
     } catch (_error) {
         return DEFAULT_FONT_SIZE;
+    }
+}
+
+function storedNavigationCollapsed(): boolean {
+    try {
+        return localStorage.getItem(NAVIGATION_STORAGE_KEY) === 'true';
+    } catch (_error) {
+        return false;
     }
 }
 
@@ -155,51 +193,61 @@ class ReaderApplication {
     private historyIndex = -1;
     private pageRequestId = 0;
     private fontSize = storedFontSize();
+    private navigationCollapsed = storedNavigationCollapsed();
     private main!: HTMLElement;
     private article!: HTMLElement;
-    private inspector!: HTMLElement;
     private pageTitle!: HTMLElement;
     private liveStatus!: HTMLElement;
     private sourceActions!: ReaderSourceActions;
     private recallPopover!: ReaderRecallPopover;
+    private toolbarPanel!: ReaderToolbarPanel;
+    private realtimeEvents: EventSource | undefined;
 
     async start(): Promise<void> {
         this.buildShell();
         await this.refreshState();
+        this.installHandlers();
+        if (!this.state?.available) {
+            this.renderProjectLauncher();
+            return;
+        }
+        await this.openInitialPage();
+        this.installRealtimeUpdates();
+    }
+
+    private async openInitialPage(): Promise<void> {
         const initialPath = queryPath() || this.state?.pages[0]?.filePath || '';
         if (!initialPath) {
             this.article.textContent = 'No Markdown pages were found in the bound project.';
             return;
         }
         await this.openPage(initialPath, 'replace');
-        this.installHandlers();
-        this.installRealtimeUpdates();
     }
 
     private buildShell(): void {
         this.root.innerHTML = [
-            '<div class="reader-shell">',
-            '<aside class="reader-sidebar" aria-label="Project navigation">',
+            '<div class="reader-shell' + (this.navigationCollapsed ? ' is-navigation-collapsed' : '') + '">',
+            '<aside id="reader-sidebar" class="reader-sidebar" aria-label="Project navigation">',
             '<div class="reader-brand"><span class="reader-brand-mark">MF</span><div><strong>Markdown Formal</strong><span id="reader-project-name"></span></div></div>',
             '<label class="reader-filter"><span class="sr-only">Filter pages</span><input id="reader-page-filter" type="search" autocomplete="off" /></label>',
             '<nav id="reader-page-nav" class="reader-page-nav"></nav>',
             '</aside>',
             '<main id="reader-main" class="reader-main">',
             '<header class="reader-toolbar">',
-            '<div class="reader-history"><button id="reader-back" class="icon-button" title="Back" aria-label="Back">‹</button><button id="reader-forward" class="icon-button" title="Forward" aria-label="Forward">›</button></div>',
+            '<button id="reader-navigation-toggle" class="icon-button reader-navigation-toggle" type="button"></button>',
+            '<div class="reader-history"><button id="reader-back" class="icon-button" aria-label="Back"></button><button id="reader-forward" class="icon-button" aria-label="Forward"></button></div>',
             '<div id="reader-page-title" class="reader-page-title"></div>',
-            '<div class="reader-tools"><button class="tool-button" data-inspector="contents" title="Contents">☰</button><button class="tool-button" data-inspector="definitions" title="Definitions">⌕</button><button class="tool-button" data-inspector="symbols" title="Symbols">Σ</button><button class="tool-button" data-inspector="formulas" title="Formulas">∫</button><button class="tool-button" data-inspector="graph" title="Dependencies">⌘</button></div>',
+            '<div class="reader-tools"><button class="tool-button" data-panel="contents" aria-label="Contents"></button><button class="tool-button" data-panel="definitions" aria-label="Definitions"></button><button class="tool-button" data-panel="symbols" aria-label="Symbols"></button><button class="tool-button" data-panel="formulas" aria-label="Formulas"></button></div>',
             '<div class="reader-type-control"><button type="button" class="type-size-button" data-font-size="-1" aria-label="Decrease text size">A−</button><output id="reader-font-size" aria-live="polite">' + this.fontSize + 'px</output><button type="button" class="type-size-button" data-font-size="1" aria-label="Increase text size">A+</button></div>',
             '<span id="reader-live" class="reader-live" aria-live="polite"></span>',
             '</header><article id="reader-article" class="reader-article"></article></main>',
-            '<aside id="reader-inspector" class="reader-inspector" aria-live="polite"></aside>',
             '</div>'
         ].join('');
         this.main = this.root.querySelector('#reader-main') as HTMLElement;
         this.article = this.root.querySelector('#reader-article') as HTMLElement;
-        this.inspector = this.root.querySelector('#reader-inspector') as HTMLElement;
         this.pageTitle = this.root.querySelector('#reader-page-title') as HTMLElement;
         this.liveStatus = this.root.querySelector('#reader-live') as HTMLElement;
+        this.installToolbarIcons();
         this.updateFontSize(this.fontSize, false);
         (this.root.querySelector('#reader-page-filter') as HTMLInputElement).addEventListener('input', event => {
             this.renderNavigation((event.target as HTMLInputElement).value);
@@ -213,8 +261,8 @@ class ReaderApplication {
                 const dictionary = this.dictionary();
                 return {
                     copyLatex: dictionary.copyLatex,
-                    copyMarkdown: dictionary.copyMarkdown,
-                    copySource: dictionary.copySource,
+                    copySelectedMarkdown: dictionary.copySelectedMarkdown,
+                    copySourceLines: dictionary.copySourceLines,
                     lookupDefinition: dictionary.lookupDefinition,
                     locate: dictionary.jump,
                     copied: dictionary.copied,
@@ -228,6 +276,7 @@ class ReaderApplication {
             renderRecall: recall => renderFormalMarkdown(this.markdown, recall.content || '', this.renderOptions(recall.filePath, recall.labels || {})),
             labels: () => ({ recall: this.dictionary().recall })
         });
+        this.toolbarPanel = new ReaderToolbarPanel(() => ({ close: this.dictionary().close }));
     }
 
     private dictionary() {
@@ -240,8 +289,23 @@ class ReaderApplication {
         return response.json() as Promise<T>;
     }
 
+    private async postJson<T>(url: string, value: unknown = {}): Promise<T> {
+        const response = await fetch(url, {
+            method: 'POST',
+            cache: 'no-store',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(value)
+        });
+        if (!response.ok) throw new Error(await response.text());
+        return response.json() as Promise<T>;
+    }
+
     private async refreshState(): Promise<void> {
-        this.state = await this.fetchJson<ReaderState>('/api/state');
+        this.applyState(await this.fetchJson<ReaderState>('/api/state'));
+    }
+
+    private applyState(state: ReaderState): void {
+        this.state = state;
         const dictionary = this.dictionary();
         (this.root.querySelector('#reader-project-name') as HTMLElement).textContent = this.state.rootName;
         (this.root.querySelector('#reader-page-filter') as HTMLInputElement).placeholder = dictionary.search;
@@ -249,27 +313,94 @@ class ReaderApplication {
         this.updateToolbarLabels();
     }
 
+    private renderProjectLauncher(message = ''): void {
+        const shell = this.root.querySelector('.reader-shell') as HTMLElement;
+        shell.classList.add('is-project-launcher');
+        this.article.replaceChildren();
+        const dictionary = this.dictionary();
+        const panel = document.createElement('section');
+        panel.className = 'reader-project-launcher';
+        const title = document.createElement('h1');
+        title.textContent = dictionary.projectLauncherTitle;
+        const description = document.createElement('p');
+        description.textContent = message || dictionary.projectLauncherDescription;
+        const choose = document.createElement('button');
+        choose.type = 'button';
+        choose.className = 'reader-project-choose';
+        choose.dataset.projectPicker = 'true';
+        choose.textContent = dictionary.chooseProject;
+        const recentHeading = document.createElement('h2');
+        recentHeading.textContent = dictionary.recentProjects;
+        const recent = document.createElement('div');
+        recent.className = 'reader-recent-projects';
+        const projects = this.state?.recentProjects || [];
+        if (!projects.length) {
+            const empty = document.createElement('p');
+            empty.className = 'reader-project-empty';
+            empty.textContent = dictionary.noRecentProjects;
+            recent.append(empty);
+        } else {
+            projects.forEach(project => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.dataset.recentProject = String(project.index);
+                const name = document.createElement('strong');
+                name.textContent = project.rootName;
+                const opened = document.createElement('span');
+                const date = new Date(project.openedAt);
+                opened.textContent = Number.isNaN(date.getTime()) ? '' : date.toLocaleString();
+                button.append(name, opened);
+                recent.append(button);
+            });
+        }
+        panel.append(title, description, choose, recentHeading, recent);
+        this.article.append(panel);
+    }
+
+    private async chooseProject(url: string, value: unknown = {}): Promise<void> {
+        try {
+            const state = await this.postJson<ReaderState>(url, value);
+            this.applyState(state);
+            if (!state.available) {
+                this.renderProjectLauncher(this.dictionary().projectSelectionCancelled);
+                return;
+            }
+            this.root.querySelector('.reader-shell')?.classList.remove('is-project-launcher');
+            this.page = undefined;
+            this.currentPath = '';
+            this.historyPaths = [];
+            this.historyIndex = -1;
+            window.history.replaceState({}, '', window.location.pathname);
+            await this.openInitialPage();
+            this.installRealtimeUpdates();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.renderProjectLauncher(message);
+        }
+    }
+
     private updateToolbarLabels(): void {
         const dictionary = this.dictionary();
         const back = this.root.querySelector('#reader-back') as HTMLElement;
         const forward = this.root.querySelector('#reader-forward') as HTMLElement;
-        back.title = dictionary.back;
+        back.dataset.tooltip = dictionary.back;
         back.setAttribute('aria-label', dictionary.back);
-        forward.title = dictionary.forward;
+        forward.dataset.tooltip = dictionary.forward;
         forward.setAttribute('aria-label', dictionary.forward);
-        this.root.querySelectorAll<HTMLElement>('[data-inspector]').forEach(button => {
-            const view = button.dataset.inspector as keyof typeof dictionary;
-            button.title = dictionary[view] || '';
+        this.root.querySelectorAll<HTMLElement>('[data-panel]').forEach(button => {
+            const view = button.dataset.panel as keyof typeof dictionary;
+            button.dataset.tooltip = dictionary[view] || '';
             button.setAttribute('aria-label', dictionary[view] || '');
         });
         const fontSize = this.root.querySelector('.reader-type-control') as HTMLElement;
         fontSize.setAttribute('aria-label', dictionary.fontSize);
         const decrease = this.root.querySelector<HTMLElement>('[data-font-size="-1"]') as HTMLElement;
         const increase = this.root.querySelector<HTMLElement>('[data-font-size="1"]') as HTMLElement;
-        decrease.title = dictionary.decreaseFont;
+        decrease.dataset.tooltip = dictionary.decreaseFont;
         decrease.setAttribute('aria-label', dictionary.decreaseFont);
-        increase.title = dictionary.increaseFont;
+        increase.dataset.tooltip = dictionary.increaseFont;
         increase.setAttribute('aria-label', dictionary.increaseFont);
+        this.updateNavigationToggle();
     }
 
     private updateFontSize(value: number, persist = true): void {
@@ -287,6 +418,44 @@ class ReaderApplication {
         } catch (_error) {
             // A restrictive browser context can disable persistence without affecting reading.
         }
+    }
+
+    private setNavigationCollapsed(value: boolean, persist = true): void {
+        this.navigationCollapsed = value;
+        this.root.querySelector('.reader-shell')?.classList.toggle('is-navigation-collapsed', value);
+        this.updateNavigationToggle();
+        if (!persist) return;
+        try {
+            localStorage.setItem(NAVIGATION_STORAGE_KEY, String(value));
+        } catch (_error) {
+            // Navigation remains usable when browser storage is unavailable.
+        }
+    }
+
+    private updateNavigationToggle(): void {
+        const toggle = this.root.querySelector('#reader-navigation-toggle') as HTMLButtonElement | null;
+        if (!toggle) return;
+        const label = this.navigationCollapsed ? this.dictionary().showNavigation : this.dictionary().hideNavigation;
+        toggle.dataset.tooltip = label;
+        toggle.setAttribute('aria-label', label);
+        toggle.setAttribute('aria-expanded', String(!this.navigationCollapsed));
+        replaceReaderButtonIcon(toggle, this.navigationCollapsed ? 'navigation-open' : 'navigation-close', 18);
+    }
+
+    private installToolbarIcons(): void {
+        const icons: Array<[string, ReaderIconName]> = [
+            ['#reader-back', 'chevron-left'],
+            ['#reader-forward', 'chevron-right'],
+            ['[data-panel="contents"]', 'contents'],
+            ['[data-panel="definitions"]', 'definition'],
+            ['[data-panel="symbols"]', 'sigma'],
+            ['[data-panel="formulas"]', 'formulas']
+        ];
+        icons.forEach(([selector, icon]) => {
+            const button = this.root.querySelector<HTMLElement>(selector);
+            if (button) replaceReaderButtonIcon(button, icon);
+        });
+        this.updateNavigationToggle();
     }
 
     private renderNavigation(query = ''): void {
@@ -309,7 +478,7 @@ class ReaderApplication {
             const group = document.createElement('section');
             group.className = 'reader-nav-group';
             const heading = document.createElement('h2');
-            heading.textContent = groupName;
+            heading.innerHTML = renderFormalInline(this.markdown, groupName, this.renderOptions('', {}));
             group.append(heading);
             pages.forEach(page => {
                 const button = document.createElement('button');
@@ -326,6 +495,7 @@ class ReaderApplication {
     private async openPage(filePath: string, historyMode: 'push' | 'replace' | 'pop', anchor = '', preserveScroll = false): Promise<void> {
         if (!this.state || !this.state.pages.some(page => page.filePath === filePath)) return;
         const requestId = ++this.pageRequestId;
+        this.toolbarPanel.close();
         const previousScroll = this.main.scrollTop;
         this.article.classList.add('is-loading');
         try {
@@ -382,7 +552,7 @@ class ReaderApplication {
             if (!heading.id) heading.id = 'reader-heading-' + index;
         });
         this.sourceActions.bind(this.article, { source: this.page.content, formulas: rendered.formulas });
-        this.recallPopover.bind(this.article, this.root);
+        this.recallPopover.bind(this.article);
     }
 
     private scrollToAnchor(anchor: string): void {
@@ -400,115 +570,139 @@ class ReaderApplication {
         void this.openPage(path, 'pop');
     }
 
-    private inspectorHeader(title: string): HTMLElement {
-        const header = document.createElement('header');
-        header.className = 'inspector-header';
-        const heading = document.createElement('h2');
-        heading.textContent = title;
-        const close = document.createElement('button');
-        close.type = 'button';
-        close.className = 'icon-button';
-        close.title = this.dictionary().close;
-        close.textContent = '×';
-        close.addEventListener('click', () => this.closeInspector());
-        header.append(heading, close);
-        return header;
-    }
-
-    private closeInspector(): void {
-        this.inspector.classList.remove('is-open');
-        this.root.querySelectorAll('[data-inspector]').forEach(button => button.classList.remove('is-active'));
-    }
-
-    private async openInspector(view: string): Promise<void> {
+    private openPanel(view: string, trigger: HTMLElement): void {
         if (!this.state) return;
-        this.inspector.classList.add('is-open');
-        this.root.querySelectorAll<HTMLElement>('[data-inspector]').forEach(button => {
-            button.classList.toggle('is-active', button.dataset.inspector === view);
+        const dictionary = this.dictionary();
+        const title = dictionary[view as keyof typeof dictionary] || view;
+        this.toolbarPanel.open(view, trigger, title, content => {
+            if (view === 'contents') this.renderContents(content);
+            if (view === 'definitions') this.renderDefinitions(content);
+            if (view === 'symbols') this.renderSymbols(content);
+            if (view === 'formulas') this.renderFormulas(content);
         });
-        if (view === 'contents') this.renderContents();
-        if (view === 'definitions') this.renderDefinitions();
-        if (view === 'symbols') this.renderSymbols();
-        if (view === 'formulas') this.renderFormulas();
-        if (view === 'graph') await this.renderGraph();
     }
 
-    private renderContents(): void {
-        this.inspector.replaceChildren(this.inspectorHeader(this.dictionary().contents));
+    private renderContents(container: HTMLElement): void {
         const headings = Array.from(this.article.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6'));
         if (headings.length === 0) {
-            this.inspector.append(this.emptyState(this.dictionary().noContents));
+            container.append(this.emptyState(this.dictionary().noContents));
             return;
         }
         const list = document.createElement('div');
-        list.className = 'inspector-list';
+        list.className = 'reader-panel-list reader-outline-list';
         headings.forEach(heading => {
             const button = document.createElement('button');
             button.type = 'button';
-            button.className = 'inspector-outline level-' + heading.tagName.slice(1);
-            button.textContent = heading.textContent || '';
-            button.addEventListener('click', () => heading.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+            button.className = 'reader-outline level-' + heading.tagName.slice(1);
+            button.innerHTML = heading.innerHTML;
+            button.addEventListener('click', () => {
+                heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                this.toolbarPanel.close();
+            });
             list.append(button);
         });
-        this.inspector.append(list);
+        container.append(list);
     }
 
-    private renderDefinitions(query = ''): void {
-        if (!this.state) return;
-        this.inspector.replaceChildren(this.inspectorHeader(this.dictionary().definitions));
+    private renderDefinitions(container: HTMLElement): void {
+        container.replaceChildren();
+        let scope: 'chapter' | 'all' = 'chapter';
+        const controls = document.createElement('div');
+        controls.className = 'reader-definition-controls';
         const search = document.createElement('input');
         search.type = 'search';
-        search.className = 'inspector-search';
+        search.className = 'reader-panel-search';
         search.placeholder = this.dictionary().searchDefinitions;
-        search.value = query;
-        search.addEventListener('input', () => this.renderDefinitions(search.value));
-        this.inspector.append(search);
-
-        const matches = this.findDefinitions(query);
-        if (matches.length === 0) {
-            this.inspector.append(this.emptyState(this.dictionary().noDefinitions));
-            return;
-        }
-        const list = document.createElement('div');
-        list.className = 'inspector-list';
-        matches.forEach(definition => {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'inspector-entry';
-            const title = document.createElement('strong');
-            title.textContent = definition.title;
-            const location = document.createElement('span');
-            location.textContent = definition.filePath + ':' + definition.line;
-            button.append(title, location);
-            button.addEventListener('click', () => void this.showDefinition(definition.index));
-            list.append(button);
+        const scopeButton = document.createElement('button');
+        scopeButton.type = 'button';
+        scopeButton.className = 'reader-definition-scope';
+        const results = document.createElement('div');
+        results.className = 'reader-panel-list';
+        const renderResults = () => {
+            results.replaceChildren();
+            scopeButton.textContent = scope === 'chapter'
+                ? this.dictionary().searchAllDefinitions
+                : this.dictionary().showChapterDefinitions;
+            scopeButton.classList.toggle('is-active', scope === 'all');
+            const matches = this.findDefinitions(search.value, 80, scope === 'chapter' ? this.chapterDefinitions() : undefined);
+            if (matches.length === 0) {
+                results.append(this.emptyState(scope === 'chapter' && !search.value.trim()
+                    ? this.dictionary().noChapterDefinitions
+                    : this.dictionary().noDefinitions));
+                return;
+            }
+            matches.forEach(definition => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'reader-definition-entry';
+                const title = document.createElement('strong');
+                title.textContent = definition.title;
+                button.append(title);
+                button.addEventListener('click', () => void this.showDefinition(container, definition.index));
+                results.append(button);
+            });
+            this.toolbarPanel.reposition();
+        };
+        search.addEventListener('input', renderResults);
+        scopeButton.addEventListener('click', () => {
+            scope = scope === 'chapter' ? 'all' : 'chapter';
+            renderResults();
+            search.focus();
         });
-        this.inspector.append(list);
+        controls.append(search, scopeButton);
+        container.append(controls, results);
+        renderResults();
+        window.requestAnimationFrame(() => search.focus());
     }
 
-    private async showDefinition(index: number): Promise<void> {
+    private async showDefinition(container: HTMLElement, index: number): Promise<void> {
         const definition = await this.fetchJson<any>('/api/definition?index=' + index);
-        this.inspector.replaceChildren(this.inspectorHeader(definition.title));
-        const location = document.createElement('p');
-        location.className = 'inspector-location';
-        location.textContent = definition.filePath + ':' + definition.line;
+        if (!container.isConnected) return;
+        container.replaceChildren();
+        const header = document.createElement('div');
+        header.className = 'reader-detail-header';
+        const title = document.createElement('strong');
+        title.className = 'reader-detail-title';
+        title.textContent = definition.title;
+        const actions = document.createElement('div');
+        actions.className = 'reader-detail-actions';
+        actions.append(
+            this.panelIconButton('arrow-left', this.dictionary().definitions, () => this.renderDefinitions(container)),
+            this.panelIconButton('locate', this.dictionary().jump, () => {
+                this.toolbarPanel.close();
+                void this.openPage(definition.filePath, 'push').then(() => {
+                    this.article.querySelector<HTMLElement>('[data-source-line="' + definition.line + '"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                });
+            })
+        );
         const content = document.createElement('div');
-        content.className = 'inspector-content';
+        content.className = 'reader-panel-prose';
         content.innerHTML = this.renderDefinitionContent(definition);
-        const locate = document.createElement('button');
-        locate.type = 'button';
-        locate.className = 'inspect-command';
-        locate.textContent = this.dictionary().jump;
-        locate.addEventListener('click', () => void this.openPage(definition.filePath, 'push').then(() => {
-            this.article.querySelector<HTMLElement>('[data-source-line="' + definition.line + '"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }));
-        this.inspector.append(location, content, locate);
+        header.append(title, actions);
+        container.append(header, content);
+        this.toolbarPanel.reposition();
     }
 
-    private findDefinitions(query: string, limit = Number.POSITIVE_INFINITY): DefinitionSummary[] {
+    private chapterDefinitions(): DefinitionSummary[] {
+        if (!this.state || !this.page) return [];
+        const source = normalizeQuery(this.page.content);
+        if (!source) return [];
+        return this.state.definitions.filter(definition => (
+            [definition.title, ...(definition.aliases || [])].some(name => {
+                const normalized = normalizeQuery(name);
+                if (!normalized) return false;
+                if (/^[a-z0-9 _-]+$/i.test(normalized)) {
+                    return new RegExp('(^|[^a-z0-9_])' + normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=$|[^a-z0-9_])', 'i').test(source);
+                }
+                return source.includes(normalized);
+            })
+        ));
+    }
+
+    private findDefinitions(query: string, limit = Number.POSITIVE_INFINITY, candidates = this.state?.definitions || []): DefinitionSummary[] {
         if (!this.state) return [];
         const normalized = normalizeQuery(query);
-        const matches = this.state.definitions.filter(definition => (
+        const matches = candidates.filter(definition => (
             !normalized || [definition.title, ...(definition.aliases || [])].map(normalizeQuery).some(value => value.includes(normalized))
         ));
         if (!normalized) return matches.slice(0, limit);
@@ -534,82 +728,128 @@ class ReaderApplication {
         });
     }
 
-    private renderSymbols(): void {
-        this.inspector.replaceChildren(this.inspectorHeader(this.dictionary().symbols));
+    private renderSymbols(container: HTMLElement): void {
         const symbols = this.page?.symbols || [];
         if (symbols.length === 0) {
-            this.inspector.append(this.emptyState(this.dictionary().noSymbols));
+            container.append(this.emptyState(this.dictionary().noSymbols));
             return;
         }
         const grid = document.createElement('div');
-        grid.className = 'symbol-grid';
+        grid.className = 'reader-symbol-grid';
+        const detail = document.createElement('section');
+        detail.className = 'reader-symbol-detail';
+        const show = (symbol: ReaderPagePayload['symbols'][number]) => {
+            detail.replaceChildren();
+            const display = document.createElement('div');
+            display.className = 'reader-symbol-display';
+            display.innerHTML = renderFormalInline(this.markdown, symbol.display, this.renderOptions(this.currentPath));
+            const meaning = document.createElement('div');
+            meaning.className = 'reader-panel-prose';
+            meaning.innerHTML = renderFormalMarkdown(this.markdown, symbol.meaning, this.renderOptions(this.currentPath));
+            detail.append(display, meaning);
+            if (symbol.sourceFilePath && symbol.sourceLine) {
+                detail.append(this.panelIconButton('locate', this.dictionary().jump, () => {
+                    this.toolbarPanel.close();
+                    void this.openPage(symbol.sourceFilePath as string, 'push').then(() => {
+                        this.article.querySelector<HTMLElement>('[data-source-line="' + symbol.sourceLine + '"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    });
+                }));
+            }
+            this.toolbarPanel.reposition();
+        };
         symbols.forEach(symbol => {
             const button = document.createElement('button');
             button.type = 'button';
-            button.className = 'symbol-chip';
+            button.className = 'reader-symbol-chip';
             button.innerHTML = renderFormalInline(this.markdown, symbol.display, this.renderOptions(this.currentPath));
-            button.addEventListener('click', () => this.showSymbol(symbol));
+            button.addEventListener('click', () => show(symbol));
             grid.append(button);
         });
-        this.inspector.append(grid);
-        this.showSymbol(symbols[0]);
+        container.append(grid, detail);
+        show(symbols[0]);
     }
 
-    private renderFormulas(query = ''): void {
-        this.inspector.replaceChildren(this.inspectorHeader(this.dictionary().formulas));
+    private renderFormulas(container: HTMLElement): void {
+        const pageSize = 12;
+        let pageIndex = 0;
         const search = document.createElement('input');
         search.type = 'search';
-        search.className = 'inspector-search';
+        search.className = 'reader-panel-search';
         search.placeholder = this.dictionary().searchFormulas;
-        search.value = query;
-        search.addEventListener('input', () => this.renderFormulas(search.value));
-        this.inspector.append(search);
-        const normalized = normalizeQuery(query).replace(/\s/g, '');
-        const formulas = (this.page?.formulas || []).filter(formula => (
-            !normalized || normalizeQuery(formula.latex).replace(/\s/g, '').includes(normalized)
-        ));
-        if (formulas.length === 0) {
-            this.inspector.append(this.emptyState(this.dictionary().noFormulas));
-            return;
-        }
-        const visibleFormulas = formulas.slice(0, normalized ? 120 : 80);
         const list = document.createElement('div');
-        list.className = 'inspector-list formula-list';
-        visibleFormulas.forEach(formula => {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'inspector-formula';
-            const source = document.createElement('code');
-            source.textContent = formula.latex;
-            button.append(source);
-            button.addEventListener('click', () => {
-                this.showFormulaDetail(formula);
-                this.locateFormula(formula.id);
+        list.className = 'reader-panel-list reader-formula-list';
+        const detail = document.createElement('section');
+        detail.className = 'reader-formula-detail';
+        const renderResults = () => {
+            const normalized = normalizeQuery(search.value).replace(/\s/g, '');
+            const formulas = (this.page?.formulas || []).filter(formula => formula.display && (
+                !normalized || normalizeQuery(formula.latex).replace(/\s/g, '').includes(normalized)
+            ));
+            list.replaceChildren();
+            if (formulas.length === 0) {
+                list.append(this.emptyState(this.dictionary().noFormulas));
+                detail.replaceChildren();
+                return;
+            }
+            const pageCount = Math.ceil(formulas.length / pageSize);
+            pageIndex = Math.min(pageIndex, pageCount - 1);
+            const visibleFormulas = formulas.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize);
+            visibleFormulas.forEach(formula => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'reader-formula-entry';
+                button.innerHTML = this.renderFormula(formula);
+                button.addEventListener('click', () => {
+                    if (!detail.isConnected) list.after(detail);
+                    this.showFormulaDetail(detail, formula);
+                    this.locateFormula(formula.id);
+                });
+                list.append(button);
             });
-            list.append(button);
+            if (pageCount > 1) {
+                const pagination = document.createElement('div');
+                pagination.className = 'reader-formula-pagination';
+                const previous = this.panelIconButton('chevron-left', this.dictionary().previousPage, () => {
+                    pageIndex--;
+                    renderResults();
+                });
+                previous.disabled = pageIndex === 0;
+                const status = document.createElement('output');
+                status.textContent = this.formatFormulaPage(pageIndex + 1, pageCount, formulas.length);
+                const next = this.panelIconButton('chevron-right', this.dictionary().nextPage, () => {
+                    pageIndex++;
+                    renderResults();
+                });
+                next.disabled = pageIndex >= pageCount - 1;
+                pagination.append(previous, status, next);
+                list.append(pagination);
+            }
+            this.toolbarPanel.reposition();
+        };
+        search.addEventListener('input', () => {
+            pageIndex = 0;
+            renderResults();
         });
-        this.inspector.append(list);
-        if (visibleFormulas.length < formulas.length) {
-            const summary = document.createElement('p');
-            summary.className = 'inspector-result-summary';
-            summary.textContent = this.state?.language === 'en'
-                ? `Showing ${visibleFormulas.length} of ${formulas.length}; refine the search to narrow results.`
-                : `显示 ${visibleFormulas.length} / ${formulas.length} 条，请输入 LaTeX 继续筛选。`;
-            this.inspector.append(summary);
-        }
+        container.append(search, list);
+        renderResults();
+        window.requestAnimationFrame(() => search.focus());
     }
 
-    private showFormulaDetail(formula: ReaderFormula): void {
-        this.inspector.querySelector('.formula-search-detail')?.remove();
-        const detail = document.createElement('section');
-        detail.className = 'formula-search-detail';
-        const preview = document.createElement('div');
-        preview.className = 'formula-search-preview';
-        preview.innerHTML = renderFormalMarkdown(this.markdown, formula.source, this.renderOptions(this.currentPath));
-        const source = document.createElement('code');
-        source.textContent = formula.latex;
-        detail.append(preview, source);
-        this.inspector.append(detail);
+    private formatFormulaPage(page: number, pageCount: number, total: number): string {
+        return this.state?.language === 'en'
+            ? `Page ${page} / ${pageCount} (${total})`
+            : `第 ${page} / ${pageCount} 页 (${total})`;
+    }
+
+    private showFormulaDetail(detail: HTMLElement, formula: ReaderFormula): void {
+        detail.replaceChildren();
+        const actions = document.createElement('div');
+        actions.className = 'reader-detail-actions';
+        actions.append(
+            this.panelIconButton('copy', this.dictionary().copyLatex, button => void this.copyPanelText(button, formula.latex))
+        );
+        detail.append(actions);
+        this.toolbarPanel.reposition();
     }
 
     private locateFormula(id: string): void {
@@ -620,58 +860,39 @@ class ReaderApplication {
         window.setTimeout(() => formula.classList.remove('is-highlighted'), 1500);
     }
 
-    private showSymbol(symbol: ReaderPagePayload['symbols'][number]): void {
-        this.inspector.querySelector('.symbol-detail')?.remove();
-        const detail = document.createElement('section');
-        detail.className = 'symbol-detail';
-        const display = document.createElement('div');
-        display.className = 'symbol-detail-display';
-        display.innerHTML = renderFormalInline(this.markdown, symbol.display, this.renderOptions(this.currentPath));
-        const meaning = document.createElement('div');
-        meaning.className = 'symbol-detail-meaning';
-        meaning.innerHTML = renderFormalMarkdown(this.markdown, symbol.meaning, this.renderOptions(this.currentPath));
-        detail.append(display, meaning);
-        if (symbol.sourceFilePath && symbol.sourceLine) {
-            const locate = document.createElement('button');
-            locate.type = 'button';
-            locate.className = 'inspect-command';
-            locate.textContent = this.dictionary().source + ': ' + symbol.sourceFilePath + ':' + symbol.sourceLine;
-            locate.addEventListener('click', () => void this.openPage(symbol.sourceFilePath as string, 'push').then(() => {
-                this.article.querySelector<HTMLElement>('[data-source-line="' + symbol.sourceLine + '"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }));
-            detail.append(locate);
-        }
-        this.inspector.append(detail);
-    }
-
-    private async renderGraph(): Promise<void> {
-        const graph = await this.fetchJson<any>('/api/graph');
-        this.inspector.replaceChildren(this.inspectorHeader(this.dictionary().graph));
-        const summary = document.createElement('section');
-        summary.className = 'graph-summary';
-        [
-            ['Nodes', graph.summary?.nodes || 0],
-            ['Edges', graph.summary?.edges || 0],
-            ['Proof', graph.summary?.proofEdges || 0],
-            ['Cross chapter', graph.summary?.crossChapterEdges || 0],
-            ['Cycles', graph.summary?.cycles || 0]
-        ].forEach(entry => {
-            const row = document.createElement('div');
-            const label = document.createElement('span');
-            const value = document.createElement('strong');
-            label.textContent = String(entry[0]);
-            value.textContent = String(entry[1]);
-            row.append(label, value);
-            summary.append(row);
-        });
-        this.inspector.append(summary);
-    }
-
     private emptyState(value: string): HTMLElement {
         const element = document.createElement('p');
-        element.className = 'inspector-empty';
+        element.className = 'reader-panel-empty';
         element.textContent = value;
         return element;
+    }
+
+    private renderFormula(formula: ReaderFormula): string {
+        return renderReaderFormula(formula);
+    }
+
+    private panelIconButton(icon: ReaderIconName, label: string, action: (button: HTMLButtonElement) => void): HTMLButtonElement {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'reader-panel-action';
+        button.append(readerIcon(icon));
+        button.dataset.tooltip = label;
+        button.setAttribute('aria-label', label);
+        button.addEventListener('click', () => action(button));
+        return button;
+    }
+
+    private async copyPanelText(button: HTMLButtonElement, value: string): Promise<void> {
+        if (!(await copyReaderText(value))) return;
+        const label = button.dataset.tooltip || button.getAttribute('aria-label') || '';
+        button.classList.add('is-copied');
+        button.dataset.tooltip = this.dictionary().copied;
+        button.setAttribute('aria-label', this.dictionary().copied);
+        window.setTimeout(() => {
+            button.classList.remove('is-copied');
+            button.dataset.tooltip = label;
+            button.setAttribute('aria-label', label);
+        }, 1200);
     }
 
     private renderOptions(currentFilePath: string, labels = this.page?.labels || {}) {
@@ -687,14 +908,29 @@ class ReaderApplication {
         this.root.addEventListener('click', event => {
             const target = event.target as HTMLElement | null;
             if (!target) return;
+            const projectPicker = target.closest<HTMLElement>('[data-project-picker]');
+            if (projectPicker) {
+                void this.chooseProject('/api/projects/pick');
+                return;
+            }
+            const recentProject = target.closest<HTMLElement>('[data-recent-project]');
+            if (recentProject?.dataset.recentProject) {
+                void this.chooseProject('/api/projects/recent', { index: Number(recentProject.dataset.recentProject) });
+                return;
+            }
             const pageButton = target.closest<HTMLElement>('[data-page-path]');
             if (pageButton?.dataset.pagePath) {
                 void this.openPage(pageButton.dataset.pagePath, 'push');
                 return;
             }
-            const inspectorButton = target.closest<HTMLElement>('[data-inspector]');
-            if (inspectorButton?.dataset.inspector) {
-                void this.openInspector(inspectorButton.dataset.inspector);
+            const panelButton = target.closest<HTMLElement>('[data-panel]');
+            if (panelButton?.dataset.panel) {
+                this.openPanel(panelButton.dataset.panel, panelButton);
+                return;
+            }
+            const navigationToggle = target.closest<HTMLElement>('#reader-navigation-toggle');
+            if (navigationToggle) {
+                this.setNavigationCollapsed(!this.navigationCollapsed);
                 return;
             }
             const fontSizeButton = target.closest<HTMLButtonElement>('[data-font-size]');
@@ -723,8 +959,9 @@ class ReaderApplication {
     }
 
     private installRealtimeUpdates(): void {
-        const events = new EventSource('/api/events');
-        events.addEventListener('workspace-update', event => {
+        if (this.realtimeEvents) return;
+        this.realtimeEvents = new EventSource('/api/events');
+        this.realtimeEvents.addEventListener('workspace-update', event => {
             let changedPaths: string[] = [];
             let revision: number | undefined;
             let initial = false;

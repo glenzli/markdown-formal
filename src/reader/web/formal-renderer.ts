@@ -49,6 +49,15 @@ interface MathTokenMeta {
     sourceEndLine?: number;
 }
 
+export function renderReaderFormula(formula: Pick<ReaderFormula, 'latex' | 'display'>): string {
+    return katex.renderToString(formula.latex, {
+        displayMode: formula.display,
+        throwOnError: false,
+        strict: 'ignore',
+        trust: false
+    });
+}
+
 function escapeHtml(value: string): string {
     return String(value || '')
         .replace(/&/g, '&amp;')
@@ -94,22 +103,31 @@ function installMathRules(markdown: MarkdownIt): void {
             return true;
         }
 
-        const delimiter = line === '$$' ? '$$' : line === '\\[' ? '\\[' : '';
+        const delimiter = line.startsWith('$$') ? '$$' : line.startsWith('\\[') ? '\\[' : '';
         if (!delimiter) return false;
 
         const closeDelimiter = delimiter === '$$' ? '$$' : '\\]';
+        const openingContent = line.slice(delimiter.length);
         let nextLine = startLine + 1;
         while (nextLine < endLine) {
             const nextStart = state.bMarks[nextLine] + state.tShift[nextLine];
-            if (state.src.slice(nextStart, state.eMarks[nextLine]).trim() === closeDelimiter) break;
+            const candidate = state.src.slice(nextStart, state.eMarks[nextLine]).trim();
+            if (candidate === closeDelimiter || candidate.endsWith(closeDelimiter)) break;
             nextLine++;
         }
         if (nextLine >= endLine) return false;
         if (silent) return true;
 
+        const closingStart = state.bMarks[nextLine] + state.tShift[nextLine];
+        const closingLine = state.src.slice(closingStart, state.eMarks[nextLine]).trim();
+        const closingContent = closingLine === closeDelimiter
+            ? ''
+            : closingLine.slice(0, -closeDelimiter.length);
+        const middleContent = state.getLines(startLine + 1, nextLine, state.blkIndent, false);
+
         const token = state.push('formal_math_block', 'math', 0);
         token.block = true;
-        token.content = state.getLines(startLine + 1, nextLine, state.blkIndent, false).trim();
+        token.content = [openingContent, middleContent, closingContent].filter(Boolean).join('\n').trim();
         token.map = [startLine, nextLine + 1];
         token.meta = {
             display: true,
@@ -158,12 +176,7 @@ function installMathRules(markdown: MarkdownIt): void {
     const renderMath = (tokens: any[], index: number, env: any, display: boolean) => {
         const token = tokens[index];
         const metadata = (token.meta || {}) as Partial<MathTokenMeta>;
-        const rendered = katex.renderToString(token.content, {
-            displayMode: display,
-            throwOnError: false,
-            strict: 'ignore',
-            trust: false
-        });
+        const rendered = renderReaderFormula({ latex: token.content, display });
         const formulas = env.readerFormulas as ReaderFormula[] | undefined;
         if (!formulas) return rendered;
         const formula: ReaderFormula = {
