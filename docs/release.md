@@ -143,7 +143,7 @@ codex plugin marketplace add /path/to/math-workspace-release
 codex plugin add math-workspace@personal
 ```
 
-The plugin calls `math-workspace mcp`, which can start or reuse the local Math Workspace for Codex's built-in browser and resolve `mwsel_...` selection handoffs alongside focused formal, dependency, Lean, and read-only validation context. It does not embed or replace the Math Workspace UI or duplicate a Codex conversation surface.
+The plugin calls `math-workspace mcp`, which can start or reuse the local Math Workspace for Codex's built-in browser and resolve active discussion-mark source locators alongside focused formal, dependency, Lean, and read-only validation context. It does not embed or replace the Math Workspace UI or duplicate a Codex conversation surface.
 
 ### Vendor CLI
 
@@ -440,7 +440,7 @@ codex plugin marketplace add /path/to/math-workspace-release
 codex plugin add math-workspace@personal
 ```
 
-plugin 调用 `math-workspace mcp`，可返回在 Codex 内置浏览器直接访问的 localhost URL，也可查询短期 `mwsel_...` 选区、命题、严格依赖、Lean 对齐与只读校验；它不嵌入或替代 Math Workspace UI，更不维护第二套 Codex 对话。
+plugin 调用 `math-workspace mcp`，可返回在 Codex 内置浏览器直接访问的 localhost URL，也可查询当前讨论标记的源码定位、命题、严格依赖、Lean 对齐与只读校验；它不嵌入或替代 Math Workspace UI，更不维护第二套 Codex 对话。
 
 ## Vendoring CLI
 

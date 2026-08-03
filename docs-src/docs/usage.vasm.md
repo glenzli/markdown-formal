@@ -199,7 +199,9 @@ npm run workspace -- serve
 
 依赖标记只读取显式 `@h-...` 关系。圆点上方的短线表示该陈述或证明显式引用了 formal 对象（可为小节、定义或命题）；下方纵线表示后续依赖对象依赖它，分叉表示多个直接下游。主线命题使用常规颜色；带 hash 的、可证明的补充注释使用低强调度的注释颜色。灰色是没有下游对象的终点，蓝色表示被直接引用，绿色分叉表示既有显式前提也被后续对象引用。悬停可查看引用数与传递影响范围；这些是结构信号，不等同于数学重要性。权威依赖图包含命题/引理/定理/推论之间的边，也包含带 hash 补充注释的入边、出边；普通 `注（...）` 不进入图，也没有标记。
 
-选中正文或公式后，可点击“交给 Codex”。Math Workspace 会创建短期 `mwsel_...` 交接引用并复制一条可直接粘贴的任务提示。把提示粘贴到目标原生 Codex 任务后，Codex 会调用 `math_workspace_selection_get` 读取按项目根和源码 hash 校验的选区；后续讨论、工具调用、修改和审批都在原生任务中发生。交接记录只保存在本机，两小时后自动失效，不构成对话、任务或书稿状态。
+打开正文中的“标记工具”后，可使用选区、圈选、命题与擦除。选区工具会将拖拽选中的正文加入标记；圈选会标记闭合区域内的来源块；命题工具可一键选择整条 formal 对象；擦除工具或每个高亮块悬停时右上角的 × 都可单独移除标记。讨论标记只保存项目根、Markdown 文件、行号、可选的 formal/公式锚点和来源 hash，不保存正文，也不创建临时会话或任务绑定。
+
+之后直接在原生 Codex 任务中提问即可。用户提及标记材料时，Codex 可调用 `math_workspace_discussion_marks_get`，取得轻量定位后再读取同一项目中的对应 Markdown 源码；因此后续讨论、工具调用、修改与审批完全留在原生任务历史中。这个工作流假定 Math Workspace 和 Codex 面对的是同一项目目录；跨项目共享并非此交互的目标。
 
 项目需要先有 `.math-workspace/config.json`；首次使用可运行 `prepare`。Math Workspace 不要求预先生成 `workspace-index.json`。
 
@@ -207,7 +209,7 @@ npm run workspace -- serve
 
 ## Codex MCP 入口
 
-Math Workspace 可作为独立本地客户端运行，也可通过 Codex MCP 打开。MCP 可启动或复用本机工作区，也提供短期选区、命题、严格依赖、Lean 对齐与只读校验查询；它不嵌入或复制工作区渲染，更不维护第二套 Codex 对话实现。
+Math Workspace 可作为独立本地客户端运行，也可通过 Codex MCP 打开。MCP 可启动或复用本机工作区，也提供讨论标记、命题、严格依赖、Lean 对齐与只读校验查询；它不嵌入或复制工作区渲染，更不维护第二套 Codex 对话实现。
 
 CLI 入口是：
 
@@ -228,7 +230,7 @@ codex plugin marketplace add /path/to/math-workspace
 codex plugin add math-workspace@personal
 ```
 
-发布版本同样可以从安装包根目录添加 marketplace。插件调用 `math_workspace` 打开当前项目或某个项目相对 Markdown 页面；`math_workspace_selection_get` 解析已粘贴的 `mwsel_...` 选区，`math_workspace_formal_lookup`、`math_workspace_dependency_slice`、`math_workspace_lean_alignment` 与 `math_workspace_verify` 提供对应的窄范围上下文。没有可用项目时会打开 Math Workspace 的本机项目启动台。
+发布版本同样可以从安装包根目录添加 marketplace。插件调用 `math_workspace` 打开当前项目或某个项目相对 Markdown 页面；`math_workspace_discussion_marks_get` 返回当前标记的轻量源码定位，`math_workspace_formal_lookup`、`math_workspace_dependency_slice`、`math_workspace_lean_alignment` 与 `math_workspace_verify` 提供对应的窄范围上下文。没有可用项目时会打开 Math Workspace 的本机项目启动台。
 
 MCP 与 Math Workspace 一样只绑定 `127.0.0.1`，不写入书稿或 `.math-workspace/` 产物。
 

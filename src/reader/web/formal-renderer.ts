@@ -273,7 +273,10 @@ function installMathRules(markdown: MarkdownIt): void {
             sourceEndLine: metadata.sourceEndLine
         };
         formulas.push(formula);
-        return '<span class="reader-formula' + (display ? ' is-display' : '') + '" data-reader-formula="' + formula.id + '">' + rendered + '</span>';
+        const sourceRange = metadata.sourceStartLine && metadata.sourceEndLine
+            ? ' data-source-start-line="' + metadata.sourceStartLine + '" data-source-end-line="' + metadata.sourceEndLine + '"'
+            : '';
+        return '<span class="reader-formula' + (display ? ' is-display' : '') + '" data-reader-formula="' + formula.id + '"' + sourceRange + '>' + rendered + '</span>';
     };
     markdown.renderer.rules.formal_math_block = (tokens: any[], index: number, _options: any, env: any) => renderMath(tokens, index, env, true);
     markdown.renderer.rules.formal_math_inline = (tokens: any[], index: number, _options: any, env: any) => renderMath(tokens, index, env, false);

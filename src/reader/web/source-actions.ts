@@ -2,6 +2,7 @@ import type { ReaderFormula } from './formal-renderer';
 import { copyReaderText } from './reader-clipboard';
 import { readerIcon, type ReaderIconName } from './reader-icons';
 import { closestReaderElement, positionReaderPopover } from './reader-popover';
+import type { ReaderDiscussionMarkLocation } from './reader-discussion-marks';
 
 export interface ReaderDefinitionMatch {
     index: number;
@@ -20,16 +21,9 @@ export interface ReaderSourceActionLabels {
     copied: string;
     noDefinitions: string;
     refineDefinitionQuery: string;
-    handOffToCodex: string;
-}
-
-export interface ReaderSelectionHandoff {
-    filePath: string;
-    startLine: number;
-    endLine: number;
-    text: string;
-    markdown: string;
-    sourceLines: string;
+    markSelection: string;
+    markFormula: string;
+    marked: string;
 }
 
 export interface ReaderSourceActionsHost {
@@ -37,7 +31,7 @@ export interface ReaderSourceActionsHost {
     fetchDefinition(index: number): Promise<any>;
     renderDefinition(definition: any): string;
     locateDefinition(definition: ReaderDefinitionMatch): void;
-    handOffSelection(selection: ReaderSelectionHandoff): Promise<boolean>;
+    markDiscussionLocation(location: ReaderDiscussionMarkLocation): Promise<void>;
     labels(): ReaderSourceActionLabels;
 }
 
@@ -279,16 +273,15 @@ export class ReaderSourceActions {
             actions.append(this.iconButton('copy-line', labels.copySourceLines, async button => {
                 await this.copyAndMark(button, selected.sourceLines);
             }));
-            const handoffSelection = {
+            const discussionLocation: ReaderDiscussionMarkLocation = {
                 filePath: this.sourceDocument?.filePath || '',
                 startLine: selected.startLine,
                 endLine: selected.endLine,
-                text: selected.text,
-                markdown: selected.markdown || selected.text,
-                sourceLines: selected.sourceLines
+                kind: 'selection'
             };
-            actions.append(this.iconButton('handoff', labels.handOffToCodex, async button => {
-                if (await this.host.handOffSelection(handoffSelection)) this.markCopied(button);
+            actions.append(this.iconButton('marker', labels.markSelection, async button => {
+                await this.host.markDiscussionLocation(discussionLocation);
+                this.markCompleted(button);
                 this.dismiss();
             }));
             if (definitions.length > 0) {
@@ -327,16 +320,16 @@ export class ReaderSourceActions {
                 ? { startLine: formula.sourceStartLine, endLine: formula.sourceEndLine, sourceLines: formula.source }
                 : undefined);
             if (range) {
-                const handoffSelection = {
+                const discussionLocation: ReaderDiscussionMarkLocation = {
                     filePath: this.sourceDocument?.filePath || '',
                     startLine: range.startLine,
                     endLine: range.endLine,
-                    text: formula.latex,
-                    markdown: formula.source,
-                    sourceLines: range.sourceLines
+                    kind: 'formula',
+                    formulaId: formula.id
                 };
-                actions.append(this.iconButton('handoff', labels.handOffToCodex, async button => {
-                    if (await this.host.handOffSelection(handoffSelection)) this.markCopied(button);
+                actions.append(this.iconButton('marker', labels.markFormula, async button => {
+                    await this.host.markDiscussionLocation(discussionLocation);
+                    this.markCompleted(button);
                     this.dismiss();
                 }));
             }
@@ -449,6 +442,18 @@ export class ReaderSourceActions {
         button.classList.add('is-copied');
         button.dataset.tooltip = this.host.labels().copied;
         button.setAttribute('aria-label', this.host.labels().copied);
+        window.setTimeout(() => {
+            button.classList.remove('is-copied');
+            button.dataset.tooltip = label;
+            button.setAttribute('aria-label', label);
+        }, 1200);
+    }
+
+    private markCompleted(button: HTMLButtonElement): void {
+        const label = button.dataset.tooltip || button.getAttribute('aria-label') || '';
+        button.classList.add('is-copied');
+        button.dataset.tooltip = this.host.labels().marked;
+        button.setAttribute('aria-label', this.host.labels().marked);
         window.setTimeout(() => {
             button.classList.remove('is-copied');
             button.dataset.tooltip = label;

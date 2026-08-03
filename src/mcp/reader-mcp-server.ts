@@ -85,7 +85,7 @@ export async function runReaderMcpServer(options: ReaderMcpServerOptions = {}): 
         name: 'math-workspace',
         version: '0.1.0'
     }, {
-        instructions: 'Use Math Workspace for local, read-only formal Markdown and Lean context. When a user supplies an mwsel_ selection handoff, call math_workspace_selection_get first. Use the narrow lookup, dependency, Lean, and validation tools instead of asking the user to paste project context.'
+        instructions: 'Use Math Workspace for local, read-only formal Markdown and Lean context. When a user asks about marked material, a selected passage, or “this/these” in the current Math Workspace, call math_workspace_discussion_marks_get first, then read the returned Markdown locations from the local project. Discussion marks are locators, not copied source. Use narrow lookup, dependency, Lean, and validation tools instead of asking the user to paste project context.'
     });
 
     const projectRoot = z.string().optional().describe('Absolute or relative root of a project containing .math-workspace/config.json. Defaults to the MCP working directory.');
@@ -104,16 +104,13 @@ export async function runReaderMcpServer(options: ReaderMcpServerOptions = {}): 
         }
     };
 
-    server.registerTool('math_workspace_selection_get', {
-        title: 'Read a Math Workspace selection handoff',
-        description: 'Resolve a short-lived mwsel_ selection created in Math Workspace. It validates that the source has not changed and returns only the selected source context.',
-        inputSchema: {
-            selectionId: z.string().describe('The mwsel_ selection id pasted from Math Workspace.'),
-            projectRoot
-        },
+    server.registerTool('math_workspace_discussion_marks_get', {
+        title: 'Read Math Workspace discussion marks',
+        description: 'Return the ordered, validated source locations deliberately marked in Math Workspace. Read the referenced Markdown ranges locally for their actual source; this tool never copies their content into context.',
+        inputSchema: { projectRoot },
         outputSchema: { result: z.object({}).passthrough() },
         annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
-    }, ({ selectionId, projectRoot: root }) => query(() => queries.selectionGet(selectionId, root), `Math Workspace selection ${selectionId} is current.`));
+    }, ({ projectRoot: root }) => query(() => queries.discussionMarksGet(root), 'Math Workspace discussion marks loaded.'));
 
     server.registerTool('math_workspace_formal_lookup', {
         title: 'Look up a formal Markdown object',

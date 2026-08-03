@@ -11,7 +11,7 @@ exports:
     version: 0.1.0
     format: integrative
     file: math-workspace-integrator.md
-    hash: sha256:45160d859559e02e150fbd372ef54f5863ec0e1998932a2c39ec72dc8634bb02
+    hash: sha256:e323f45a14ad91323e10456fb4a784a378cfbda0eb4b1191b698be5927aa0392
     appliesTo:
       - sha256:53800e49c65a7d7ac824dda6434d57a5f70b0952698aff6e0b8a77e804f7861d
   lean-formalization:

@@ -11,16 +11,19 @@ import {
 } from './formal-renderer';
 import {
     ReaderSourceActions,
-    type ReaderDefinitionMatch,
-    type ReaderSelectionHandoff
+    type ReaderDefinitionMatch
 } from './source-actions';
 import { ReaderRecallPopover } from './recall-popover';
 import { ReaderDependencyPopover } from './reader-dependency-popover';
 import { ReaderLeanPopover, type ReaderLeanAnchorPayload } from './reader-lean-popover';
 import { readerIcon, replaceReaderButtonIcon, type ReaderIconName } from './reader-icons';
-import { copyReaderText } from './reader-clipboard';
 import { ReaderToolbarPanel } from './reader-toolbar-panel';
 import { ReaderPropositionReview, type ReaderPropositionReviewItem } from './reader-proposition-review';
+import {
+    ReaderDiscussionMarks,
+    type ReaderDiscussionMark,
+    type ReaderDiscussionMarkLocation
+} from './reader-discussion-marks';
 
 type Language = 'zh' | 'en';
 
@@ -63,10 +66,8 @@ interface ReaderPagePayload {
     }>;
 }
 
-interface ReaderHandoffResponse {
-    selectionId: string;
-    expiresAt: string;
-    taskPrompt: string;
+interface ReaderDiscussionMarksResponse {
+    marks: ReaderDiscussionMark[];
 }
 
 const words = {
@@ -75,6 +76,23 @@ const words = {
         definitions: '定义',
         symbols: '符号',
         propositions: '命题审阅',
+        discussionTools: '标记工具',
+        closeDiscussionTools: '清除并退出标记',
+        discussionSelectTool: '选区',
+        discussionLassoTool: '圈选',
+        discussionFormalTool: '命题',
+        discussionEraseTool: '擦除',
+        discussionSelectHint: '拖拽选择正文后自动标记',
+        discussionLassoHint: '在正文圈住一组来源块',
+        discussionFormalHint: '点击命题以标记整条陈述',
+        discussionEraseHint: '点击已标记内容以移除',
+        markSelection: '标记选区',
+        markFormula: '标记公式',
+        markFormal: '标记整条命题',
+        markAdded: (count: number) => count === 1 ? '已添加讨论标记' : `已添加 ${count} 条讨论标记`,
+        noSourcesCircled: '没有圈到可定位的来源块',
+        marksCleared: '已清除讨论标记',
+        removeDiscussionMark: '移除此标记',
         back: '返回',
         forward: '前进',
         showNavigation: '展开书籍导航',
@@ -96,8 +114,8 @@ const words = {
         propositionReviewTerminalPropositions: '终端命题',
         propositionReviewTerminalPropositionSummary: (count: number) => `终端命题 ${count} 项`,
         propositionReviewTerminalPropositionHint: '这些命题当前在严格依赖图中没有下游引用；其章节作用与形式化锚点可按需审阅。',
-        propositionReviewAssistantReview: '辅助快审',
-        propositionReviewAssistantReviewHint: '生成一条可粘贴到 Codex 的交接提示，对本章终端命题做一次必要性快审；不会自动删改正文。',
+        propositionReviewMarkTerminal: '标记终端命题',
+        propositionReviewMarkTerminalHint: '把本章终端命题加入讨论标记；随后可在原生 Codex 任务中一次性审阅。',
         propositionReviewNodeLabel: (display: string, upstream: number, downstream: number, ambientReferences: number, leanDeclarations: number, status: string) => `${display}；严格上游 ${upstream} 项，严格下游 ${downstream} 项，正文补充提及 ${ambientReferences} 处${leanDeclarations > 0 ? `，Lean 锚点 ${leanDeclarations} 个声明` : ''}；${status}`,
         source: '来源',
         jump: '定位',
@@ -127,9 +145,6 @@ const words = {
         projectLauncherTitle: '打开 Math Workspace',
         projectLauncherDescription: '选择一个已包含 .math-workspace/config.json 的项目目录。',
         projectSelectionCancelled: '尚未选择项目。',
-        handOffToCodex: '交给 Codex',
-        handoffCopied: '已复制交接提示',
-        handoffFailed: '无法创建交接提示，请重试。',
         leanAlignment: 'Lean 对齐',
         leanLoading: '正在读取 Lean 对齐信息…',
         leanUnavailable: '暂时无法读取 Lean 对齐信息。',
@@ -146,6 +161,23 @@ const words = {
         definitions: 'Definitions',
         symbols: 'Symbols',
         propositions: 'Proposition review',
+        discussionTools: 'Marking tools',
+        closeDiscussionTools: 'Clear and exit marking',
+        discussionSelectTool: 'Select',
+        discussionLassoTool: 'Lasso',
+        discussionFormalTool: 'Proposition',
+        discussionEraseTool: 'Erase',
+        discussionSelectHint: 'Select text to mark it',
+        discussionLassoHint: 'Circle a group of source blocks',
+        discussionFormalHint: 'Click a proposition to mark its whole statement',
+        discussionEraseHint: 'Click marked content to remove it',
+        markSelection: 'Mark selection',
+        markFormula: 'Mark formula',
+        markFormal: 'Mark formal object',
+        markAdded: (count: number) => count === 1 ? 'Discussion mark added' : `${count} discussion marks added`,
+        noSourcesCircled: 'No source blocks were inside that circle',
+        marksCleared: 'Discussion marks cleared',
+        removeDiscussionMark: 'Remove mark',
         back: 'Back',
         forward: 'Forward',
         showNavigation: 'Show book navigation',
@@ -167,8 +199,8 @@ const words = {
         propositionReviewTerminalPropositions: 'Terminal propositions',
         propositionReviewTerminalPropositionSummary: (count: number) => `${count} terminal proposition${count === 1 ? '' : 's'}`,
         propositionReviewTerminalPropositionHint: 'These propositions currently have no downstream reference in the strict dependency graph; their chapter role and formalization anchors can be reviewed when useful.',
-        propositionReviewAssistantReview: 'Assisted quick review',
-        propositionReviewAssistantReviewHint: 'Copy a handoff prompt for one necessity review of this chapter’s terminal propositions in a native Codex task; no source changes are made automatically.',
+        propositionReviewMarkTerminal: 'Mark terminal propositions',
+        propositionReviewMarkTerminalHint: 'Add this chapter’s terminal propositions to discussion marks, then review them together in a native Codex task.',
         propositionReviewNodeLabel: (display: string, upstream: number, downstream: number, ambientReferences: number, leanDeclarations: number, status: string) => `${display}; ${upstream} strict upstream, ${downstream} strict downstream, ${ambientReferences} supplemental text mention${ambientReferences === 1 ? '' : 's'}${leanDeclarations > 0 ? `, Lean anchor with ${leanDeclarations} declaration${leanDeclarations === 1 ? '' : 's'}` : ''}; ${status}`,
         source: 'Source',
         jump: 'Locate',
@@ -198,9 +230,6 @@ const words = {
         projectLauncherTitle: 'Open Math Workspace',
         projectLauncherDescription: 'Choose a project folder containing .math-workspace/config.json.',
         projectSelectionCancelled: 'No project was selected.',
-        handOffToCodex: 'Hand off to Codex',
-        handoffCopied: 'Handoff prompt copied',
-        handoffFailed: 'Could not create a handoff prompt. Try again.',
         leanAlignment: 'Lean alignment',
         leanLoading: 'Loading Lean alignment…',
         leanUnavailable: 'Lean alignment details are unavailable.',
@@ -301,11 +330,13 @@ class ReaderApplication {
     private leanPopover!: ReaderLeanPopover;
     private toolbarPanel!: ReaderToolbarPanel;
     private propositionReview!: ReaderPropositionReview;
+    private discussionMarks!: ReaderDiscussionMarks;
     private realtimeEvents: EventSource | undefined;
 
     async start(): Promise<void> {
         this.buildShell();
         await this.refreshState();
+        await this.refreshDiscussionMarks();
         this.installHandlers();
         if (!this.state?.available) {
             this.renderProjectLauncher();
@@ -336,7 +367,7 @@ class ReaderApplication {
             '<button id="reader-navigation-toggle" class="icon-button reader-navigation-toggle" type="button"></button>',
             '<div class="reader-history"><button id="reader-back" class="icon-button" aria-label="Back"></button><button id="reader-forward" class="icon-button" aria-label="Forward"></button></div>',
             '<div id="reader-page-title" class="reader-page-title"></div>',
-            '<div class="reader-tools"><button class="tool-button" data-panel="contents" aria-label="Contents"></button><button class="tool-button" data-panel="definitions" aria-label="Definitions"></button><button class="tool-button" data-panel="symbols" aria-label="Symbols"></button><button class="tool-button" data-panel="propositions" aria-label="Proposition review"></button></div>',
+            '<div class="reader-tools"><button class="tool-button" data-panel="contents" aria-label="Contents"></button><button class="tool-button" data-panel="definitions" aria-label="Definitions"></button><button class="tool-button" data-panel="symbols" aria-label="Symbols"></button><button class="tool-button" data-panel="propositions" aria-label="Proposition review"></button><button id="reader-discussion-tools" class="tool-button" type="button" aria-label="Marking tools"></button></div>',
             '<div class="reader-type-control"><button type="button" class="type-size-button" data-font-size="-1" aria-label="Decrease text size">A−</button><output id="reader-font-size" aria-live="polite">' + this.fontSize + 'px</output><button type="button" class="type-size-button" data-font-size="1" aria-label="Increase text size">A+</button></div>',
             '<span id="reader-live" class="reader-live" aria-live="polite"></span>',
             '</header><article id="reader-article" class="reader-article"></article></main>',
@@ -356,7 +387,9 @@ class ReaderApplication {
             fetchDefinition: index => this.fetchJson<any>('/api/definition?index=' + index),
             renderDefinition: definition => this.renderDefinitionContent(definition),
             locateDefinition: definition => this.locateDefinition(definition),
-            handOffSelection: selection => this.handOffSelection(selection),
+            markDiscussionLocation: async location => {
+                await this.addDiscussionMarks([location]);
+            },
             labels: () => {
                 const dictionary = this.dictionary();
                 return {
@@ -368,7 +401,9 @@ class ReaderApplication {
                     copied: dictionary.copied,
                     noDefinitions: dictionary.noDefinitions,
                     refineDefinitionQuery: dictionary.refineDefinitionQuery,
-                    handOffToCodex: dictionary.handOffToCodex
+                    markSelection: dictionary.markSelection,
+                    markFormula: dictionary.markFormula,
+                    marked: dictionary.markAdded(1)
                 };
             }
         });
@@ -426,13 +461,41 @@ class ReaderApplication {
                     terminalPropositions: dictionary.propositionReviewTerminalPropositions,
                     terminalPropositionSummary: dictionary.propositionReviewTerminalPropositionSummary,
                     terminalPropositionHint: dictionary.propositionReviewTerminalPropositionHint,
-                    assistantReview: dictionary.propositionReviewAssistantReview,
-                    assistantReviewHint: dictionary.propositionReviewAssistantReviewHint,
+                    markTerminal: dictionary.propositionReviewMarkTerminal,
+                    markTerminalHint: dictionary.propositionReviewMarkTerminalHint,
                     nodeLabel: dictionary.propositionReviewNodeLabel
                 };
             },
             openProposition: id => this.openCurrentProposition(id),
-            assistTerminalPropositions: items => this.assistTerminalPropositions(items)
+            markTerminalPropositions: items => this.markTerminalPropositions(items)
+        });
+        this.discussionMarks = new ReaderDiscussionMarks({
+            addMarks: locations => this.addDiscussionMarks(locations),
+            removeMark: id => this.removeDiscussionMark(id),
+            clearMarks: () => this.clearDiscussionMarks(),
+            report: message => this.reportLive(message),
+            toolsChanged: () => {
+                this.updateDiscussionMarkControls();
+            },
+            labels: () => {
+                const dictionary = this.dictionary();
+                return {
+                    openTools: dictionary.discussionTools,
+                    closeTools: dictionary.closeDiscussionTools,
+                    selectTool: dictionary.discussionSelectTool,
+                    lassoTool: dictionary.discussionLassoTool,
+                    formalTool: dictionary.discussionFormalTool,
+                    eraseTool: dictionary.discussionEraseTool,
+                    selectHint: dictionary.discussionSelectHint,
+                    lassoHint: dictionary.discussionLassoHint,
+                    formalHint: dictionary.discussionFormalHint,
+                    eraseHint: dictionary.discussionEraseHint,
+                    markAdded: dictionary.markAdded,
+                    marksCleared: dictionary.marksCleared,
+                    remove: dictionary.removeDiscussionMark,
+                    noSourcesCircled: dictionary.noSourcesCircled
+                };
+            }
         });
     }
 
@@ -443,7 +506,7 @@ class ReaderApplication {
     private async fetchJson<T>(url: string): Promise<T> {
         const response = await fetch(url, {
             cache: 'no-store',
-            headers: url === '/api/handoffs' && this.state?.requestToken
+            headers: url === '/api/discussion-marks' && this.state?.requestToken
                 ? { 'x-math-workspace-token': this.state.requestToken }
                 : undefined
         });
@@ -453,7 +516,7 @@ class ReaderApplication {
 
     private async postJson<T>(url: string, value: unknown = {}): Promise<T> {
         const headers: Record<string, string> = { 'content-type': 'application/json' };
-        if (url === '/api/handoffs' && this.state?.requestToken) {
+        if (url === '/api/discussion-marks' && this.state?.requestToken) {
             headers['x-math-workspace-token'] = this.state.requestToken;
         }
         const response = await fetch(url, {
@@ -462,6 +525,16 @@ class ReaderApplication {
             headers,
             body: JSON.stringify(value)
         });
+        if (!response.ok) throw new Error(await response.text());
+        return response.json() as Promise<T>;
+    }
+
+    private async deleteJson<T>(url: string): Promise<T> {
+        const headers: Record<string, string> = {};
+        if (url.startsWith('/api/discussion-marks') && this.state?.requestToken) {
+            headers['x-math-workspace-token'] = this.state.requestToken;
+        }
+        const response = await fetch(url, { method: 'DELETE', cache: 'no-store', headers });
         if (!response.ok) throw new Error(await response.text());
         return response.json() as Promise<T>;
     }
@@ -536,6 +609,7 @@ class ReaderApplication {
             this.historyPaths = [];
             this.historyIndex = -1;
             window.history.replaceState({}, '', window.location.pathname);
+            await this.refreshDiscussionMarks();
             await this.openInitialPage();
             this.installRealtimeUpdates();
         } catch (error) {
@@ -567,6 +641,7 @@ class ReaderApplication {
         increase.dataset.tooltip = dictionary.increaseFont;
         increase.setAttribute('aria-label', dictionary.increaseFont);
         this.updateNavigationToggle();
+        this.updateDiscussionMarkControls();
     }
 
     private updateFontSize(value: number, persist = true): void {
@@ -608,6 +683,20 @@ class ReaderApplication {
         replaceReaderButtonIcon(toggle, this.navigationCollapsed ? 'navigation-open' : 'navigation-close', 18);
     }
 
+    private updateDiscussionMarkControls(): void {
+        const tools = this.root.querySelector<HTMLButtonElement>('#reader-discussion-tools');
+        if (!tools) return;
+        const count = this.discussionMarks?.count() || 0;
+        const open = this.discussionMarks?.isToolsOpen() || false;
+        const labelBase = open ? this.dictionary().closeDiscussionTools : this.dictionary().discussionTools;
+        const label = count ? `${labelBase} (${count})` : labelBase;
+        tools.dataset.tooltip = label;
+        tools.dataset.markCount = count ? String(count) : '';
+        tools.setAttribute('aria-label', label);
+        tools.classList.toggle('has-discussion-marks', count > 0);
+        tools.classList.toggle('is-active', open);
+    }
+
     private installToolbarIcons(): void {
         const icons: Array<[string, ReaderIconName]> = [
             ['#reader-back', 'chevron-left'],
@@ -615,7 +704,8 @@ class ReaderApplication {
             ['[data-panel="contents"]', 'contents'],
             ['[data-panel="definitions"]', 'definition'],
             ['[data-panel="symbols"]', 'sigma'],
-            ['[data-panel="propositions"]', 'propositions']
+            ['[data-panel="propositions"]', 'propositions'],
+            ['#reader-discussion-tools', 'marker']
         ];
         icons.forEach(([selector, icon]) => {
             const button = this.root.querySelector<HTMLElement>(selector);
@@ -723,6 +813,16 @@ class ReaderApplication {
             source: this.page.content,
             formulas: rendered.formulas
         });
+        const formalRanges = Object.fromEntries(Object.entries(this.page.labels)
+            .filter(([id, label]) => this.page?.dependencyMarkers?.[id]?.kind === 'theorem-like'
+                && label.filePath === this.page?.filePath
+                && typeof (label as any).startLine === 'number'
+                && typeof (label as any).endLine === 'number')
+            .map(([id, label]) => [id, {
+                startLine: (label as any).startLine + 1,
+                endLine: (label as any).endLine + 1
+            }]));
+        this.discussionMarks.bind(this.article, { filePath: this.page.filePath, formalRanges });
         this.recallPopover.bind(this.article);
         this.dependencyPopover.bind(this.article);
         this.leanPopover.bind(this.article);
@@ -765,22 +865,35 @@ class ReaderApplication {
         });
     }
 
-    private async handOffSelection(selection: ReaderSelectionHandoff, prompt?: string): Promise<boolean> {
-        try {
-            const handoff = await this.postJson<ReaderHandoffResponse>('/api/handoffs', { selection, prompt });
-            if (!(await copyReaderText(handoff.taskPrompt))) {
-                this.liveStatus.textContent = this.dictionary().handoffFailed;
-                window.setTimeout(() => { this.liveStatus.textContent = ''; }, 2200);
-                return false;
-            }
-            this.liveStatus.textContent = this.dictionary().handoffCopied;
-            window.setTimeout(() => { this.liveStatus.textContent = ''; }, 2200);
-            return true;
-        } catch (_error) {
-            this.liveStatus.textContent = this.dictionary().handoffFailed;
-            window.setTimeout(() => { this.liveStatus.textContent = ''; }, 2200);
-            return false;
-        }
+    private async refreshDiscussionMarks(): Promise<ReaderDiscussionMark[]> {
+        if (!this.state?.available) return [];
+        const response = await this.fetchJson<ReaderDiscussionMarksResponse>('/api/discussion-marks');
+        this.discussionMarks.setMarks(response.marks || []);
+        this.updateDiscussionMarkControls();
+        return response.marks || [];
+    }
+
+    private async addDiscussionMarks(locations: ReaderDiscussionMarkLocation[]): Promise<ReaderDiscussionMark[]> {
+        if (!locations.length) return this.refreshDiscussionMarks();
+        await this.postJson('/api/discussion-marks', { marks: locations });
+        return this.refreshDiscussionMarks();
+    }
+
+    private async removeDiscussionMark(id: string): Promise<void> {
+        await this.deleteJson('/api/discussion-marks?id=' + encodeURIComponent(id));
+        await this.refreshDiscussionMarks();
+    }
+
+    private async clearDiscussionMarks(): Promise<void> {
+        await this.deleteJson('/api/discussion-marks');
+        await this.refreshDiscussionMarks();
+    }
+
+    private reportLive(message: string): void {
+        this.liveStatus.textContent = message;
+        window.setTimeout(() => {
+            if (this.liveStatus.textContent === message) this.liveStatus.textContent = '';
+        }, 2200);
     }
 
     private currentPropositionReviewItems(): ReaderPropositionReviewItem[] {
@@ -808,56 +921,30 @@ class ReaderApplication {
         window.setTimeout(() => target.classList.remove('is-proposition-highlighted'), 1800);
     }
 
-    private propositionSourceRange(id: string): { startLine: number; endLine: number; sourceLines: string } | undefined {
+    private propositionDiscussionLocation(id: string): ReaderDiscussionMarkLocation | undefined {
         if (!this.page) return undefined;
+        const label = this.page.labels[id] as any;
         const target = this.article.querySelector<HTMLElement>('#formal-' + id);
-        if (!target) return undefined;
-        const startLine = Number(target.dataset.sourceStartLine);
-        const endLine = Number(target.dataset.sourceEndLine);
+        const startLine = typeof label?.startLine === 'number' ? label.startLine + 1 : Number(target?.dataset.sourceStartLine);
+        const endLine = typeof label?.endLine === 'number' ? label.endLine + 1 : Number(target?.dataset.sourceEndLine);
         if (!Number.isInteger(startLine) || !Number.isInteger(endLine) || startLine < 1 || endLine < startLine) return undefined;
         return {
+            filePath: this.page.filePath,
             startLine,
             endLine,
-            sourceLines: this.page.content.split(/\r?\n/).slice(startLine - 1, endLine).join('\n')
+            kind: 'formal',
+            formalId: id
         };
     }
 
-    private assistTerminalPropositions(items: ReaderPropositionReviewItem[]): void {
-        if (!this.page) return;
-        const excerpts: Array<{ item: ReaderPropositionReviewItem; startLine: number; endLine: number; sourceLines: string }> = [];
-        items.filter(item => item.marker.directDependents === 0).forEach(item => {
-            const range = this.propositionSourceRange(item.id);
-            if (range) excerpts.push({ item, ...range });
-        });
-        if (excerpts.length === 0) return;
-        const markdown = excerpts.map(({ item, sourceLines }) => [
-            '## ' + item.display + (item.title ? '（' + item.title + '）' : ''),
-            `图谱摘要：直接上游 ${item.marker.directDependencies} 项；显式 formal 引用 ${item.marker.sourceReferenceCount} 项。`,
-            sourceLines
-        ].join('\n')).join('\n\n');
-        const prompt = this.state?.language === 'en'
-            ? [
-                `Perform one read-only necessity review for all ${excerpts.length} terminal propositions collected from this chapter.`,
-                'A terminal proposition has no explicit downstream proposition reference in the current graph. Do not equate that with lack of value, and do not propose automatic deletion or source edits.',
-                'Review the candidates together as well as individually: they may form a closing group, an interface, technical lemmas, explanatory bridges, factual notes, or Lean/formalization anchors. Inspect related project sources read-only when useful.',
-                'Return: (1) a compact item-by-item table of observed role and evidence, (2) any collective role or redundancy among the candidates, (3) missing downstream linkage or documentation worth considering, and (4) cautious recommendations: retain / retain and clarify / consider restructuring / needs more evidence.'
-            ].join('\n\n')
-            : [
-                `请对本章收集到的 ${excerpts.length} 项终端命题做一次整体的只读必要性快审。`,
-                '终端命题只表示它们在当前显式依赖图中没有下游命题引用；不要把它等同于无价值，也不要提出自动删除或自动改写正文。',
-                '请同时逐项和整体判断：它们是否共同承担章节收束、接口、技术引理、解释性桥梁、事实注记或 Lean／形式化锚点等职责；必要时只读检查项目内相关源文件。',
-                '请输出：(1) 逐项的角色与证据短表；(2) 这些命题之间是否存在共同作用或冗余；(3) 值得补充的下游链接或文档说明；(4) 谨慎建议：保留／保留并澄清／考虑重构／需要更多证据。'
-        ].join('\n\n');
+    private markTerminalPropositions(items: ReaderPropositionReviewItem[]): void {
+        const locations = items
+            .filter(item => item.marker.directDependents === 0)
+            .map(item => this.propositionDiscussionLocation(item.id))
+            .filter((location): location is ReaderDiscussionMarkLocation => !!location);
+        if (!locations.length) return;
         this.toolbarPanel.close();
-        const selection = {
-            filePath: this.page.filePath,
-            startLine: Math.min(...excerpts.map(excerpt => excerpt.startLine)),
-            endLine: Math.max(...excerpts.map(excerpt => excerpt.endLine)),
-            text: markdown,
-            markdown,
-            sourceLines: markdown
-        };
-        void this.handOffSelection(selection, prompt);
+        void this.addDiscussionMarks(locations).then(() => this.reportLive(this.dictionary().markAdded(locations.length)));
     }
 
     private renderContents(container: HTMLElement): void {
@@ -1098,6 +1185,12 @@ class ReaderApplication {
                 this.openPanel(panelButton.dataset.panel, panelButton);
                 return;
             }
+            const discussionTools = target.closest<HTMLElement>('#reader-discussion-tools');
+            if (discussionTools && this.page) {
+                this.toolbarPanel.close();
+                this.discussionMarks.toggleTools();
+                return;
+            }
             const navigationToggle = target.closest<HTMLElement>('#reader-navigation-toggle');
             if (navigationToggle) {
                 this.setNavigationCollapsed(!this.navigationCollapsed);
@@ -1145,7 +1238,8 @@ class ReaderApplication {
             }
             if (initial && revision === this.state?.revision) return;
             const current = this.currentPath;
-            void this.refreshState().then(() => {
+            void this.refreshState().then(async () => {
+                await this.refreshDiscussionMarks();
                 this.liveStatus.textContent = this.dictionary().live;
                 window.setTimeout(() => { this.liveStatus.textContent = ''; }, 1200);
                 const next = this.state?.pages.some(page => page.filePath === current) ? current : this.state?.pages[0]?.filePath;

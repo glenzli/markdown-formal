@@ -13,15 +13,19 @@ import {
     type RuntimeDefinitionData
 } from '@math-workspace/core';
 import { projectReaderDependencyMarkers } from './dependency-markers';
+import {
+    ReaderDiscussionMarkStore,
+    type ReaderDiscussionMarkInput,
+    type ReaderDiscussionMarkKind
+} from './discussion-marks';
 import { ReaderProjectRegistry } from './projects';
-import { ReaderSelectionHandoffStore, type ReaderSelectionHandoff, type ReaderSelectionHandoffInput } from './selection-handoffs';
 import { ReaderWorkspace, type WorkspaceSnapshot } from './workspace';
 import { readLeanBuild } from '../lean/lean-state';
 import { readLeanDependencyArtifact } from '../lean/lean-dependencies';
 
 const http = require('node:http');
 const { URL } = require('node:url');
-const { randomBytes } = require('node:crypto');
+const { createHash, randomBytes } = require('node:crypto');
 
 const STATIC_CACHE_CONTROL = 'no-cache';
 const API_CACHE_CONTROL = 'no-store';
@@ -57,7 +61,7 @@ export interface FormalReaderServerOptions {
     port?: number;
     staticRoot?: string;
     recentProjectsPath?: string;
-    selectionHandoffsPath?: string;
+    discussionMarksPath?: string;
     chooseProjectDirectory?: () => Promise<string | undefined>;
 }
 
@@ -263,23 +267,35 @@ function requireRequestToken(request: any, response: any, requestToken: string):
     return false;
 }
 
-function selectionHandoffInput(snapshot: WorkspaceSnapshot, rootPath: string, body: any): ReaderSelectionHandoffInput {
-    const filePath = toPosix(String(body?.selection?.filePath || '')).replace(/^\/+/, '');
+function sourceHash(value: string): string {
+    return createHash('sha256').update(value).digest('hex');
+}
+
+function discussionMarkInput(snapshot: WorkspaceSnapshot, rootPath: string, value: any): ReaderDiscussionMarkInput {
+    const filePath = toPosix(String(value?.filePath || '')).replace(/^\/+/, '');
     const source = snapshot.documents.get(filePath);
-    if (!source) throw new Error('The selected file is not part of the bound Math Workspace project.');
-    const startLine = Number(body?.selection?.startLine);
-    const endLine = Number(body?.selection?.endLine);
+    if (!source) throw new Error('The marked file is not part of the bound Math Workspace project.');
+    const startLine = Number(value?.startLine);
+    const endLine = Number(value?.endLine);
     const lines = source.split(/\r?\n/);
     if (!Number.isInteger(startLine) || !Number.isInteger(endLine) || startLine < 1 || endLine < startLine || endLine > lines.length) {
-        throw new Error('The selected source range is invalid.');
+        throw new Error('The marked source range is invalid.');
     }
-    const markdown = String(body?.selection?.markdown || '').trim();
-    const text = String(body?.selection?.text || '').trim();
-    if (!markdown && !text) throw new Error('Select Markdown content before handing it to Codex.');
-    if (markdown.length > 24_000 || text.length > 12_000) throw new Error('The selected excerpt is too large for one Math Workspace handoff.');
+    const kind = value?.kind;
+    if (!['selection', 'formula', 'formal', 'region'].includes(kind)) {
+        throw new Error('The discussion mark kind is invalid.');
+    }
+    const hasTextOffsets = value?.startTextOffset !== undefined || value?.endTextOffset !== undefined;
+    const startTextOffset = Number(value?.startTextOffset);
+    const endTextOffset = Number(value?.endTextOffset);
+    if (hasTextOffsets && (kind !== 'selection'
+        || !Number.isInteger(startTextOffset)
+        || !Number.isInteger(endTextOffset)
+        || startTextOffset < 0
+        || endTextOffset <= startTextOffset)) {
+        throw new Error('A precise text selection requires a valid start and end offset.');
+    }
     const sourceLines = lines.slice(startLine - 1, endLine).join('\n');
-    const directReferences = Array.from(sourceLines.matchAll(/@([A-Za-z0-9_-]+)\b/g), match => match[1]);
-    const anchors = Array.from(sourceLines.matchAll(/#([A-Za-z0-9_-]+)\b/g), match => match[1]);
     const page = (snapshot.state.pages || []).find((item: any) => item.filePath === filePath);
     return {
         rootPath,
@@ -288,26 +304,35 @@ function selectionHandoffInput(snapshot: WorkspaceSnapshot, rootPath: string, bo
         title: page ? formatPageHeading(page, snapshot.state.config) : filePath,
         startLine,
         endLine,
-        markdown: markdown || text,
-        text,
-        sourceLines,
-        directReferences: Array.from(new Set(directReferences)),
-        anchors: Array.from(new Set(anchors))
+        sourceHash: sourceHash(sourceLines),
+        kind: kind as ReaderDiscussionMarkKind,
+        ...(typeof value?.formalId === 'string' && value.formalId.trim() ? { formalId: value.formalId.trim().replace(/^[@#]/, '') } : {}),
+        ...(typeof value?.formulaId === 'string' && value.formulaId.trim() ? { formulaId: value.formulaId.trim() } : {}),
+        ...(hasTextOffsets ? { startTextOffset, endTextOffset } : {})
     };
 }
 
-function optionalHandoffPrompt(value: unknown): string | undefined {
-    const prompt = typeof value === 'string' ? value.trim() : '';
-    if (!prompt) return undefined;
-    if (prompt.length > 16_000) throw new Error('The handoff question is too large.');
-    return prompt;
-}
-
-function handoffTaskPrompt(handoff: ReaderSelectionHandoff, question: string | undefined, language: string): string {
-    const instruction = language === 'en'
-        ? `Use Math Workspace's \`math_workspace_selection_get\` tool to read selection \`${handoff.id}\`. Treat that source as context, verify related project files as needed, then respond in this Codex task.`
-        : `请调用 Math Workspace 的 \`math_workspace_selection_get\` 工具读取选区 \`${handoff.id}\`；以该来源为上下文，必要时核对相关项目文件，并在当前 Codex 任务中继续处理。`;
-    return question ? `${instruction}\n\n${question}` : instruction;
+function discussionMarkProjection(snapshot: WorkspaceSnapshot, mark: any): Record<string, unknown> {
+    const source = snapshot.documents.get(mark.filePath);
+    const lines = source?.split(/\r?\n/);
+    const currentLines = lines?.slice(mark.startLine - 1, mark.endLine).join('\n');
+    const current = !!currentLines && sourceHash(currentLines) === mark.sourceHash;
+    return stripUndefinedFields({
+        id: mark.id,
+        order: mark.order,
+        createdAt: mark.createdAt,
+        revision: mark.revision,
+        kind: mark.kind,
+        filePath: mark.filePath,
+        title: mark.title,
+        startLine: mark.startLine,
+        endLine: mark.endLine,
+        formalId: mark.formalId,
+        formulaId: mark.formulaId,
+        startTextOffset: mark.startTextOffset,
+        endTextOffset: mark.endTextOffset,
+        status: current ? 'current' : 'changed'
+    });
 }
 
 function resolveWorkspacePath(rootPath: string, relativePath: string): string | undefined {
@@ -364,7 +389,7 @@ export async function startReaderServer(options: FormalReaderServerOptions): Pro
         stateFilePath: options.recentProjectsPath,
         chooseDirectory: options.chooseProjectDirectory
     });
-    const handoffs = new ReaderSelectionHandoffStore({ stateFilePath: options.selectionHandoffsPath });
+    const discussionMarks = new ReaderDiscussionMarkStore({ stateFilePath: options.discussionMarksPath });
     // This token only authorizes same-origin mutations from the current Math Workspace page.
     const requestToken = randomBytes(24).toString('hex');
     let rootPath: string | undefined;
@@ -469,16 +494,40 @@ export async function startReaderServer(options: FormalReaderServerOptions): Pro
             }
             const snapshot = workspace.current();
 
-            if (url.pathname === '/api/handoffs') {
+            if (url.pathname === '/api/discussion-marks') {
                 if (!requireRequestToken(request, response, requestToken)) return;
-                if (request.method !== 'POST') {
-                    sendText(response, 405, 'Selection handoffs are created with POST.');
+                if (request.method === 'GET') {
+                    const marks = await discussionMarks.list(rootPath);
+                    sendJson(response, 200, { marks: marks.map(mark => discussionMarkProjection(snapshot, mark)) });
                     return;
                 }
-                const body = await readJsonRequest(request, 64 * 1024);
-                const handoff = await handoffs.create(selectionHandoffInput(snapshot, rootPath, body));
-                const prompt = handoffTaskPrompt(handoff, optionalHandoffPrompt(body?.prompt), snapshot.state.config?.language || 'zh');
-                sendJson(response, 200, { selectionId: handoff.id, expiresAt: handoff.expiresAt, taskPrompt: prompt });
+                if (request.method === 'POST') {
+                    const body = await readJsonRequest(request, 16 * 1024);
+                    const rawMarks = Array.isArray(body?.marks) ? body.marks : [body?.mark || body];
+                    if (!rawMarks.length || rawMarks.length > 32) {
+                        sendText(response, 400, 'Create between one and 32 discussion marks at a time.');
+                        return;
+                    }
+                    const marks = await discussionMarks.addMany(rawMarks.map(mark => discussionMarkInput(snapshot, rootPath, mark)));
+                    sendJson(response, 200, { marks: marks.map(mark => discussionMarkProjection(snapshot, mark)) });
+                    return;
+                }
+                if (request.method === 'DELETE') {
+                    const id = url.searchParams.get('id');
+                    if (!id) {
+                        const cleared = await discussionMarks.clear(rootPath);
+                        sendJson(response, 200, { cleared });
+                        return;
+                    }
+                    const removed = await discussionMarks.remove(id, rootPath);
+                    if (!removed) {
+                        sendText(response, 404, 'Discussion mark not found.');
+                        return;
+                    }
+                    sendJson(response, 200, { removed: id });
+                    return;
+                }
+                sendText(response, 405, 'Discussion marks support GET, POST, and DELETE.');
                 return;
             }
 

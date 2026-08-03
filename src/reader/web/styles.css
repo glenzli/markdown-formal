@@ -116,6 +116,24 @@ button { cursor: pointer; }
 .icon-button .reader-icon { width: 18px; height: 18px; }
 .tool-button .reader-icon { width: 18px; height: 18px; }
 .icon-button:hover:not(:disabled), .tool-button:hover, .tool-button.is-active { background: #e8edf0; color: #175889; }
+.tool-button.has-discussion-marks { position: relative; }
+.tool-button.has-discussion-marks::after {
+    position: absolute;
+    top: 2px;
+    right: 1px;
+    min-width: 13px;
+    height: 13px;
+    border: 1px solid #fcfcfb;
+    border-radius: 999px;
+    background: #176fc1;
+    color: #fff;
+    content: attr(data-mark-count);
+    font-family: Inter, ui-sans-serif, sans-serif;
+    font-size: 8px;
+    font-weight: 800;
+    line-height: 13px;
+    text-align: center;
+}
 .icon-button:disabled { cursor: default; opacity: .35; }
 .reader-type-control { gap: 0; }
 .type-size-button {
@@ -132,6 +150,8 @@ button { cursor: pointer; }
 .reader-type-control output { min-width: 34px; color: #65707a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; text-align: center; }
 
 .reader-article {
+    position: relative;
+    isolation: isolate;
     max-width: 860px;
     min-height: calc(100vh - 56px);
     margin: 0 auto;
@@ -192,6 +212,99 @@ button { cursor: pointer; }
 .reader-article .formal-anchor { position: relative; scroll-margin-top: 80px; }
 .reader-article .formal-anchor:has(+ p), .reader-article p.formal-anchor { font-weight: 600; }
 .reader-article .formal-anchor.is-proposition-highlighted { border-radius: 3px; background: rgba(57, 129, 191, .14); box-shadow: 0 0 0 4px rgba(57, 129, 191, .12); transition: box-shadow 180ms ease, background-color 180ms ease; }
+.reader-article [data-source-start-line].is-discussion-marked {
+    position: relative;
+    border-radius: 3px;
+    background: rgba(243, 207, 90, .16);
+    transition: background-color 140ms ease;
+}
+.reader-article [data-source-start-line].is-discussion-marked:hover { background: rgba(243, 207, 90, .24); }
+.reader-article [data-source-start-line].is-discussion-mark-changed {
+    background: rgba(240, 169, 87, .18);
+}
+::highlight(math-workspace-discussion-mark) { background: rgba(243, 207, 90, .38); color: inherit; }
+::highlight(math-workspace-discussion-mark-changed) { background: rgba(240, 169, 87, .4); color: inherit; }
+.reader-article > :not(.reader-discussion-text-highlights) { position: relative; z-index: 1; }
+.reader-discussion-text-highlights {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    display: block;
+    pointer-events: none;
+}
+.reader-discussion-text-highlight {
+    position: absolute;
+    display: block;
+    border-radius: 2px;
+    background: rgba(243, 207, 90, .38);
+}
+.reader-discussion-text-highlight.is-discussion-mark-changed { background: rgba(240, 169, 87, .4); }
+.reader-formula.is-discussion-formula-marked {
+    border-radius: 3px;
+    background: rgba(243, 207, 90, .28);
+}
+.reader-formula.is-discussion-formula-marked:hover { background: rgba(243, 207, 90, .36); }
+.reader-formula.is-discussion-formula-mark-changed { background: rgba(240, 169, 87, .32); }
+.is-discussion-mark-origin { position: relative; }
+.is-discussion-mark-origin > .reader-discussion-mark-remove {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 3;
+    display: grid;
+    width: 18px;
+    height: 18px;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(255, 249, 231, .92);
+    color: #80540c;
+    opacity: 0;
+    padding: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease, transform 120ms ease;
+}
+.is-discussion-mark-origin:hover > .reader-discussion-mark-remove,
+.reader-discussion-mark-remove:focus-visible { opacity: 1; pointer-events: auto; }
+.is-discussion-mark-origin > .reader-discussion-mark-remove:hover { transform: scale(1.08); background: #fff0c9; }
+.is-discussion-mark-origin > .reader-discussion-mark-remove .reader-icon { width: 12px; height: 12px; }
+.reader-article.is-discussion-selection-ready { cursor: text; }
+.reader-article.is-discussion-lasso-ready { cursor: crosshair; user-select: none; }
+.reader-article.is-discussion-formal-ready .formal-anchor[data-discussion-formal] { cursor: copy; }
+.reader-article.is-discussion-formal-ready .formal-anchor[data-discussion-formal]:hover { border-radius: 3px; background: rgba(74, 142, 194, .1); }
+.reader-article.is-discussion-erase-ready [data-discussion-mark-ids] { cursor: cell; }
+.reader-discussion-tools {
+    position: fixed;
+    top: 68px;
+    right: max(18px, 3vw);
+    z-index: 31;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    border: 1px solid #d7e0e5;
+    border-radius: 8px;
+    background: rgba(255, 255, 254, .96);
+    box-shadow: 0 10px 28px rgba(43, 58, 68, .16);
+    padding: 4px;
+}
+.reader-discussion-tool {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: #62727d;
+    padding: 0;
+}
+.reader-discussion-tool:hover, .reader-discussion-tool.is-active { background: #edf3f7; color: #176195; }
+.reader-discussion-tool.is-active { box-shadow: inset 0 0 0 1px rgba(23, 97, 149, .2); }
+.reader-discussion-tool.is-destructive:hover, .reader-discussion-tool.is-destructive.is-active { background: #fff1df; color: #a25c13; }
+.reader-discussion-tool.is-close { margin-left: 2px; border-left: 1px solid #e4e9ec; border-radius: 0; }
+.reader-article.is-discussion-lasso-ready { cursor: crosshair; user-select: none; }
+.reader-discussion-lasso { position: fixed; z-index: 20; inset: 0; pointer-events: none; overflow: visible; }
+.reader-discussion-lasso path { fill: rgba(23, 111, 193, .08); stroke: #176fc1; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .reader-article .formal-anchor > strong:has(+ .reader-lean-anchor) {
     text-decoration-line: underline;
     text-decoration-color: rgb(104 120 201 / .68);
@@ -437,7 +550,7 @@ button { cursor: pointer; }
 .reader-proposition-terminal-summary-copy { min-width: 0; }
 .reader-proposition-terminal-summary-copy strong { display: block; color: #43515b; font-size: 12px; }
 .reader-proposition-terminal-summary-copy p { margin: 2px 0 0; color: #77838c; font-size: 11px; line-height: 1.42; }
-.reader-proposition-review-batch-audit {
+.reader-proposition-review-batch-mark {
     display: inline-flex;
     flex: 0 0 auto;
     align-items: center;
@@ -451,8 +564,8 @@ button { cursor: pointer; }
     font-weight: 700;
     white-space: nowrap;
 }
-.reader-proposition-review-batch-audit:hover { border-color: #ac7627; background: #fff2dc; }
-.reader-proposition-review-batch-audit .reader-icon { width: 15px; height: 15px; }
+.reader-proposition-review-batch-mark:hover { border-color: #ac7627; background: #fff2dc; }
+.reader-proposition-review-batch-mark .reader-icon { width: 15px; height: 15px; }
 .reader-outline, .reader-definition-entry {
     width: 100%;
     border: 0;
@@ -642,6 +755,26 @@ button { cursor: pointer; }
     .reader-formula:hover { background: rgba(158, 198, 232, .09); }
     .reader-formula.is-highlighted { background: rgba(94, 163, 217, .2); box-shadow: 0 0 0 4px rgba(94, 163, 217, .16); }
     .reader-article .formal-anchor.is-proposition-highlighted { background: rgba(94, 163, 217, .2); box-shadow: 0 0 0 4px rgba(94, 163, 217, .16); }
+    .reader-article [data-source-start-line].is-discussion-marked { background: rgba(182, 137, 38, .2); }
+    .reader-article [data-source-start-line].is-discussion-marked:hover { background: rgba(182, 137, 38, .29); }
+    .reader-article [data-source-start-line].is-discussion-mark-changed { background: rgba(175, 103, 29, .24); }
+    ::highlight(math-workspace-discussion-mark) { background: rgba(220, 176, 66, .45); color: inherit; }
+    ::highlight(math-workspace-discussion-mark-changed) { background: rgba(219, 130, 58, .48); color: inherit; }
+    .reader-discussion-text-highlight { background: rgba(220, 176, 66, .45); }
+    .reader-discussion-text-highlight.is-discussion-mark-changed { background: rgba(219, 130, 58, .48); }
+    .reader-formula.is-discussion-formula-marked { background: rgba(220, 176, 66, .34); }
+    .reader-formula.is-discussion-formula-marked:hover { background: rgba(220, 176, 66, .43); }
+    .reader-formula.is-discussion-formula-mark-changed { background: rgba(219, 130, 58, .39); }
+    .reader-discussion-mark-remove { background: rgba(61, 50, 28, .94); color: #f0cd83; }
+    .reader-discussion-mark-remove:hover { background: #4c3b1c; }
+    .reader-article.is-discussion-formal-ready .formal-anchor[data-discussion-formal]:hover { background: rgba(91, 163, 220, .16); }
+    .reader-discussion-tools { border-color: #4a4f54; background: rgba(38, 41, 44, .98); box-shadow: 0 12px 30px rgba(0, 0, 0, .42); }
+    .reader-discussion-tool { color: #bac4cb; }
+    .reader-discussion-tool:hover, .reader-discussion-tool.is-active { background: #343b41; color: #8fc5ef; }
+    .reader-discussion-tool.is-active { box-shadow: inset 0 0 0 1px rgba(143, 197, 239, .28); }
+    .reader-discussion-tool.is-destructive:hover, .reader-discussion-tool.is-destructive.is-active { background: #473321; color: #f1bd78; }
+    .reader-discussion-tool.is-close { border-color: #4a4f54; }
+    .tool-button.has-discussion-marks::after { border-color: #1c1e20; background: #4b9ce8; color: #101b22; }
     .reader-panel-close:hover, .reader-panel-action:hover, .reader-source-action:hover, .reader-definition-choices button:hover { background: #333a40; }
     .reader-toolbar-panel > header, .reader-symbol-detail, .reader-detail-header, .reader-definition-header { border-color: #40454a; }
     .reader-panel-empty, .reader-panel-summary, .reader-source-message { color: #b9c0c6; }
@@ -674,7 +807,7 @@ button { cursor: pointer; }
     .reader-proposition-map-node circle { filter: brightness(.9); }
     .reader-proposition-map-node:hover circle, .reader-proposition-map-node:focus-visible circle { filter: saturate(1.2) brightness(1); }
     .reader-proposition-terminal-summary { border-color: #40454a; }
-    .reader-proposition-review-batch-audit { border-color: #93733f; background: #3c3324; color: #f1d8a8; }
-    .reader-proposition-review-batch-audit:hover { background: #4a3d2a; }
+    .reader-proposition-review-batch-mark { border-color: #93733f; background: #3c3324; color: #f1d8a8; }
+    .reader-proposition-review-batch-mark:hover { background: #4a3d2a; }
     .reader-page-title, .type-size-button, .reader-type-control output { color: #d5d9dd; }
 }

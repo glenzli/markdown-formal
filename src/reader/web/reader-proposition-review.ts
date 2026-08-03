@@ -27,15 +27,15 @@ export interface ReaderPropositionReviewLabels {
     terminalPropositions: string;
     terminalPropositionSummary: (count: number) => string;
     terminalPropositionHint: string;
-    assistantReview: string;
-    assistantReviewHint: string;
+    markTerminal: string;
+    markTerminalHint: string;
     nodeLabel: (display: string, upstream: number, downstream: number, ambientReferences: number, leanDeclarations: number, status: string) => string;
 }
 
 export interface ReaderPropositionReviewHost {
     labels(): ReaderPropositionReviewLabels;
     openProposition(id: string): void;
-    assistTerminalPropositions(items: ReaderPropositionReviewItem[]): void;
+    markTerminalPropositions(items: ReaderPropositionReviewItem[]): void;
 }
 
 interface PositionedItem {
@@ -543,11 +543,11 @@ export class ReaderPropositionReview {
         if (terminal.length > 0) {
             const audit = document.createElement('button');
             audit.type = 'button';
-            audit.className = 'reader-proposition-review-batch-audit';
-            audit.dataset.tooltip = labels.assistantReviewHint;
-            audit.setAttribute('aria-label', labels.assistantReview + ' · ' + labels.terminalPropositionSummary(terminal.length));
-            audit.append(readerIcon('handoff'), document.createTextNode(labels.assistantReview));
-            audit.addEventListener('click', () => this.host.assistTerminalPropositions(terminal));
+            audit.className = 'reader-proposition-review-batch-mark';
+            audit.dataset.tooltip = labels.markTerminalHint;
+            audit.setAttribute('aria-label', labels.markTerminal + ' · ' + labels.terminalPropositionSummary(terminal.length));
+            audit.append(readerIcon('marker'), document.createTextNode(labels.markTerminal));
+            audit.addEventListener('click', () => this.host.markTerminalPropositions(terminal));
             section.append(audit);
         }
         return section;

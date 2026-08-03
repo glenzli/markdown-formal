@@ -5,16 +5,21 @@ import {
     ChevronRight,
     createElement,
     Copy,
+    Eraser,
     GitBranch,
     ListTree,
     LocateFixed,
-    MessageSquarePlus,
+    MousePointer2,
+    Bookmark,
+    PenLine,
     PanelLeftClose,
     PanelLeftOpen,
     Plus,
     RefreshCw,
     Sigma,
     Star,
+    TextCursor,
+    Trash2,
     X,
     type IconNode
 } from 'lucide';
@@ -28,15 +33,20 @@ export type ReaderIconName =
     | 'chevron-right'
     | 'copy-source'
     | 'copy-line'
-    | 'handoff'
+    | 'marker'
+    | 'marker-formal'
+    | 'marker-pen'
+    | 'marker-select'
     | 'propositions'
     | 'contents'
+    | 'eraser'
     | 'navigation-close'
     | 'navigation-open'
     | 'plus'
     | 'reload'
     | 'sigma'
     | 'star'
+    | 'trash'
     | 'x';
 
 const ICONS: Record<ReaderIconName, IconNode> = {
@@ -48,15 +58,20 @@ const ICONS: Record<ReaderIconName, IconNode> = {
     'chevron-right': ChevronRight,
     'copy-source': Copy,
     'copy-line': Copy,
-    handoff: MessageSquarePlus,
+    marker: Bookmark,
+    'marker-pen': PenLine,
+    'marker-select': TextCursor,
+    'marker-formal': MousePointer2,
     propositions: GitBranch,
     contents: ListTree,
+    eraser: Eraser,
     'navigation-close': PanelLeftClose,
     'navigation-open': PanelLeftOpen,
     plus: Plus,
     reload: RefreshCw,
     sigma: Sigma,
     star: Star,
+    trash: Trash2,
     x: X
 };
 

@@ -44,15 +44,15 @@ npm run workspace -- serve /path/to/writing-project
 
 Math Workspace 只监听 `127.0.0.1`，不写入书稿源码。打开命令打印的 URL 后，可获得章节导航、目录、当前页符号表、定义搜索、命题类对象和带 hash 补充注释旁的显式依赖标记、Lean 锚点徽章、引用回溯和源文件实时刷新。多卷结构会自然折叠成卷到章的导航层级。点击正文中的 Lean 徽章可查看锚定声明、审阅基线、最近构建与直接依赖比对；它们都只反映可审计的工程状态，不表示完整形式化或证明覆盖。
 
-正文或公式选区可通过“交给 Codex”生成短期 `mwsel_...` 交接引用，并自动复制一条紧凑提示。把它粘贴到所选的原生 Codex 任务后，Codex 会通过 Math Workspace MCP 读取已校验的源码位置、选区、相关 formal 引用和锚点；后续讨论、工具调用、修改与审批全部留在该原生任务历史中。交接记录只保存在本机、按项目根和源码 hash 校验，并在两小时后失效；它不是第二套对话或项目任务状态。
+正文中的“标记工具”提供选区、圈选、整条命题与擦除四种方式。已标记内容直接以柔和底色显示，悬停右上角可单独移除；选区、圈选与命题选择可并行保留。标记只保存项目内的 Markdown 文件与行号、formal/公式锚点和来源 hash，不复制正文，也不创建第二套会话。随后在原生 Codex 任务中直接开始讨论；Codex 可调用 `math_workspace_discussion_marks_get` 读取当前标记的定位，再自行读取对应源码。
 
-仓库也提供 Codex MCP plugin。它可启动或复用本地 Math Workspace，并提供选区、命题、严格依赖、Lean 对齐和只读校验查询；不嵌入或复制工作区前端，更不维护另一套 Codex 对话逻辑：
+仓库也提供 Codex MCP plugin。它可启动或复用本地 Math Workspace，并提供讨论标记、命题、严格依赖、Lean 对齐和只读校验查询；不嵌入或复制工作区前端，更不维护另一套 Codex 对话逻辑：
 
 ```bash
 math-workspace mcp
 ```
 
-安装 plugin 后，Codex 可以调用 `math_workspace` 打开当前 prepared project 或指定章节；也可以调用 `math_workspace_selection_get` 读取粘贴进任务的 `mwsel_...`，以及相应的命题、依赖、Lean 和校验工具。没有绑定项目时则显示本机项目启动台。开发使用 `npm link` 时，确保 `math-workspace` 在 `PATH` 中即可。
+安装 plugin 后，Codex 可以调用 `math_workspace` 打开当前 prepared project 或指定章节；当用户提及“标记的材料”或“这段内容”时，可调用 `math_workspace_discussion_marks_get` 获得当前讨论标记的源码定位，并结合命题、依赖、Lean 和校验工具完成工作。没有绑定项目时则显示本机项目启动台。开发使用 `npm link` 时，确保 `math-workspace` 在 `PATH` 中即可。
 
 ![多卷章节导航](media/readme/navigation.png)
 

@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { formatDisplayNumber, type LabelData, type PageData } from '@math-workspace/core';
 import { readLeanBuild } from '../lean/lean-state';
 import { readLeanDependencyArtifact } from '../lean/lean-dependencies';
-import { ReaderSelectionHandoffStore } from '../reader/selection-handoffs';
+import { ReaderDiscussionMarkStore } from '../reader/discussion-marks';
 import { loadWorkspaceSnapshot, type WorkspaceSnapshot } from '../reader/workspace';
 
 const nodeFs = require('node:fs');
@@ -21,7 +21,7 @@ const MAX_GRAPH_NODES = 72;
 
 export interface WorkspaceQueryOptions {
     rootPath?: string;
-    handoffsPath?: string;
+    discussionMarksPath?: string;
 }
 
 function normalizeFormalId(value: string): string {
@@ -71,39 +71,40 @@ function nodeSummary(snapshot: WorkspaceSnapshot, id: string): Record<string, un
 }
 
 export class WorkspaceQueries {
-    private readonly handoffs: ReaderSelectionHandoffStore;
+    private readonly discussionMarks: ReaderDiscussionMarkStore;
 
     constructor(private readonly options: WorkspaceQueryOptions = {}) {
-        this.handoffs = new ReaderSelectionHandoffStore({ stateFilePath: options.handoffsPath });
+        this.discussionMarks = new ReaderDiscussionMarkStore({ stateFilePath: options.discussionMarksPath });
     }
 
-    async selectionGet(selectionId: string, projectRoot?: string): Promise<Record<string, unknown>> {
+    async discussionMarksGet(projectRoot?: string): Promise<Record<string, unknown>> {
         const rootPath = await this.resolveRoot(projectRoot);
-        const handoff = await this.handoffs.get(selectionId, rootPath);
-        if (!handoff) {
-            throw new Error('This Math Workspace selection handoff is missing, expired, or belongs to another project. Re-select the source and create a fresh handoff.');
-        }
         const snapshot = await loadWorkspaceSnapshot(rootPath);
-        const source = snapshot.documents.get(handoff.filePath);
-        const currentLines = source?.split(/\r?\n/).slice(handoff.startLine - 1, handoff.endLine).join('\n');
-        if (!source || currentLines === undefined || sourceHash(currentLines) !== handoff.sourceHash) {
-            throw new Error('This Math Workspace selection changed after it was handed off. Re-select the current source before continuing.');
-        }
+        const marks = await this.discussionMarks.list(rootPath);
         return {
-            selectionId: handoff.id,
-            expiresAt: handoff.expiresAt,
-            project: { rootName: path.basename(rootPath), revision: snapshot.revision },
-            source: {
-                filePath: handoff.filePath,
-                title: handoff.title,
-                startLine: handoff.startLine,
-                endLine: handoff.endLine,
-                markdown: handoff.markdown,
-                text: handoff.text,
-                sourceLines: handoff.sourceLines,
-                directReferences: handoff.directReferences,
-                anchors: handoff.anchors
-            }
+            project: { rootPath, rootName: path.basename(rootPath), revision: snapshot.revision },
+            marks: marks.map(mark => {
+                const source = snapshot.documents.get(mark.filePath);
+                const currentLines = source?.split(/\r?\n/).slice(mark.startLine - 1, mark.endLine).join('\n');
+                return {
+                    id: mark.id,
+                    order: mark.order,
+                    createdAt: mark.createdAt,
+                    kind: mark.kind,
+                    filePath: mark.filePath,
+                    title: mark.title,
+                    startLine: mark.startLine,
+                    endLine: mark.endLine,
+                    ...(mark.formalId ? { formalId: mark.formalId } : {}),
+                    ...(mark.formulaId ? { formulaId: mark.formulaId } : {}),
+                    ...(Number.isInteger(mark.startTextOffset) ? { startTextOffset: mark.startTextOffset } : {}),
+                    ...(Number.isInteger(mark.endTextOffset) ? { endTextOffset: mark.endTextOffset } : {}),
+                    status: currentLines && sourceHash(currentLines) === mark.sourceHash ? 'current' : 'changed'
+                };
+            }),
+            guidance: marks.length
+                ? 'Read the listed Markdown ranges from the local project before answering. Do not treat this locator response as source content.'
+                : 'No discussion marks are active for this project.'
         };
     }
 

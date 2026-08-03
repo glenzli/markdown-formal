@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { defaultProjectStateFilePath } from './local-state';
 
 const os = require('node:os');
+const nodeFs = require('node:fs');
 const { spawn } = require('node:child_process');
 
 const MAX_RECENT_PROJECTS = 12;
@@ -94,13 +95,14 @@ export class ReaderProjectRegistry {
         if (!(await this.isFormalProject(resolvedPath))) {
             throw new Error('Selected directory needs .math-workspace/config.json. Run `math-workspace prepare` in the project first.');
         }
+        const canonicalPath = await nodeFs.promises.realpath(resolvedPath);
         const record: ReaderProjectRecord = {
-            rootPath: resolvedPath,
-            rootName: path.basename(resolvedPath),
+            rootPath: canonicalPath,
+            rootName: path.basename(canonicalPath),
             openedAt: new Date().toISOString()
         };
         const previous = await this.readStored();
-        const projects = [record, ...previous.filter(item => item.rootPath !== resolvedPath)].slice(0, MAX_RECENT_PROJECTS);
+        const projects = [record, ...previous.filter(item => item.rootPath !== canonicalPath)].slice(0, MAX_RECENT_PROJECTS);
         try {
             await fs.mkdir(path.dirname(this.stateFilePath), { recursive: true });
             await fs.writeFile(this.stateFilePath, JSON.stringify({ version: 1, projects }, null, 2) + '\n', 'utf8');

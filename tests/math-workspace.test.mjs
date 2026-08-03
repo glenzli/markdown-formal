@@ -1813,6 +1813,110 @@ async function testReaderSelectionHandoff() {
     }
 }
 
+async function testReaderDiscussionMarks() {
+    const root = await makeWorkspace('reader-discussion-marks');
+    const chapterPath = path.join(root, 'book1', '01-foundations.md');
+    await fs.writeFile(chapterPath, [
+        '# #h-1111111111111111 Foundations',
+        '',
+        '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
+        '',
+        '推论 #h-4444444444444444（Consequence）：Apply @h-3333333333333333.',
+        ''
+    ].join('\n'));
+    assert.equal(runCli(root, ['prepare']).status, 0);
+    const env = {
+        MATH_WORKSPACE_STATE: path.join(root, 'reader-projects.json'),
+        MATH_WORKSPACE_DISCUSSION_MARKS: path.join(root, 'reader-discussion-marks.json')
+    };
+    const reader = await startReader(root, { env });
+    try {
+        const state = await (await fetch(reader.url + '/api/state')).json();
+        const unauthorized = await fetch(reader.url + '/api/discussion-marks');
+        assert.equal(unauthorized.status, 403);
+        const created = await fetch(reader.url + '/api/discussion-marks', {
+            method: 'POST',
+            headers: {
+                'content-type': 'application/json',
+                'x-math-workspace-token': state.requestToken
+            },
+            body: JSON.stringify({ marks: [
+                { filePath: 'book1/01-foundations.md', startLine: 3, endLine: 3, kind: 'formal', formalId: 'h-3333333333333333' },
+                { filePath: 'book1/01-foundations.md', startLine: 5, endLine: 5, kind: 'region' },
+                {
+                    filePath: 'book1/01-foundations.md',
+                    startLine: 3,
+                    endLine: 3,
+                    kind: 'selection',
+                    startTextOffset: 21,
+                    endTextOffset: 25
+                }
+            ] })
+        });
+        assert.equal(created.status, 200);
+        const createdPayload = await created.json();
+        assert.equal(createdPayload.marks.length, 3);
+        assert.equal(createdPayload.marks[0].status, 'current');
+        assert.equal(createdPayload.marks[0].formalId, 'h-3333333333333333');
+        assert.equal(createdPayload.marks[2].startTextOffset, 21);
+        assert.equal(createdPayload.marks[2].endTextOffset, 25);
+        assert.equal('markdown' in createdPayload.marks[0], false);
+
+        const stored = JSON.parse(await fs.readFile(env.MATH_WORKSPACE_DISCUSSION_MARKS, 'utf8'));
+        assert.equal(stored.marks.length, 3, JSON.stringify(stored));
+        assert.equal(stored.marks[0].rootPath, await fs.realpath(root), JSON.stringify(stored));
+        assert.equal(typeof stored.marks[0].sourceHash, 'string');
+
+        const listed = await fetch(reader.url + '/api/discussion-marks', {
+            headers: { 'x-math-workspace-token': state.requestToken }
+        });
+        assert.equal(listed.status, 200);
+        const listedPayload = await listed.json();
+        assert.equal(listedPayload.marks.length, 3);
+
+        const mcp = await startMcp(root, { env });
+        try {
+            const tools = await mcp.request('tools/list');
+            assert.ok(tools.tools.some(tool => tool.name === 'math_workspace_discussion_marks_get'));
+            assert.equal(tools.tools.some(tool => tool.name === 'math_workspace_selection_get'), false);
+            const marked = await mcp.request('tools/call', {
+                name: 'math_workspace_discussion_marks_get',
+                arguments: {}
+            });
+            assert.equal(marked.isError, undefined, JSON.stringify(marked));
+            const result = marked.structuredContent.result;
+            assert.equal(result.marks.length, 3);
+            assert.equal(result.marks[0].filePath, 'book1/01-foundations.md');
+            assert.equal(result.marks[0].startLine, 3);
+            assert.equal(result.marks[2].startTextOffset, 21);
+            assert.equal(result.marks[2].endTextOffset, 25);
+            assert.equal(JSON.stringify(result).includes('Every open cover has a finite subcover.'), false);
+
+            await fs.writeFile(chapterPath, (await fs.readFile(chapterPath, 'utf8')).replace('finite subcover.', 'finite extracted subcover.'));
+            const stale = await mcp.request('tools/call', {
+                name: 'math_workspace_discussion_marks_get',
+                arguments: {}
+            });
+            assert.equal(stale.structuredContent.result.marks[0].status, 'changed');
+        } finally {
+            await stopReader(mcp.child);
+        }
+
+        const removed = await fetch(reader.url + '/api/discussion-marks?id=' + encodeURIComponent(createdPayload.marks[0].id), {
+            method: 'DELETE',
+            headers: { 'x-math-workspace-token': state.requestToken }
+        });
+        assert.equal(removed.status, 200);
+        const cleared = await fetch(reader.url + '/api/discussion-marks', {
+            method: 'DELETE',
+            headers: { 'x-math-workspace-token': state.requestToken }
+        });
+        assert.equal((await cleared.json()).cleared, 2);
+    } finally {
+        await stopReader(reader.child);
+    }
+}
+
 async function testReaderLauncher() {
     const root = await makeWorkspace('reader-launcher');
     await fs.writeFile(path.join(root, 'book1', '01-foundations.md'), [
@@ -2288,7 +2392,7 @@ const tests = [
     ['local Reader server', testReaderServer],
     ['local Reader MCP server', testReaderMcpServer],
     ['Reader plugin MCP configuration', testReaderPluginMcpConfig],
-    ['local Reader selection handoff', testReaderSelectionHandoff],
+    ['local Reader discussion marks', testReaderDiscussionMarks],
     ['local Reader launcher', testReaderLauncher],
     ['page heading formatting', testPageHeadingFormatting],
     ['export-md compiles formal syntax', testExportMarkdownCompilesFormalSyntax],
