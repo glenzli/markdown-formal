@@ -20,7 +20,6 @@ export interface ReaderSourceActionLabels {
     copied: string;
     noDefinitions: string;
     refineDefinitionQuery: string;
-    taskDiscussion: string;
     discussWithTask: string;
 }
 
@@ -38,7 +37,6 @@ export interface ReaderSourceActionsHost {
     fetchDefinition(index: number): Promise<any>;
     renderDefinition(definition: any): string;
     locateDefinition(definition: ReaderDefinitionMatch): void;
-    taskSelection(selection: ReaderDiscussionSelection): void;
     discussSelection(selection: ReaderDiscussionSelection): void;
     labels(): ReaderSourceActionLabels;
 }
@@ -289,10 +287,6 @@ export class ReaderSourceActions {
                 markdown: selected.markdown || selected.text,
                 sourceLines: selected.sourceLines
             };
-            actions.append(this.iconButton('task', labels.taskDiscussion, () => {
-                this.host.taskSelection(discussionSelection);
-                this.dismiss();
-            }));
             actions.append(this.iconButton('discuss', labels.discussWithTask, () => {
                 this.host.discussSelection(discussionSelection);
                 this.dismiss();
@@ -341,10 +335,6 @@ export class ReaderSourceActions {
                     markdown: formula.source,
                     sourceLines: range.sourceLines
                 };
-                actions.append(this.iconButton('task', labels.taskDiscussion, () => {
-                    this.host.taskSelection(discussionSelection);
-                    this.dismiss();
-                }));
                 actions.append(this.iconButton('discuss', labels.discussWithTask, () => {
                     this.host.discussSelection(discussionSelection);
                     this.dismiss();

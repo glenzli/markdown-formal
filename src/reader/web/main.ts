@@ -42,29 +42,7 @@ interface ReaderState {
     issues: Array<{ severity: string; code: string; message: string }>;
     leanSummary?: Record<string, number>;
     requestToken?: string;
-    codex?: { bindings?: ReaderTaskBindings };
     recentProjects?: Array<{ index: number; rootName: string; openedAt: string }>;
-}
-
-interface ReaderTaskBinding {
-    taskId: string;
-    taskName: string;
-    boundAt: string;
-}
-
-interface ReaderTaskBindings {
-    primaryTaskId: string;
-    tasks: ReaderTaskBinding[];
-}
-
-interface ReaderTaskSummary {
-    taskId: string;
-    taskName: string;
-}
-
-interface PendingPrimaryTaskRequest {
-    selection: ReaderDiscussionSelection;
-    prompt: string;
 }
 
 interface ReaderPagePayload {
@@ -113,7 +91,7 @@ const words = {
         propositionReviewTerminalPropositionSummary: (count: number) => `终端命题 ${count} 项`,
         propositionReviewTerminalPropositionHint: '这些命题当前在严格依赖图中没有下游引用；其章节作用与形式化锚点可按需审阅。',
         propositionReviewAssistantReview: '辅助快审',
-        propositionReviewAssistantReviewHint: '将本章终端命题送至主任务，进行一次只读必要性快审；不会自动删改正文。',
+        propositionReviewAssistantReviewHint: '在临时讨论中对本章终端命题进行一次只读必要性快审；不会自动删改正文。',
         propositionReviewNodeLabel: (display: string, upstream: number, downstream: number, ambientReferences: number, leanDeclarations: number, status: string) => `${display}；严格上游 ${upstream} 项，严格下游 ${downstream} 项，正文补充提及 ${ambientReferences} 处${leanDeclarations > 0 ? `，Lean 锚点 ${leanDeclarations} 个声明` : ''}；${status}`,
         source: '来源',
         jump: '定位',
@@ -143,26 +121,7 @@ const words = {
         projectLauncherTitle: '打开 Math Workspace',
         projectLauncherDescription: '选择一个已包含 .math-workspace/config.json 的项目目录。',
         projectSelectionCancelled: '尚未选择项目。',
-        tasks: '任务',
         discussWithTask: '临时讨论',
-        primaryTask: '默认任务',
-        bindTask: '绑定任务',
-        boundTask: '已绑定',
-        bindAdditionalTask: '绑定其他任务',
-        changeTask: '设为默认任务',
-        unbindTask: '解除绑定',
-        reloadTasks: '刷新任务',
-        noTasks: '当前项目没有可绑定的 Codex 任务。',
-        taskSelectionRequired: '先在正文中选中一段内容，再发送到任务。',
-        selectedContext: '将附带当前选区',
-        sendTarget: '发送至',
-        taskPrompt: '输入要发送给所选任务的问题',
-        sendToTask: '发送',
-        loadingTasks: '正在读取当前项目的 Codex 任务…',
-        taskWaiting: 'Codex 正在处理该选区…',
-        taskUnavailable: '无法连接 Codex app-server。请确认 Codex CLI 已安装并已登录。',
-        taskResponseEmpty: '该任务已完成，但没有返回文本回复。',
-        taskApprovalNote: 'Math Workspace 不处理工具审批；需要工具操作时，请在 Codex 中继续此任务。',
         temporaryDiscussion: '临时讨论',
         temporaryDiscussionContext: '发送给 Codex 的上下文',
         temporaryDiscussionAccess: '工作区访问',
@@ -171,12 +130,15 @@ const words = {
         temporaryDiscussionSend: '发送',
         temporaryDiscussionEmpty: '临时讨论没有返回文本回复。',
         temporaryDiscussionReadOnly: '这是一段不落盘的只读临时讨论。首条消息会携带下方源码、位置和项目根；后续消息保留该上下文。',
-        temporaryDiscussionBoundTask: '打开默认任务',
-        temporaryDiscussionNoTask: '请先在任务面板中绑定默认任务',
-        temporaryDiscussionInject: '将此结论发送到默认任务',
-        temporaryDiscussionInjecting: '正在将该结论发送到默认任务…',
-        temporaryDiscussionInjected: '结论已发送到默认任务。',
         temporaryDiscussionRefresh: '刷新讨论',
+        temporaryDiscussionQuote: '复制引用',
+        temporaryDiscussionQuoted: '已复制引用',
+        temporaryDiscussionQuoteFailed: '无法复制引用，请重试。',
+        temporaryDiscussionQuoteHeader: '来自 Math Workspace 临时讨论',
+        temporaryDiscussionQuoteSource: '来源',
+        temporaryDiscussionQuoteSelection: '选区',
+        temporaryDiscussionQuoteQuestion: '问题',
+        temporaryDiscussionQuoteConclusion: '临时讨论结论',
         leanAlignment: 'Lean 对齐',
         leanLoading: '正在读取 Lean 对齐信息…',
         leanUnavailable: '暂时无法读取 Lean 对齐信息。',
@@ -215,7 +177,7 @@ const words = {
         propositionReviewTerminalPropositionSummary: (count: number) => `${count} terminal proposition${count === 1 ? '' : 's'}`,
         propositionReviewTerminalPropositionHint: 'These propositions currently have no downstream reference in the strict dependency graph; their chapter role and formalization anchors can be reviewed when useful.',
         propositionReviewAssistantReview: 'Assisted quick review',
-        propositionReviewAssistantReviewHint: 'Send this chapter’s terminal propositions to the primary task for one read-only necessity review; no source changes are made automatically.',
+        propositionReviewAssistantReviewHint: 'Open a temporary discussion for one read-only necessity review of this chapter’s terminal propositions; no source changes are made automatically.',
         propositionReviewNodeLabel: (display: string, upstream: number, downstream: number, ambientReferences: number, leanDeclarations: number, status: string) => `${display}; ${upstream} strict upstream, ${downstream} strict downstream, ${ambientReferences} supplemental text mention${ambientReferences === 1 ? '' : 's'}${leanDeclarations > 0 ? `, Lean anchor with ${leanDeclarations} declaration${leanDeclarations === 1 ? '' : 's'}` : ''}; ${status}`,
         source: 'Source',
         jump: 'Locate',
@@ -245,26 +207,7 @@ const words = {
         projectLauncherTitle: 'Open Math Workspace',
         projectLauncherDescription: 'Choose a project folder containing .math-workspace/config.json.',
         projectSelectionCancelled: 'No project was selected.',
-        tasks: 'Tasks',
         discussWithTask: 'Temporary discussion',
-        primaryTask: 'Default task',
-        bindTask: 'Bind task',
-        boundTask: 'Bound',
-        bindAdditionalTask: 'Bind another task',
-        changeTask: 'Make default task',
-        unbindTask: 'Unbind task',
-        reloadTasks: 'Refresh tasks',
-        noTasks: 'No Codex task can be bound to this project.',
-        taskSelectionRequired: 'Select a passage in the document before sending it to a task.',
-        selectedContext: 'The current selection will be attached',
-        sendTarget: 'Send to',
-        taskPrompt: 'Ask the selected task about the selection',
-        sendToTask: 'Send',
-        loadingTasks: 'Loading Codex tasks for this project…',
-        taskWaiting: 'Codex is working with this selection…',
-        taskUnavailable: 'Could not reach Codex app-server. Confirm that the Codex CLI is installed and signed in.',
-        taskResponseEmpty: 'The task completed without a text response.',
-        taskApprovalNote: 'Math Workspace does not handle tool approvals; continue this task in Codex when tools are needed.',
         temporaryDiscussion: 'Temporary discussion',
         temporaryDiscussionContext: 'Context sent to Codex',
         temporaryDiscussionAccess: 'Workspace access',
@@ -273,12 +216,15 @@ const words = {
         temporaryDiscussionSend: 'Send',
         temporaryDiscussionEmpty: 'The temporary discussion returned no text response.',
         temporaryDiscussionReadOnly: 'This is an ephemeral, read-only discussion. Its first message includes the source, location, and project root below; later messages retain that context.',
-        temporaryDiscussionBoundTask: 'Open default task',
-        temporaryDiscussionNoTask: 'Bind a default task in the task panel first',
-        temporaryDiscussionInject: 'Send this conclusion to the default task',
-        temporaryDiscussionInjecting: 'Sending this conclusion to the default task…',
-        temporaryDiscussionInjected: 'The conclusion was sent to the default task.',
         temporaryDiscussionRefresh: 'Refresh discussion',
+        temporaryDiscussionQuote: 'Copy citation',
+        temporaryDiscussionQuoted: 'Citation copied',
+        temporaryDiscussionQuoteFailed: 'Could not copy the citation. Try again.',
+        temporaryDiscussionQuoteHeader: 'From a Math Workspace temporary discussion',
+        temporaryDiscussionQuoteSource: 'Source',
+        temporaryDiscussionQuoteSelection: 'Selection',
+        temporaryDiscussionQuoteQuestion: 'Question',
+        temporaryDiscussionQuoteConclusion: 'Temporary discussion conclusion',
         leanAlignment: 'Lean alignment',
         leanLoading: 'Loading Lean alignment…',
         leanUnavailable: 'Lean alignment details are unavailable.',
@@ -381,11 +327,6 @@ class ReaderApplication {
     private toolbarPanel!: ReaderToolbarPanel;
     private propositionReview!: ReaderPropositionReview;
     private realtimeEvents: EventSource | undefined;
-    private taskBindings: ReaderTaskBindings | undefined;
-    private taskListCache: ReaderTaskSummary[] | undefined;
-    private taskTargetId: string | undefined;
-    private pendingTaskSelection: ReaderDiscussionSelection | undefined;
-    private pendingPrimaryTaskRequest: PendingPrimaryTaskRequest | undefined;
 
     async start(): Promise<void> {
         this.buildShell();
@@ -420,7 +361,7 @@ class ReaderApplication {
             '<button id="reader-navigation-toggle" class="icon-button reader-navigation-toggle" type="button"></button>',
             '<div class="reader-history"><button id="reader-back" class="icon-button" aria-label="Back"></button><button id="reader-forward" class="icon-button" aria-label="Forward"></button></div>',
             '<div id="reader-page-title" class="reader-page-title"></div>',
-            '<div class="reader-tools"><button class="tool-button" data-panel="contents" aria-label="Contents"></button><button class="tool-button" data-panel="definitions" aria-label="Definitions"></button><button class="tool-button" data-panel="symbols" aria-label="Symbols"></button><button class="tool-button" data-panel="propositions" aria-label="Proposition review"></button><button class="tool-button" data-panel="tasks" aria-label="Task discussion"></button></div>',
+            '<div class="reader-tools"><button class="tool-button" data-panel="contents" aria-label="Contents"></button><button class="tool-button" data-panel="definitions" aria-label="Definitions"></button><button class="tool-button" data-panel="symbols" aria-label="Symbols"></button><button class="tool-button" data-panel="propositions" aria-label="Proposition review"></button></div>',
             '<div class="reader-type-control"><button type="button" class="type-size-button" data-font-size="-1" aria-label="Decrease text size">A−</button><output id="reader-font-size" aria-live="polite">' + this.fontSize + 'px</output><button type="button" class="type-size-button" data-font-size="1" aria-label="Increase text size">A+</button></div>',
             '<span id="reader-live" class="reader-live" aria-live="polite"></span>',
             '</header><article id="reader-article" class="reader-article"></article></main>',
@@ -440,7 +381,6 @@ class ReaderApplication {
             fetchDefinition: index => this.fetchJson<any>('/api/definition?index=' + index),
             renderDefinition: definition => this.renderDefinitionContent(definition),
             locateDefinition: definition => this.locateDefinition(definition),
-            taskSelection: selection => this.openTaskDiscussion(selection),
             discussSelection: selection => this.openTemporaryDiscussion(selection),
             labels: () => {
                 const dictionary = this.dictionary();
@@ -453,7 +393,6 @@ class ReaderApplication {
                     copied: dictionary.copied,
                     noDefinitions: dictionary.noDefinitions,
                     refineDefinitionQuery: dictionary.refineDefinitionQuery,
-                    taskDiscussion: dictionary.tasks,
                     discussWithTask: dictionary.discussWithTask
                 };
             }
@@ -523,9 +462,7 @@ class ReaderApplication {
         this.discussionDialog = new ReaderDiscussionDialog({
             postJson: (url, value) => this.postJson(url, value),
             renderMarkdown: (markdown, filePath) => renderFormalMarkdown(this.markdown, markdown, this.renderOptions(filePath)),
-            labels: () => this.dictionary(),
-            hasBoundTask: () => !!this.primaryTask(),
-            openTaskPanel: () => this.openTaskPanel()
+            labels: () => this.dictionary()
         });
     }
 
@@ -565,27 +502,10 @@ class ReaderApplication {
 
     private applyState(state: ReaderState): void {
         this.state = state;
-        this.setTaskBindings(state.codex?.bindings);
         const dictionary = this.dictionary();
         (this.root.querySelector('#reader-page-filter') as HTMLInputElement).placeholder = dictionary.search;
         this.renderNavigation((this.root.querySelector('#reader-page-filter') as HTMLInputElement).value);
         this.updateToolbarLabels();
-    }
-
-    private setTaskBindings(bindings: ReaderTaskBindings | undefined): void {
-        this.taskBindings = bindings?.tasks.length ? bindings : undefined;
-        if (!this.taskBindings) {
-            this.taskTargetId = undefined;
-            return;
-        }
-        if (!this.taskBindings.tasks.some(task => task.taskId === this.taskTargetId)) {
-            this.taskTargetId = this.taskBindings.primaryTaskId;
-        }
-    }
-
-    private primaryTask(): ReaderTaskBinding | undefined {
-        const bindings = this.taskBindings;
-        return bindings?.tasks.find(task => task.taskId === bindings.primaryTaskId);
     }
 
     private renderProjectLauncher(message = ''): void {
@@ -725,8 +645,7 @@ class ReaderApplication {
             ['[data-panel="contents"]', 'contents'],
             ['[data-panel="definitions"]', 'definition'],
             ['[data-panel="symbols"]', 'sigma'],
-            ['[data-panel="propositions"]', 'propositions'],
-            ['[data-panel="tasks"]', 'task']
+            ['[data-panel="propositions"]', 'propositions']
         ];
         icons.forEach(([selector, icon]) => {
             const button = this.root.querySelector<HTMLElement>(selector);
@@ -873,13 +792,10 @@ class ReaderApplication {
             if (view === 'definitions') this.renderDefinitions(content);
             if (view === 'symbols') this.renderSymbols(content);
             if (view === 'propositions') this.propositionReview.render(content, this.currentPropositionReviewItems());
-            if (view === 'tasks') this.renderTasks(content);
         });
     }
 
     private openTemporaryDiscussion(selection: ReaderDiscussionSelection, initialPrompt?: string): void {
-        this.pendingTaskSelection = selection;
-        this.pendingPrimaryTaskRequest = undefined;
         this.discussionDialog.open(selection, initialPrompt);
     }
 
@@ -957,257 +873,7 @@ class ReaderApplication {
             markdown,
             sourceLines: markdown
         };
-        this.pendingTaskSelection = selection;
-        this.pendingPrimaryTaskRequest = { selection, prompt };
-        this.openTaskPanel();
-    }
-
-    private openTaskDiscussion(selection: ReaderDiscussionSelection): void {
-        this.pendingTaskSelection = selection;
-        this.pendingPrimaryTaskRequest = undefined;
-        this.openTaskPanel();
-    }
-
-    private openTaskPanel(): void {
-        const trigger = this.root.querySelector<HTMLElement>('[data-panel="tasks"]');
-        if (trigger) this.openPanel('tasks', trigger);
-    }
-
-    private renderTasks(container: HTMLElement): void {
-        container.replaceChildren();
-        const bindings = this.taskBindings;
-        const primary = this.primaryTask();
-        if (!bindings || !primary) {
-            this.renderTaskPicker(container);
-            return;
-        }
-
-        const bindingHeader = document.createElement('div');
-        bindingHeader.className = 'reader-task-picker-header';
-        const bindingHeading = document.createElement('p');
-        bindingHeading.className = 'reader-panel-summary';
-        bindingHeading.textContent = this.dictionary().bindTask;
-        const bindingControls = document.createElement('div');
-        bindingControls.className = 'reader-detail-actions';
-        bindingControls.append(this.panelIconButton('plus', this.dictionary().bindAdditionalTask, () => this.renderTaskPicker(container, true)));
-        bindingHeader.append(bindingHeading, bindingControls);
-        const bindingList = document.createElement('section');
-        bindingList.className = 'reader-task-bindings';
-        bindings.tasks.forEach(task => {
-            const row = document.createElement('div');
-            row.className = 'reader-task-binding';
-            const label = document.createElement('span');
-            label.className = 'reader-task-binding-label';
-            const isPrimary = task.taskId === primary.taskId;
-            label.textContent = isPrimary ? this.dictionary().primaryTask : this.dictionary().boundTask;
-            const name = document.createElement('button');
-            name.type = 'button';
-            name.className = 'reader-task-bound-name';
-            name.textContent = task.taskName || task.taskId;
-            name.disabled = isPrimary;
-            name.dataset.tooltip = isPrimary ? this.dictionary().primaryTask : this.dictionary().changeTask;
-            name.setAttribute('aria-label', isPrimary
-                ? this.dictionary().primaryTask + '：' + (task.taskName || task.taskId)
-                : this.dictionary().changeTask + '：' + (task.taskName || task.taskId));
-            name.addEventListener('click', () => {
-                void this.postJson<{ bindings?: ReaderTaskBindings }>('/api/codex/binding', { taskId: task.taskId, primary: true }).then(result => {
-                    this.setTaskBindings(result.bindings);
-                    if (container.isConnected) this.renderTasks(container);
-                }, error => this.renderTaskError(container, error));
-            });
-            const rowControls = document.createElement('div');
-            rowControls.className = 'reader-detail-actions';
-            if (isPrimary) {
-                rowControls.append(this.panelIconButton('reload', this.dictionary().reloadTasks, () => {
-                    this.taskListCache = undefined;
-                    this.renderTaskPicker(container, true, true);
-                }));
-            }
-            if (!isPrimary) {
-                rowControls.append(this.panelIconButton('star', this.dictionary().changeTask + '：' + (task.taskName || task.taskId), () => {
-                    void this.postJson<{ bindings?: ReaderTaskBindings }>('/api/codex/binding', { taskId: task.taskId, primary: true }).then(result => {
-                        this.setTaskBindings(result.bindings);
-                        if (container.isConnected) this.renderTasks(container);
-                    }, error => this.renderTaskError(container, error));
-                }));
-            }
-            const remove = this.panelIconButton('x', this.dictionary().unbindTask + '：' + (task.taskName || task.taskId), () => {
-                void this.postJson<{ bindings?: ReaderTaskBindings }>('/api/codex/unbind', { taskId: task.taskId }).then(result => {
-                    this.setTaskBindings(result.bindings);
-                    if (!this.taskBindings) {
-                        this.pendingTaskSelection = undefined;
-                        this.pendingPrimaryTaskRequest = undefined;
-                    }
-                    if (container.isConnected) this.renderTasks(container);
-                }, error => this.renderTaskError(container, error));
-            });
-            rowControls.append(remove);
-            row.append(label, name, rowControls);
-            bindingList.append(row);
-        });
-        container.append(bindingHeader, bindingList);
-
-        const selection = this.pendingTaskSelection;
-        if (!selection) {
-            container.append(this.emptyState(this.dictionary().taskSelectionRequired));
-            return;
-        }
-
-        const context = document.createElement('div');
-        context.className = 'reader-task-context';
-        const contextLabel = document.createElement('span');
-        contextLabel.textContent = this.dictionary().selectedContext;
-        const coordinates = document.createElement('strong');
-        coordinates.textContent = selection.filePath + ':' + selection.startLine + '–' + selection.endLine;
-        const excerpt = document.createElement('code');
-        excerpt.textContent = selection.markdown.replace(/\s+/g, ' ').trim();
-        context.append(contextLabel, coordinates, excerpt);
-
-        const prompt = document.createElement('textarea');
-        prompt.className = 'reader-task-prompt';
-        prompt.rows = 3;
-        prompt.placeholder = this.dictionary().taskPrompt;
-        const pendingRequest = this.pendingPrimaryTaskRequest;
-        const automaticPrompt = pendingRequest?.selection === selection ? pendingRequest.prompt : '';
-        prompt.value = automaticPrompt;
-        const target = document.createElement('label');
-        target.className = 'reader-task-target';
-        const targetLabel = document.createElement('span');
-        targetLabel.textContent = this.dictionary().sendTarget;
-        const targetSelect = document.createElement('select');
-        const targetId = automaticPrompt
-            ? primary.taskId
-            : (bindings.tasks.some(task => task.taskId === this.taskTargetId) ? this.taskTargetId || primary.taskId : primary.taskId);
-        bindings.tasks.forEach(task => {
-            const option = document.createElement('option');
-            option.value = task.taskId;
-            option.textContent = task.taskName || task.taskId;
-            option.selected = task.taskId === targetId;
-            targetSelect.append(option);
-        });
-        targetSelect.disabled = !!automaticPrompt;
-        targetSelect.addEventListener('change', () => {
-            this.taskTargetId = targetSelect.value;
-        });
-        target.append(targetLabel, targetSelect);
-        const send = document.createElement('button');
-        send.type = 'button';
-        send.className = 'reader-task-send';
-        send.textContent = this.dictionary().sendToTask;
-        const response = document.createElement('div');
-        response.className = 'reader-task-response';
-        const sendPrompt = () => {
-            const value = prompt.value.trim();
-            if (!value) {
-                prompt.focus();
-                return;
-            }
-            send.disabled = true;
-            prompt.disabled = true;
-            targetSelect.disabled = true;
-            response.textContent = this.dictionary().taskWaiting;
-            void this.postJson<{ taskId: string; message: string }>('/api/codex/turn', {
-                prompt: value,
-                selection,
-                taskId: targetId
-            }).then(result => {
-                if (!response.isConnected) return;
-                response.innerHTML = result.message
-                    ? renderFormalMarkdown(this.markdown, result.message, this.renderOptions(selection.filePath))
-                    : '<p>' + escapeHtml(this.dictionary().taskResponseEmpty) + '</p>';
-                const note = document.createElement('p');
-                note.className = 'reader-task-approval-note';
-                note.textContent = this.dictionary().taskApprovalNote;
-                response.append(note);
-                this.toolbarPanel.reposition();
-            }, error => this.renderTaskError(response, error)).finally(() => {
-                send.disabled = false;
-                prompt.disabled = false;
-                targetSelect.disabled = !!automaticPrompt;
-            });
-        };
-        send.addEventListener('click', sendPrompt);
-        container.append(target, context, prompt, send, response);
-        if (automaticPrompt) {
-            this.pendingPrimaryTaskRequest = undefined;
-            window.requestAnimationFrame(sendPrompt);
-        } else {
-            window.requestAnimationFrame(() => prompt.focus());
-        }
-    }
-
-    private renderTaskPicker(container: HTMLElement, additional = false, forceRefresh = false): void {
-        const header = document.createElement('div');
-        header.className = 'reader-task-picker-header';
-        const heading = document.createElement('p');
-        heading.className = 'reader-panel-summary';
-        heading.textContent = additional ? this.dictionary().bindAdditionalTask : this.dictionary().bindTask;
-        const controls = document.createElement('div');
-        controls.className = 'reader-detail-actions';
-        const refresh = this.panelIconButton('reload', this.dictionary().reloadTasks, () => void load(true));
-        controls.append(refresh);
-        if (additional) controls.append(this.panelIconButton('x', this.dictionary().close, () => this.renderTasks(container)));
-        const results = document.createElement('div');
-        results.className = 'reader-panel-list reader-task-list';
-        const renderTaskEntries = (tasks: ReaderTaskSummary[]) => {
-            results.replaceChildren();
-            const unboundTasks = tasks.filter(task => !this.taskBindings?.tasks.some(binding => binding.taskId === task.taskId));
-            if (!unboundTasks.length) {
-                results.append(this.emptyState(this.dictionary().noTasks));
-                return;
-            }
-            unboundTasks.forEach(task => {
-                const button = document.createElement('button');
-                button.type = 'button';
-                button.className = 'reader-task-entry';
-                const name = document.createElement('strong');
-                name.textContent = task.taskName || task.taskId;
-                button.append(name);
-                button.addEventListener('click', () => {
-                    void this.postJson<{ bindings?: ReaderTaskBindings }>('/api/codex/binding', {
-                        taskId: task.taskId,
-                        primary: !this.taskBindings
-                    }).then(result => {
-                        this.setTaskBindings(result.bindings);
-                        if (container.isConnected) this.renderTasks(container);
-                    }, error => {
-                        this.taskListCache = undefined;
-                        this.renderTaskError(container, error);
-                    });
-                });
-                results.append(button);
-            });
-        };
-        const load = async (force = false) => {
-            if (!force && this.taskListCache) {
-                renderTaskEntries(this.taskListCache);
-                return;
-            }
-            refresh.disabled = true;
-            results.replaceChildren(this.emptyState(this.dictionary().loadingTasks));
-            try {
-                const payload = await this.fetchJson<{ tasks: ReaderTaskSummary[] }>('/api/codex/tasks');
-                this.taskListCache = payload.tasks;
-                renderTaskEntries(payload.tasks);
-            } catch (error) {
-                this.renderTaskError(results, error, this.dictionary().taskUnavailable);
-            } finally {
-                refresh.disabled = false;
-                this.toolbarPanel.reposition();
-            }
-        };
-        header.append(heading, controls);
-        container.append(header, results);
-        void load(forceRefresh);
-    }
-
-    private renderTaskError(container: HTMLElement, error: unknown, fallback = ''): void {
-        if (!container.isConnected) return;
-        const message = document.createElement('p');
-        message.className = 'reader-task-error';
-        message.textContent = fallback || (error instanceof Error ? error.message : String(error));
-        container.replaceChildren(message);
-        this.toolbarPanel.reposition();
+        this.openTemporaryDiscussion(selection, prompt);
     }
 
     private renderContents(container: HTMLElement): void {

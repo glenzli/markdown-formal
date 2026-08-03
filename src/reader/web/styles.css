@@ -469,121 +469,6 @@ button { cursor: pointer; }
 .reader-definition-entry strong { display: block; }
 .reader-definition-entry strong { font-size: 13px; font-weight: 650; }
 .reader-detail-actions { display: flex; align-items: center; gap: 4px; }
-.reader-task-binding {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    border-bottom: 1px solid #e6eaed;
-    padding: 1px 2px 9px;
-}
-.reader-task-bindings { display: grid; gap: 7px; }
-.reader-task-binding-label { flex: 0 0 auto; color: #78838c; font-size: 10px; font-weight: 700; }
-.reader-task-bound-name {
-    flex: 1 1 auto;
-    min-width: 0;
-    border: 0;
-    background: transparent;
-    overflow: hidden;
-    color: #2f3941;
-    font-size: 13px;
-    font-weight: 650;
-    padding: 2px 0;
-    text-align: left;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.reader-task-bound-name:not(:disabled):hover { color: #145b90; text-decoration: underline; text-underline-offset: 2px; }
-.reader-task-bound-name:disabled { cursor: default; }
-.reader-task-target {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    color: #6e7a83;
-    font-size: 11px;
-    font-weight: 650;
-}
-.reader-task-target select {
-    min-width: 0;
-    flex: 1 1 auto;
-    border: 1px solid #dce2e6;
-    border-radius: 5px;
-    background: rgba(255, 255, 255, .9);
-    color: #34404a;
-    font: inherit;
-    padding: 5px 7px;
-}
-.reader-task-target select:disabled { cursor: default; opacity: .8; }
-.reader-task-context {
-    display: grid;
-    gap: 3px;
-    border: 1px solid #dce6ec;
-    border-radius: 5px;
-    background: #f8fafb;
-    padding: 8px 9px;
-}
-.reader-task-context span { color: #6e7a83; font-size: 11px; font-weight: 650; }
-.reader-task-context strong { color: #45515a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 600; }
-.reader-task-context code {
-    display: -webkit-box;
-    overflow: hidden;
-    color: #52616b;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 11px;
-    line-height: 1.4;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-}
-.reader-task-prompt {
-    width: 100%;
-    resize: vertical;
-    min-height: 72px;
-    border: 1px solid #dce2e6;
-    border-radius: 5px;
-    background: rgba(255, 255, 255, .9);
-    color: inherit;
-    padding: 8px 9px;
-    outline: none;
-}
-.reader-task-prompt:focus { border-color: #4c83b4; box-shadow: 0 0 0 3px rgba(76, 131, 180, .13); }
-.reader-task-send {
-    justify-self: end;
-    border: 1px solid #1f6eaa;
-    border-radius: 5px;
-    background: #176da9;
-    color: #fff;
-    padding: 7px 12px;
-    font-size: 12px;
-    font-weight: 650;
-}
-.reader-task-send:hover:not(:disabled) { background: #115c91; }
-.reader-task-send:disabled { cursor: default; opacity: .55; }
-.reader-task-response {
-    min-height: 0;
-    color: #303840;
-    font-family: "Iowan Old Style", "Noto Serif CJK SC", "Songti SC", Georgia, serif;
-    font-size: 14px;
-    line-height: 1.62;
-}
-.reader-task-response:empty { display: none; }
-.reader-task-response p { margin: .6em 0; }
-.reader-task-approval-note { color: #78838c; font-family: Inter, ui-sans-serif, sans-serif; font-size: 11px; line-height: 1.45; }
-.reader-task-error { margin: 5px 2px; color: #aa4545; font-size: 12px; line-height: 1.5; }
-.reader-task-list { max-height: 340px; overflow: auto; }
-.reader-task-entry {
-    display: grid;
-    width: 100%;
-    gap: 3px;
-    border: 0;
-    border-radius: 5px;
-    background: transparent;
-    color: inherit;
-    padding: 8px;
-    text-align: left;
-}
-.reader-task-entry:hover { background: #edf3f7; color: #145b90; }
-.reader-task-entry strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-.reader-task-picker-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.reader-task-picker-header .reader-panel-summary { margin: 2px; }
 .reader-detail-header, .reader-definition-header {
     display: flex;
     align-items: center;
@@ -723,6 +608,7 @@ button { cursor: pointer; }
 .reader-discussion-icon-button .reader-icon { width: 17px; height: 17px; }
 .reader-discussion-icon-button:hover:not(:disabled) { border-color: #cbd9e4; background: #edf5fa; color: #176195; }
 .reader-discussion-icon-button:disabled, .reader-discussion-icon-button.is-muted { opacity: .48; }
+.reader-discussion-icon-button.is-copied { border-color: #9fcfbb; background: #edf8f1; color: #16734c; }
 .reader-discussion-context {
     border-bottom: 1px solid #e7ecef;
     background: #f7f9fa;
@@ -942,18 +828,6 @@ button { cursor: pointer; }
     .reader-proposition-review-batch-audit { border-color: #93733f; background: #3c3324; color: #f1d8a8; }
     .reader-proposition-review-batch-audit:hover { background: #4a3d2a; }
     .reader-page-title, .type-size-button, .reader-type-control output { color: #d5d9dd; }
-    .reader-task-binding { border-color: #40454a; }
-    .reader-task-bound-name, .reader-task-response { color: #e1e5e8; }
-    .reader-task-binding-label { color: #bdc5cb; }
-    .reader-task-bound-name:not(:disabled):hover { color: #c0e4ff; }
-    .reader-task-target { color: #bdc5cb; }
-    .reader-task-target select { border-color: #4a4f54; background: #292c2f; color: inherit; }
-    .reader-task-context { border-color: #454c52; background: #2b2f33; }
-    .reader-task-context span, .reader-task-context strong, .reader-task-context code, .reader-task-approval-note { color: #bdc5cb; }
-    .reader-task-prompt { border-color: #4a4f54; background: #292c2f; color: inherit; }
-    .reader-task-send { border-color: #4d94c4; background: #1e6799; }
-    .reader-task-send:hover:not(:disabled) { background: #287bad; }
-    .reader-task-entry:hover { background: #333a40; color: #c0e4ff; }
     .reader-discussion-dialog > header, .reader-discussion-composer { border-color: #40454a; background: #26292c; }
     .reader-discussion-dialog h2, .reader-discussion-response { color: #e1e5e8; }
     .reader-discussion-context { border-color: #40454a; background: #2a2e32; color: #c1c8ce; }
@@ -963,4 +837,5 @@ button { cursor: pointer; }
     .reader-discussion-message.is-user { background: #1e4969; color: #d7efff; }
     .reader-discussion-icon-button { color: #c5cdd3; }
     .reader-discussion-icon-button:hover:not(:disabled) { border-color: #4d6576; background: #333b41; color: #c0e4ff; }
+    .reader-discussion-icon-button.is-copied { border-color: #35755d; background: #243a31; color: #a4ddbf; }
 }

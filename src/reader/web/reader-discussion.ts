@@ -10,12 +10,15 @@ export interface ReaderDiscussionLabels {
     temporaryDiscussionSend: string;
     temporaryDiscussionEmpty: string;
     temporaryDiscussionReadOnly: string;
-    temporaryDiscussionBoundTask: string;
-    temporaryDiscussionNoTask: string;
-    temporaryDiscussionInject: string;
-    temporaryDiscussionInjecting: string;
-    temporaryDiscussionInjected: string;
     temporaryDiscussionRefresh: string;
+    temporaryDiscussionQuote: string;
+    temporaryDiscussionQuoted: string;
+    temporaryDiscussionQuoteFailed: string;
+    temporaryDiscussionQuoteHeader: string;
+    temporaryDiscussionQuoteSource: string;
+    temporaryDiscussionQuoteSelection: string;
+    temporaryDiscussionQuoteQuestion: string;
+    temporaryDiscussionQuoteConclusion: string;
     close: string;
 }
 
@@ -23,8 +26,6 @@ export interface ReaderDiscussionHost {
     postJson<T>(url: string, value?: unknown): Promise<T>;
     renderMarkdown(markdown: string, filePath: string): string;
     labels(): ReaderDiscussionLabels;
-    hasBoundTask(): boolean;
-    openTaskPanel(): void;
 }
 
 interface DiscussionMessage {
@@ -37,11 +38,6 @@ interface DiscussionTurnResponse {
     message: string;
 }
 
-interface TaskInjectionResponse {
-    taskId: string;
-    message: string;
-}
-
 interface DiscussionRefreshResponse {
     discussionId: string;
     messages: Array<{ role: 'user' | 'assistant'; text: string }>;
@@ -49,7 +45,8 @@ interface DiscussionRefreshResponse {
 
 /**
  * Math Workspace-owned UI for a Codex ephemeral thread. It deliberately keeps the
- * session handle in memory and only exposes an explicit conclusion handoff.
+ * session handle in memory and gives each conclusion a self-contained citation
+ * that can be pasted into any native Codex task.
  */
 export class ReaderDiscussionDialog {
     private dialog: HTMLElement | undefined;
@@ -57,6 +54,7 @@ export class ReaderDiscussionDialog {
     private discussionId = '';
     private messages: DiscussionMessage[] = [];
     private pending = false;
+    private copiedMessageIndex = -1;
     private readonly onKeyDown = (event: KeyboardEvent) => {
         if (event.key === 'Escape') this.close();
     };
@@ -71,6 +69,7 @@ export class ReaderDiscussionDialog {
         this.discussionId = '';
         this.messages = [];
         this.pending = false;
+        this.copiedMessageIndex = -1;
         this.render();
         if (initialPrompt) void this.send(initialPrompt);
     }
@@ -88,6 +87,7 @@ export class ReaderDiscussionDialog {
         this.discussionId = '';
         this.messages = [];
         this.pending = false;
+        this.copiedMessageIndex = -1;
         if (notify && discussionId) void this.host.postJson('/api/codex/discussions/' + discussionId + '/close');
     }
 
@@ -105,12 +105,10 @@ export class ReaderDiscussionDialog {
         title.textContent = labels.temporaryDiscussion;
         const controls = document.createElement('div');
         controls.className = 'reader-discussion-header-actions';
-        const task = this.iconButton('task', labels.temporaryDiscussionBoundTask, () => this.host.openTaskPanel());
-        task.classList.toggle('is-muted', !this.host.hasBoundTask());
         const refresh = this.iconButton('reload', labels.temporaryDiscussionRefresh, () => void this.refresh());
         refresh.disabled = !this.discussionId || this.pending;
         const close = this.iconButton('x', labels.close, () => this.close());
-        controls.append(task, refresh, close);
+        controls.append(refresh, close);
         header.append(title, controls);
 
         const context = document.createElement('details');
@@ -137,7 +135,7 @@ export class ReaderDiscussionDialog {
             empty.textContent = labels.temporaryDiscussionReadOnly;
             thread.append(empty);
         } else {
-            this.messages.forEach(message => thread.append(this.renderMessage(message)));
+            this.messages.forEach((message, index) => thread.append(this.renderMessage(message, index)));
         }
 
         const composer = document.createElement('form');
@@ -173,7 +171,7 @@ export class ReaderDiscussionDialog {
         });
     }
 
-    private renderMessage(message: DiscussionMessage): HTMLElement {
+    private renderMessage(message: DiscussionMessage, index: number): HTMLElement {
         const selection = this.selection as ReaderDiscussionSelection;
         const item = document.createElement('article');
         item.className = 'reader-discussion-message is-' + message.role;
@@ -185,10 +183,12 @@ export class ReaderDiscussionDialog {
                 : '<p>' + this.host.labels().temporaryDiscussionEmpty + '</p>';
             const actions = document.createElement('div');
             actions.className = 'reader-discussion-message-actions';
-            const inject = this.iconButton('task', this.host.labels().temporaryDiscussionInject, () => void this.injectConclusion(message.text));
-            inject.disabled = !this.host.hasBoundTask() || this.pending;
-            if (!this.host.hasBoundTask()) inject.dataset.tooltip = this.host.labels().temporaryDiscussionNoTask;
-            actions.append(inject);
+            const question = this.previousQuestion(index);
+            const labels = this.host.labels();
+            const copied = this.copiedMessageIndex === index;
+            const quote = this.iconButton('copy', copied ? labels.temporaryDiscussionQuoted : labels.temporaryDiscussionQuote, () => void this.copyCitation(message.text, question, index));
+            quote.classList.toggle('is-copied', copied);
+            actions.append(quote);
             item.append(content, actions);
             return item;
         }
@@ -216,20 +216,59 @@ export class ReaderDiscussionDialog {
         }
     }
 
-    private async injectConclusion(conclusion: string): Promise<void> {
-        if (!this.discussionId || !conclusion || this.pending || !this.host.hasBoundTask()) return;
-        this.pending = true;
-        this.messages.push({ role: 'notice', text: this.host.labels().temporaryDiscussionInjecting });
-        this.render();
-        try {
-            const result = await this.host.postJson<TaskInjectionResponse>('/api/codex/discussions/' + this.discussionId + '/inject', { conclusion });
-            this.messages.push({ role: 'notice', text: result.message || this.host.labels().temporaryDiscussionInjected });
-        } catch (error) {
-            this.messages.push({ role: 'notice', text: error instanceof Error ? error.message : String(error) });
-        } finally {
-            this.pending = false;
-            this.render();
+    private previousQuestion(index: number): string {
+        for (let cursor = index - 1; cursor >= 0; cursor--) {
+            const message = this.messages[cursor];
+            if (message.role === 'user') return message.text;
         }
+        return '';
+    }
+
+    private quoteBlock(value: string): string {
+        return value.split(/\r?\n/).map(line => '> ' + line).join('\n');
+    }
+
+    private citation(conclusion: string, question: string): string {
+        const selection = this.selection as ReaderDiscussionSelection;
+        const labels = this.host.labels();
+        const excerpt = selection.markdown || selection.sourceLines;
+        return [
+            `> **${labels.temporaryDiscussionQuoteHeader}**`,
+            `> **${labels.temporaryDiscussionQuoteSource}：** ${selection.filePath}:${selection.startLine}–${selection.endLine}`,
+            '>',
+            `> **${labels.temporaryDiscussionQuoteSelection}：**`,
+            this.quoteBlock(excerpt),
+            '>',
+            `> **${labels.temporaryDiscussionQuoteQuestion}：**`,
+            this.quoteBlock(question),
+            '>',
+            `> **${labels.temporaryDiscussionQuoteConclusion}：**`,
+            this.quoteBlock(conclusion)
+        ].join('\n');
+    }
+
+    private async copyCitation(conclusion: string, question: string, index: number): Promise<void> {
+        try {
+            const citation = this.citation(conclusion, question);
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(citation);
+            } else {
+                const area = document.createElement('textarea');
+                area.value = citation;
+                area.setAttribute('readonly', 'true');
+                area.style.position = 'fixed';
+                area.style.opacity = '0';
+                document.body.append(area);
+                area.select();
+                const copied = document.execCommand('copy');
+                area.remove();
+                if (!copied) throw new Error('Clipboard copy was rejected.');
+            }
+            this.copiedMessageIndex = index;
+        } catch (_error) {
+            this.messages.push({ role: 'notice', text: this.host.labels().temporaryDiscussionQuoteFailed });
+        }
+        this.render();
     }
 
     private async refresh(): Promise<void> {
@@ -251,7 +290,7 @@ export class ReaderDiscussionDialog {
         }
     }
 
-    private iconButton(icon: 'task' | 'reload' | 'x', label: string, action: () => void): HTMLButtonElement {
+    private iconButton(icon: 'copy' | 'reload' | 'x', label: string, action: () => void): HTMLButtonElement {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'reader-discussion-icon-button';

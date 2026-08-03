@@ -1547,7 +1547,7 @@ async function testReaderPluginMcpConfig() {
     });
 }
 
-async function testReaderCodexTaskBinding() {
+async function testReaderTemporaryDiscussion() {
     const root = await makeWorkspace('reader-codex');
     await fs.writeFile(path.join(root, 'book1', '01-foundations.md'), [
         '# #h-1111111111111111 Foundations',
@@ -1579,15 +1579,6 @@ async function testReaderCodexTaskBinding() {
 let buffer = '';
 const cwd = process.env.MATH_WORKSPACE_FAKE_CODEX_CWD;
 const write = value => process.stdout.write(JSON.stringify(value) + '\\n');
-const primaryThread = {
-  id: 'task-reader-fixture', cwd, name: 'Reader fixture task', preview: 'Discuss the formal source',
-  updatedAt: 1, canAcceptDirectInput: true
-};
-const reviewThread = {
-  id: 'task-reader-review', cwd, name: 'Reader review task', preview: 'Review a formal source',
-  updatedAt: 2, canAcceptDirectInput: true
-};
-const persistentThreads = [primaryThread, reviewThread];
 const temporaryThread = {
   id: 'temporary-reader-fixture', cwd, name: 'Temporary Reader discussion', preview: 'Ephemeral selection discussion',
   updatedAt: 1, canAcceptDirectInput: true, ephemeral: true
@@ -1599,13 +1590,6 @@ const receive = message => {
       return write({ id: message.id, error: { message: 'Reader must opt in to Codex experimental API capabilities.' } });
     }
     return write({ id: message.id, result: { platformFamily: 'test' } });
-  }
-  if (message.method === 'thread/list') return write({ id: message.id, result: { data: persistentThreads } });
-  if (message.method === 'thread/resume') {
-    if ('excludeTurns' in message.params) return write({ id: message.id, error: { message: 'excludeTurns must not be used by the Reader bridge' } });
-    const thread = persistentThreads.find(item => item.id === message.params.threadId);
-    if (!thread) return write({ id: message.id, error: { message: 'Unknown Reader task.' } });
-    return write({ id: message.id, result: { thread, cwd } });
   }
   if (message.method === 'thread/start') {
     if (message.params.ephemeral !== true || message.params.sandbox !== 'read-only' || message.params.approvalPolicy !== 'never') {
@@ -1620,27 +1604,22 @@ const receive = message => {
     return write({ id: message.id, result: { thread: { ...temporaryThread, turns: temporaryTurns } } });
   }
   if (message.method === 'turn/start') {
+    if (message.params.threadId !== temporaryThread.id) {
+      return write({ id: message.id, error: { message: 'Temporary Reader discussions must not target a persistent task.' } });
+    }
     const selectionContext = message.params.additionalContext?.['math-workspace-selection']?.value;
     if (!selectionContext) {
       return write({ id: message.id, error: { message: 'Reader selection context was missing.' } });
     }
     const parsedContext = JSON.parse(selectionContext);
-    const projectKnowledge = parsedContext.projectKnowledge || parsedContext.originalContext?.projectKnowledge;
-    if (projectKnowledge?.summary?.conceptSources !== 1 || projectKnowledge?.sources?.[0]?.filePath !== 'book1/appendix-b-core-concepts.md') {
+    if (parsedContext.projectKnowledge?.summary?.conceptSources !== 1 || parsedContext.projectKnowledge?.sources?.[0]?.filePath !== 'book1/appendix-b-core-concepts.md') {
       return write({ id: message.id, error: { message: 'Reader project knowledge context was missing.' } });
     }
-    const isTemporary = message.params.threadId === temporaryThread.id;
-    const persistent = persistentThreads.find(item => item.id === message.params.threadId);
-    if (!isTemporary && !persistent) return write({ id: message.id, error: { message: 'Unexpected Reader task turn.' } });
-    const visiblePrompt = String(message.params.input?.[0]?.text || '');
-    if (!isTemporary && (!visiblePrompt.includes('Math Workspace') || !visiblePrompt.includes('book1/01-foundations.md:3–3'))) {
-      return write({ id: message.id, error: { message: 'Reader source card was not visible in the task history.' } });
-    }
-    const turn = { id: (isTemporary ? 'turn-temporary-fixture' : 'turn-reader-fixture'), status: 'completed' };
+    const turn = { id: 'turn-temporary-fixture-' + temporaryTurns.length, status: 'completed' };
     return setTimeout(() => {
-      const response = isTemporary ? 'Temporary Reader context received.' : 'Reader context received for ' + persistent.id + '.';
-      if (isTemporary) temporaryTurns.push({
-        id: turn.id + '-' + temporaryTurns.length,
+      const response = 'Temporary Reader context received.';
+      temporaryTurns.push({
+        id: turn.id,
         items: [
           { type: 'userMessage', id: 'user-' + temporaryTurns.length, content: message.params.input },
           { type: 'agentMessage', id: 'assistant-' + temporaryTurns.length, text: response }
@@ -1667,7 +1646,6 @@ process.stdin.on('data', chunk => {
     await fs.chmod(fakeCodex, 0o755);
     const env = {
         MATH_WORKSPACE_STATE: path.join(root, 'reader-projects.json'),
-        MATH_WORKSPACE_TASKS: path.join(root, 'reader-task-bindings.json'),
         MATH_WORKSPACE_CODEX_COMMAND: fakeCodex,
         MATH_WORKSPACE_FAKE_CODEX_CWD: root
     };
@@ -1675,124 +1653,10 @@ process.stdin.on('data', chunk => {
     try {
         const state = await (await fetch(reader.url + '/api/state')).json();
         assert.equal(typeof state.requestToken, 'string');
-        assert.equal(state.codex.bindings, undefined);
-
-        const blocked = await fetch(reader.url + '/api/codex/tasks');
-        assert.equal(blocked.status, 403);
+        assert.equal('codex' in state, false);
         const headers = { 'x-math-workspace-token': state.requestToken, 'content-type': 'application/json' };
-        const tasks = await (await fetch(reader.url + '/api/codex/tasks', { headers })).json();
-        assert.equal(tasks.tasks.length, 2);
-        assert.equal(tasks.tasks[0].taskId, 'task-reader-fixture');
-        assert.deepEqual(Object.keys(tasks.tasks[0]).sort(), ['taskId', 'taskName']);
-
-        const bound = await (await fetch(reader.url + '/api/codex/binding', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ taskId: 'task-reader-fixture', primary: true })
-        })).json();
-        assert.equal(bound.bindings.primaryTaskId, 'task-reader-fixture');
-        assert.deepEqual(bound.bindings.tasks.map(task => task.taskId), ['task-reader-fixture']);
-
-        const added = await (await fetch(reader.url + '/api/codex/binding', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ taskId: 'task-reader-review', primary: false })
-        })).json();
-        assert.equal(added.bindings.primaryTaskId, 'task-reader-fixture');
-        assert.deepEqual(added.bindings.tasks.map(task => task.taskId), ['task-reader-fixture', 'task-reader-review']);
-
-        const persistedBindings = JSON.parse(await fs.readFile(path.join(root, 'reader-task-bindings.json'), 'utf8'));
-        assert.equal(persistedBindings.version, 2);
-        assert.equal(persistedBindings.bindings[0].primaryTaskId, 'task-reader-fixture');
-
-        const turnRequest = () => fetch(reader.url + '/api/codex/turn', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-                prompt: 'Explain this statement.',
-                selection: {
-                    filePath: 'book1/01-foundations.md',
-                    startLine: 3,
-                    endLine: 3,
-                    markdown: '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
-                    text: 'Finite cover'
-                }
-            })
-        });
-        const turnResponses = await Promise.all([turnRequest(), turnRequest()]);
-        assert.deepEqual(turnResponses.map(response => response.status).sort(), [200, 500]);
-        const completed = turnResponses.find(response => response.status === 200);
-        assert.ok(completed);
-        const turn = await completed.json();
-        assert.equal(turn.taskId, 'task-reader-fixture');
-        assert.equal(turn.message, 'Reader context received for task-reader-fixture.');
-
-        const reviewTurn = await (await fetch(reader.url + '/api/codex/turn', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-                prompt: 'Review this statement separately.',
-                taskId: 'task-reader-review',
-                selection: {
-                    filePath: 'book1/01-foundations.md',
-                    startLine: 3,
-                    endLine: 3,
-                    markdown: '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
-                    text: 'Finite cover'
-                }
-            })
-        })).json();
-        assert.equal(reviewTurn.taskId, 'task-reader-review');
-        assert.equal(reviewTurn.message, 'Reader context received for task-reader-review.');
-
-        const madeDefault = await (await fetch(reader.url + '/api/codex/binding', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ taskId: 'task-reader-review', primary: true })
-        })).json();
-        assert.equal(madeDefault.bindings.primaryTaskId, 'task-reader-review');
-
-        const defaultTurn = await (await fetch(reader.url + '/api/codex/turn', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-                prompt: 'Use the current default task.',
-                selection: {
-                    filePath: 'book1/01-foundations.md',
-                    startLine: 3,
-                    endLine: 3,
-                    markdown: '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
-                    text: 'Finite cover'
-                }
-            })
-        })).json();
-        assert.equal(defaultTurn.taskId, 'task-reader-review');
-        assert.equal(defaultTurn.message, 'Reader context received for task-reader-review.');
-
-        const restoredPrimary = await (await fetch(reader.url + '/api/codex/unbind', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ taskId: 'task-reader-review' })
-        })).json();
-        assert.equal(restoredPrimary.bindings.primaryTaskId, 'task-reader-fixture');
-        assert.deepEqual(restoredPrimary.bindings.tasks.map(task => task.taskId), ['task-reader-fixture']);
-
-        const unboundTarget = await fetch(reader.url + '/api/codex/turn', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-                prompt: 'This target should be rejected.',
-                taskId: 'task-reader-review',
-                selection: {
-                    filePath: 'book1/01-foundations.md',
-                    startLine: 3,
-                    endLine: 3,
-                    markdown: '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
-                    text: 'Finite cover'
-                }
-            })
-        });
-        assert.equal(unboundTarget.status, 409);
+        assert.equal((await fetch(reader.url + '/api/codex/tasks')).status, 403);
+        assert.equal((await fetch(reader.url + '/api/codex/tasks', { headers })).status, 404);
 
         const temporary = await (await fetch(reader.url + '/api/codex/discussions', {
             method: 'POST',
@@ -1833,13 +1697,12 @@ process.stdin.on('data', chunk => {
             { role: 'assistant', text: 'Temporary Reader context received.' }
         ]);
 
-        const injected = await (await fetch(reader.url + '/api/codex/discussions/' + temporary.discussionId + '/inject', {
+        const injection = await fetch(reader.url + '/api/codex/discussions/' + temporary.discussionId + '/inject', {
             method: 'POST',
             headers,
             body: JSON.stringify({ conclusion: 'The theorem supplies a finite subcover.' })
-        })).json();
-        assert.equal(injected.taskId, 'task-reader-fixture');
-        assert.equal(injected.message, 'Reader context received for task-reader-fixture.');
+        });
+        assert.equal(injection.status, 404);
 
         const closed = await fetch(reader.url + '/api/codex/discussions/' + temporary.discussionId + '/close', {
             method: 'POST',
@@ -2333,7 +2196,7 @@ const tests = [
     ['local Reader server', testReaderServer],
     ['local Reader MCP server', testReaderMcpServer],
     ['Reader plugin MCP configuration', testReaderPluginMcpConfig],
-    ['local Reader Codex task binding', testReaderCodexTaskBinding],
+    ['local Reader temporary discussion', testReaderTemporaryDiscussion],
     ['local Reader launcher', testReaderLauncher],
     ['page heading formatting', testPageHeadingFormatting],
     ['export-md compiles formal syntax', testExportMarkdownCompilesFormalSyntax],

@@ -205,7 +205,7 @@ The command prints a URL bound only to `127.0.0.1`. Open it in Codex's local bro
 
 Dependency markers read only explicit `@h-...` relationships. A short line above the dot means the statement or proof explicitly references formal items such as a section, definition, theorem-like object, or proof-backed hash remark. A vertical line below means a later dependency node depends on it; a fork means multiple direct downstream nodes. Mainline theorem-like nodes use the ordinary impact colors: muted is a terminal node, blue is directly cited, and green is both explicitly grounded and cited later. Hash remarks use a muted supplemental color and label; plain `注（...）` / `Remark (...)` entries have no graph node or marker. Hover for reference and transitive-impact counts. These are structural signals, not measures of mathematical importance.
 
-If the Codex CLI is installed and signed in locally, selecting text or a formula can open Math Workspace's temporary discussion dialog. The first message includes the relative path, source line range, selected Markdown, project root, and read-only tool boundary; subsequent messages retain that context. A temporary discussion is not persisted and never writes the manuscript or local task state. You can also bind a task whose working directory exactly matches the project, then explicitly send any temporary-discussion conclusion to that task for verification and further work. Bindings are stored only in local user state, never in the manuscript. Math Workspace does not handle Codex tool approvals; continue the task in Codex when tools are needed.
+If the Codex CLI is installed and signed in locally, selecting text or a formula can open Math Workspace's temporary discussion dialog. The first message includes the relative path, source line range, selected Markdown, project root, and read-only tool boundary; subsequent messages retain that context. A temporary discussion is not persisted and never writes the manuscript or local task state. Each assistant conclusion provides a **Copy citation** action that copies a Markdown block with the source, selection, question, and conclusion; paste it into whichever native Codex task you choose. Math Workspace does not bind to or send messages directly into Codex tasks, and it does not handle Codex tool approvals; continue in Codex when tools are needed.
 
 The project needs `.math-workspace/config.json`; run `prepare` once to create it. The Math Workspace does not require `workspace-index.json`.
 
@@ -715,7 +715,7 @@ npm run workspace -- serve
 
 依赖标记只读取显式 `@h-...` 关系。圆点上方的短线表示该陈述或证明显式引用了 formal 对象（可为小节、定义或命题）；下方纵线表示后续依赖对象依赖它，分叉表示多个直接下游。主线命题使用常规颜色；带 hash 的、可证明的补充注释使用低强调度的注释颜色。灰色是没有下游对象的终点，蓝色表示被直接引用，绿色分叉表示既有显式前提也被后续对象引用。悬停可查看引用数与传递影响范围；这些是结构信号，不等同于数学重要性。权威依赖图包含命题/引理/定理/推论之间的边，也包含带 hash 补充注释的入边、出边；普通 `注（...）` 不进入图，也没有标记。
 
-若本机 Codex CLI 已安装并登录，可在选中正文或公式后打开 Math Workspace 的临时讨论浮窗。首条消息会附带相对路径、源码行范围、选中 Markdown、项目根和只读工具边界；后续消息保留该上下文。临时讨论是不可持久化的，不写入书稿或本机任务状态。也可绑定一个工作目录与当前项目完全一致的任务，再将任一临时讨论结论显式发送到该任务，由任务核验并继续执行。绑定记录仅写入本机用户状态目录，不写入书稿。Math Workspace 不承接 Codex 的工具审批，任务需要工具时应回到 Codex 继续。
+若本机 Codex CLI 已安装并登录，可在选中正文或公式后打开 Math Workspace 的临时讨论浮窗。首条消息会附带相对路径、源码行范围、选中 Markdown、项目根和只读工具边界；后续消息保留该上下文。临时讨论是不可持久化的，不写入书稿或本机任务状态。每条助手结论旁的“复制引用”会生成一段包含来源、选区、问题和结论的 Markdown，可粘贴到你选择的任一原生 Codex 任务；Math Workspace 不绑定或直接向任务发送消息。Math Workspace 不承接 Codex 的工具审批，需要工具时应回到 Codex 继续。
 
 项目需要先有 `.math-workspace/config.json`；首次使用可运行 `prepare`。Math Workspace 不要求预先生成 `workspace-index.json`。
 

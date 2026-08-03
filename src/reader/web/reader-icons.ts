@@ -9,7 +9,6 @@ import {
     ListTree,
     LocateFixed,
     MessageSquarePlus,
-    MessageSquareText,
     PanelLeftClose,
     PanelLeftOpen,
     Plus,
@@ -32,7 +31,6 @@ export type ReaderIconName =
     | 'discuss'
     | 'propositions'
     | 'contents'
-    | 'task'
     | 'navigation-close'
     | 'navigation-open'
     | 'plus'
@@ -53,7 +51,6 @@ const ICONS: Record<ReaderIconName, IconNode> = {
     discuss: MessageSquarePlus,
     propositions: GitBranch,
     contents: ListTree,
-    task: MessageSquareText,
     'navigation-close': PanelLeftClose,
     'navigation-open': PanelLeftOpen,
     plus: Plus,

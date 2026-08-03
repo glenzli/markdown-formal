@@ -3,15 +3,6 @@ const { spawn } = require('node:child_process');
 const REQUEST_TIMEOUT_MS = 20_000;
 const TURN_TIMEOUT_MS = 5 * 60_000;
 
-export interface CodexThreadSummary {
-    id: string;
-    cwd: string;
-    name: string;
-    preview: string;
-    updatedAt: number;
-    canAcceptDirectInput: boolean | null;
-}
-
 export interface CodexAppServerClientOptions {
     command?: string;
 }
@@ -65,30 +56,6 @@ export class CodexAppServerClient {
 
     constructor(options: CodexAppServerClientOptions = {}) {
         this.command = options.command || process.env.MATH_WORKSPACE_CODEX_COMMAND || 'codex';
-    }
-
-    async listThreads(rootPath: string): Promise<CodexThreadSummary[]> {
-        const result = await this.request('thread/list', { cwd: rootPath, limit: 80 });
-        const normalizedRoot = this.normalizePath(rootPath);
-        return (Array.isArray(result?.data) ? result.data : []).filter((thread: any) => (
-            typeof thread?.id === 'string'
-            && typeof thread?.cwd === 'string'
-            && this.normalizePath(thread.cwd) === normalizedRoot
-        )).map((thread: any) => ({
-            id: thread.id,
-            cwd: thread.cwd,
-            name: typeof thread.name === 'string' && thread.name.trim() ? thread.name.trim() : String(thread.preview || '').trim(),
-            preview: String(thread.preview || ''),
-            updatedAt: Number(thread.updatedAt || 0),
-            canAcceptDirectInput: typeof thread.canAcceptDirectInput === 'boolean' ? thread.canAcceptDirectInput : null
-        }));
-    }
-
-    async sendTurn(threadId: string, rootPath: string, prompt: string, selectionContext: Record<string, unknown>): Promise<string> {
-        return this.withTurn(async () => {
-            await this.resumeBoundThread(threadId, rootPath);
-            return this.startTurn(threadId, prompt, selectionContext);
-        });
     }
 
     async startEphemeralDiscussion(rootPath: string, prompt: string, selectionContext: Record<string, unknown>): Promise<CodexEphemeralDiscussion> {
@@ -180,7 +147,7 @@ export class CodexAppServerClient {
     }
 
     private async withTurn<T>(operation: () => Promise<T>): Promise<T> {
-        if (this.activeTurn || this.turnStarting) throw new Error('A Codex task turn is already in progress.');
+        if (this.activeTurn || this.turnStarting) throw new Error('A Codex discussion turn is already in progress.');
         this.turnStarting = true;
         try {
             return await operation();
@@ -199,7 +166,7 @@ export class CodexAppServerClient {
                 resolve,
                 reject,
                 timer: setTimeout(() => {
-                    this.finishTurn(activeTurn, new Error('Codex did not complete the task turn in time.'));
+                    this.finishTurn(activeTurn, new Error('Codex did not complete the discussion turn in time.'));
                 }, TURN_TIMEOUT_MS)
             };
             this.activeTurn = activeTurn;
@@ -219,13 +186,6 @@ export class CodexAppServerClient {
             }, error => this.finishTurn(activeTurn, error instanceof Error ? error : new Error(String(error))));
         });
         return result.trim();
-    }
-
-    private async resumeBoundThread(threadId: string, rootPath: string): Promise<void> {
-        const resumed = await this.request('thread/resume', { threadId });
-        if (this.normalizePath(resumed?.cwd || resumed?.thread?.cwd || '') !== this.normalizePath(rootPath)) {
-            throw new Error('The bound Codex task no longer belongs to the current project. Bind a task for this project again.');
-        }
     }
 
     private turnStartParams(threadId: string, prompt: string, selectionContext: Record<string, unknown>): Record<string, unknown> {
@@ -345,7 +305,7 @@ export class CodexAppServerClient {
                 id: message.id,
                 error: {
                     code: -32000,
-                    message: 'Math Workspace does not surface Codex tool approvals. Continue this task in Codex to approve tool actions.'
+                    message: 'Math Workspace does not surface Codex tool approvals. Continue in Codex to approve tool actions.'
                 }
             });
             return;

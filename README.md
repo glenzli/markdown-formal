@@ -41,7 +41,7 @@ npm run workspace -- serve /path/to/writing-project
 
 The Math Workspace listens only on `127.0.0.1` and never writes manuscript source. Open the printed URL in Codex's local browser side panel or a normal browser for chapter navigation, a table of contents, current-page symbols, definition search, in-text explicit dependency markers, Lean anchor badges, recall, and live source refresh. Multi-volume projects naturally collapse to a volume-to-chapter navigation hierarchy. Clicking a Lean badge shows its anchored declarations, reviewed baseline, latest build, and direct dependency comparison; none of these states claims complete formalization or proof coverage.
 
-If the Codex CLI is installed and signed in locally, Math Workspace can open a read-only, ephemeral local discussion for a text or formula selection. Its first message carries the relative path, source line range, selected Markdown, project root, and tool boundary; later messages retain that context. The discussion never writes the manuscript or local task state. You can also bind a Codex task whose working directory exactly matches the Math Workspace project, then explicitly send a chosen discussion conclusion to that task for verification and further work. Math Workspace does not handle Codex tool approvals; continue in Codex when tools are needed.
+If the Codex CLI is installed and signed in locally, Math Workspace can open a read-only, ephemeral local discussion for a text or formula selection. Its first message carries the relative path, source line range, selected Markdown, project root, and tool boundary; later messages retain that context. Each assistant conclusion has a **Copy citation** action that copies a Markdown block with the source, selection, question, and conclusion, ready to paste into whichever native Codex task you choose. The discussion never writes the manuscript or local task state, and it does not bind to or send messages directly into a Codex task. Math Workspace does not handle Codex tool approvals; continue in Codex when tools are needed.
 
 The repository also ships a Codex MCP plugin. It starts or reuses the local Math Workspace and returns a localhost URL that Codex's built-in browser can open. It does not embed or copy the Math Workspace frontend, indexer, or discussion layer:
 
@@ -290,7 +290,7 @@ npm run workspace -- serve /path/to/writing-project
 
 Math Workspace 只监听 `127.0.0.1`，不写入书稿源码。打开命令打印的 URL 后，可获得章节导航、目录、当前页符号表、定义搜索、命题类对象和带 hash 补充注释旁的显式依赖标记、Lean 锚点徽章、引用回溯和源文件实时刷新。多卷结构会自然折叠成卷到章的导航层级。点击正文中的 Lean 徽章可查看锚定声明、审阅基线、最近构建与直接依赖比对；它们都只反映可审计的工程状态，不表示完整形式化或证明覆盖。
 
-若本机已安装并登录 Codex CLI，工作区可为正文或公式选区打开只读、临时的本地讨论浮窗。首条消息携带相对路径、源码行范围、选中 Markdown、项目根和可用工具边界；后续消息保留这一上下文。临时讨论不会写入书稿或本机任务状态。也可绑定一个工作目录与当前项目完全一致、且可直接接收输入的 Codex 任务，再将某条临时讨论结论显式发送到任务继续核验和执行。Math Workspace 不承接 Codex 的工具审批，需要工具时应回到 Codex 继续。
+若本机已安装并登录 Codex CLI，工作区可为正文或公式选区打开只读、临时的本地讨论浮窗。首条消息携带相对路径、源码行范围、选中 Markdown、项目根和可用工具边界；后续消息保留这一上下文。每条助手结论旁的“复制引用”会生成一段包含来源、选区、问题和结论的 Markdown，可粘贴到你选择的任一原生 Codex 任务。临时讨论不会写入书稿或本机任务状态，也不会绑定或直接向 Codex 任务发送消息。Math Workspace 不承接 Codex 的工具审批，需要工具时应回到 Codex 继续。
 
 仓库也提供 Codex MCP plugin。它只启动或复用本地 Math Workspace，并返回可在 Codex 内置浏览器直接打开的 localhost URL；不嵌入或复制工作区的前端、索引和讨论逻辑：
 
