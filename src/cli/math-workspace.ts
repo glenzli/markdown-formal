@@ -39,6 +39,9 @@ import {
 } from '@math-workspace/core';
 import { startReaderServer } from '../reader/server';
 import { runReaderMcpServer } from '../mcp/reader-mcp-server';
+import { renderLeanReport, scanLeanWorkspace } from '../lean/lean-index';
+import { buildLeanWorkspace, captureLeanContracts, writeLeanContracts } from '../lean/lean-state';
+import { collectLeanDependencies } from '../lean/lean-dependencies';
 
 const ROOT = process.cwd();
 const CACHE_DIR = path.join(ROOT, '.math-workspace');
@@ -146,7 +149,16 @@ async function scanWorkspace() {
     const documents = await readWorkspaceDocuments(files);
     const symbols = await readSymbols();
     const definitions = await readDefinitions();
-    return scanFormalDocuments(documents, config, symbols, definitions);
+    const state = scanFormalDocuments(documents, config, symbols, definitions);
+    const leanIndex = await scanLeanWorkspace(ROOT, config, state.labels, state.dependencyGraph);
+    state.issues.push(...leanIndex.diagnostics.map(diagnostic => ({
+        severity: diagnostic.severity,
+        code: diagnostic.code,
+        file: diagnostic.file,
+        line: diagnostic.line,
+        message: diagnostic.message
+    })));
+    return { ...state, leanIndex };
 }
 
 async function writeArtifacts(state) {
@@ -157,6 +169,8 @@ async function writeArtifacts(state) {
     await fs.writeFile(path.join(CACHE_DIR, 'reference-map.md'), renderReferenceMap(state.definitions, state.config, state.pages), 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'project-analysis.json'), `${JSON.stringify(state.projectAnalysis || {}, null, 2)}\n`, 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'project-analysis.md'), renderProjectAnalysis(state.projectAnalysis), 'utf8');
+    await fs.writeFile(path.join(CACHE_DIR, 'lean-index.json'), `${JSON.stringify(state.leanIndex, null, 2)}\n`, 'utf8');
+    await fs.writeFile(path.join(CACHE_DIR, 'lean-report.md'), renderLeanReport(state.leanIndex), 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'agent-guide.md'), renderAgentGuide(state), 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'report.md'), renderReport(state), 'utf8');
     await removeStaleArtifact('definition-index.md');
@@ -184,6 +198,10 @@ function printSummary(action, state) {
     if (knowledge?.conceptSources || knowledge?.notationSources || knowledge?.summaryPages) {
         console.log(`Project knowledge: ${knowledge.conceptSources} concept/glossary sources, ${knowledge.notationSources} notation sources, ${knowledge.extractedDefinitions} supplemental definitions`);
     }
+    const lean = state.leanIndex?.summary;
+    if (lean?.projects > 0) {
+        console.log(`Lean anchors: ${lean.matchedAnchors} matched formal objects, ${lean.declarations} declarations, ${lean.unknownAnchors} unknown anchors`);
+    }
     if (errors.length > 0 || warnings.length > 0) {
         console.log('Report: .math-workspace/report.md');
         [...errors, ...warnings].slice(0, 5).forEach(issue => {
@@ -209,6 +227,71 @@ async function lint() {
     await writeArtifacts(state);
     printSummary('lint', state);
     if (state.issues.some(issue => issue.severity === 'error')) process.exitCode = 1;
+}
+
+function printLeanUsage(): void {
+    console.log(`Usage:
+  npm run workspace -- lean scan
+  npm run workspace -- lean coverage
+  npm run workspace -- lean verify
+  npm run workspace -- lean capture
+  npm run workspace -- lean build [--project <key>]
+  npm run workspace -- lean dependencies
+
+The Lean index records stable docstring anchors. ` + '`capture`' + ` records the reviewed Markdown/declaration contract; ` + '`build`' + ` records the configured Lake build result. Neither result by itself claims complete formalization or proof coverage.`);
+}
+
+async function lean(args: string[] = []): Promise<void> {
+    const action = args[0] || 'scan';
+    if (action === 'help' || action === '--help') {
+        printLeanUsage();
+        return;
+    }
+    const rest = args.slice(1);
+    const projectOption = rest.indexOf('--project');
+    const projectKey = projectOption >= 0 ? rest[projectOption + 1] : undefined;
+    const validProjectOption = action === 'build'
+        && (rest.length === 0 || (projectOption === 0 && rest.length === 2 && !!projectKey));
+    if (!['scan', 'coverage', 'verify', 'capture', 'build', 'dependencies'].includes(action)
+        || (action !== 'build' && rest.length > 0)
+        || (action === 'build' && !validProjectOption)) {
+        printLeanUsage();
+        process.exitCode = 1;
+        return;
+    }
+
+    let state = await scanWorkspace();
+    if (action === 'capture') {
+        await writeLeanContracts(ROOT, captureLeanContracts(state.leanIndex, state.labels));
+        state = await scanWorkspace();
+    }
+    if (action === 'build') {
+        const build = await buildLeanWorkspace(ROOT, state.leanIndex, projectKey);
+        state = await scanWorkspace();
+        const failed = Object.entries(build.projects)
+            .filter(([, result]) => !result.passed)
+            .map(([key]) => key);
+        if (failed.length > 0) process.exitCode = 1;
+    }
+    if (action === 'dependencies') {
+        const artifact = await collectLeanDependencies(ROOT, state.leanIndex, state.dependencyGraph);
+        state = await scanWorkspace();
+        if (artifact.diagnostics.length > 0) process.exitCode = 1;
+    }
+    await writeArtifacts(state);
+    const summary = state.leanIndex.summary;
+    const errors = state.leanIndex.diagnostics.filter(diagnostic => diagnostic.severity === 'error');
+    const status = errors.length > 0 ? 'ERROR' : 'OK';
+    console.log(`${status} lean ${action}: ${summary.anchors} anchors, ${summary.declarations} declarations, ${summary.matchedAnchors} matched, ${summary.unknownAnchors} unknown`);
+    const review = state.leanIndex.statusSummary;
+    if (review) {
+        console.log(`Lean review: ${review.contracts.current} current, ${review.contracts.untracked} untracked, ${review.contracts['markdown-drifted'] + review.contracts['declaration-drifted'] + review.contracts.drifted} drifted; ${review.builds.passed} build-passed, ${review.builds.stale} build-stale, ${review.builds.unverified} build-unverified`);
+    }
+    console.log('Index: .math-workspace/lean-index.json');
+    console.log('Report: .math-workspace/lean-report.md');
+    if (action === 'dependencies') console.log('Dependency comparison: .math-workspace/lean-dependency-report.md');
+    if (action === 'coverage') console.log(renderLeanReport(state.leanIndex));
+    if (action === 'verify' && errors.length > 0) process.exitCode = 1;
 }
 
 function normalizeGraphId(value) {
@@ -2653,6 +2736,8 @@ function printHelp({ all = false } = {}) {
   npm run workspace -- graph impact <h-id>
   npm run workspace -- graph focus <h-id> [--depth N]
   npm run workspace -- graph matrix chapter|volume|book
+  npm run workspace -- lean scan|coverage|verify|capture|dependencies
+  npm run workspace -- lean build [--project <key>]
   npm run workspace -- serve [project-dir] [--port 0]  # no project-dir opens the local launcher
   npm run workspace -- mcp [--root project-dir] [--port 0]
   npm run workspace -- export-md <file-or-dir> [...] --out <compiled.md>
@@ -2689,6 +2774,8 @@ Advanced commands:
   npm run workspace -- graph upstream <h-id> [--where all|statement|proof|body]
   npm run workspace -- graph bridges|isolated|cycles [--where all|statement|proof|body]
   npm run workspace -- graph matrix chapter|volume|book [--where all|statement|proof|body]
+  npm run workspace -- lean scan|coverage|verify|capture|dependencies
+  npm run workspace -- lean build [--project <key>]
   npm run workspace -- serve [project-dir] [--port 0]  # no project-dir opens the local launcher
   npm run workspace -- mcp [--root project-dir] [--port 0]
   npm run workspace -- export-md <file-or-dir> [...] --out <compiled.md>
@@ -2723,6 +2810,7 @@ async function printArtifactPaths() {
         ['workspace UI', path.join(PACKAGE_ROOT, 'out', 'reader', 'index.html')],
         ['editor skill', path.join(PACKAGE_ROOT, 'skills', 'editor.md')],
         ['integrator guide', path.join(PACKAGE_ROOT, 'skills', 'integrator.md')],
+        ['Lean formalization skill', path.join(PACKAGE_ROOT, 'skills', 'lean-formalization.md')],
         ['VASMC catalog', path.join(PACKAGE_ROOT, 'vasm-catalog', 'vasmc-catalog.yaml')],
         ['usage doc', path.join(PACKAGE_ROOT, 'docs', 'usage.md')],
         ['release doc', path.join(PACKAGE_ROOT, 'docs', 'release.md')]
@@ -2733,8 +2821,8 @@ async function printArtifactPaths() {
         console.log(`${label}: ${toPosix(filePath)}${exists ? '' : ' (missing)'}`);
     }
     console.log('');
-    console.log('AI workflow: review skills/editor.md and skills/integrator.md, then merge the rules into the target project instructions.');
-    console.log('VASMC: vasmc add --catalog <VASMC catalog> --export editor|integrator');
+    console.log('AI workflow: review skills/editor.md and skills/integrator.md; for Lean projects, also review skills/lean-formalization.md.');
+    console.log('VASMC: vasmc add --catalog <VASMC catalog> --export editor|integrator|lean-formalization');
 }
 
 function parseReaderArgs(args: string[]): { rootPath?: string; port: number; help?: boolean } {
@@ -2843,6 +2931,8 @@ async function main() {
         await lint();
     } else if (command === 'graph') {
         await graph(args);
+    } else if (command === 'lean') {
+        await lean(args);
     } else if (command === 'serve') {
         await serveReader(args);
     } else if (command === 'mcp') {

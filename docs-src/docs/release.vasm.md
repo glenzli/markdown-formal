@@ -65,8 +65,8 @@ dist/
 
 - `cli/`：目标项目使用的无运行时依赖 CLI 与内置 Math Workspace 静态资源。
 - `.agents/plugins/` 与 `plugins/`：Codex marketplace 与 `math-workspace` MCP plugin。
-- `skills/`：AI 规则与组合指导 artifact，目前包含 `skills/editor.md` 和 `skills/integrator.md`。
-- `vasm-catalog/`：面向 VASMC consumer 的 catalog，包含 `vasmc-catalog.yaml`、`editor` export 和 `integrator` export。
+- `skills/`：AI 规则与组合指导 artifact，包含 `skills/editor.md`、`skills/integrator.md` 和 `skills/lean-formalization.md`。
+- `vasm-catalog/`：面向 VASMC consumer 的 catalog，包含 `vasmc-catalog.yaml`、`editor`、`integrator` 和 `lean-formalization` exports。
 - `docs/`：面向人的文档。
 - `manifest.json`：机器可读产物表。
 - `checksums.txt`：SHA-256 校验和。
@@ -97,7 +97,7 @@ npm 包入口：
 - `bin.math-workspace`：指向 `out/cli/math-workspace.js`。
 - `out/reader/`：由 CLI 的 `serve` 命令提供的本地 Math Workspace 静态资源。
 - `.agents/plugins/` 与 `plugins/`：Codex marketplace 和 `math-workspace` MCP plugin。
-- `skills/`：裸 AI 审阅和融合用的 `editor.md` / `integrator.md`。
+- `skills/`：裸 AI 审阅和融合用的 `editor.md` / `integrator.md` / `lean-formalization.md`。
 - `vasm-catalog/`：VASMC consumer 使用的 catalog exports。
 - `docs/`：面向人的 usage 和 release 文档。
 
@@ -183,14 +183,16 @@ npm run workspace -- verify
 
 1. 审阅 `skills/editor.md`；
 2. 审阅 `skills/integrator.md`；
-3. 把规则融合进项目原生 AI 指令；
-4. 保留目标项目自己的文风和 release 规则。
+3. 使用 Lean 时审阅 `skills/lean-formalization.md`；
+4. 把规则融合进项目原生 AI 指令；
+5. 保留目标项目自己的文风和 release 规则。
 
 如果目标项目本身也使用 VASMC，推荐锁定 catalog exports：
 
 ```bash
 vasmc add --catalog path/to/vasm-catalog/vasmc-catalog.yaml --export editor --alias math-workspace-editor
 vasmc add --catalog path/to/vasm-catalog/vasmc-catalog.yaml --export integrator --alias math-workspace-integrator
+vasmc add --catalog path/to/vasm-catalog/vasmc-catalog.yaml --export lean-formalization --alias math-workspace-lean-formalization
 ```
 
 consumer 的 `vasmc-lock.yaml` 会固定 artifact hash；integrative export 的 `appliesTo` 也会被解析为 editor artifact 的 hash。这样目标项目不需要扫描远端仓库，也不需要信任未锁定路径。

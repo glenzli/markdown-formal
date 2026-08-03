@@ -1192,6 +1192,157 @@ async function testPerfDummyThresholds() {
     assert.match(combinedOutput(fail), /PERF failed: heap/);
 }
 
+async function testLeanAnchorIndex() {
+    const root = await makeWorkspace('lean-index');
+    await fs.writeFile(path.join(root, 'book1', '01-foundations.md'), [
+        '# Chapter 1',
+        '',
+        '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
+        '',
+        'Proof: direct.',
+        ''
+    ].join('\n'));
+    await fs.mkdir(path.join(root, '.math-workspace'), { recursive: true });
+    await fs.mkdir(path.join(root, 'formal', 'src'), { recursive: true });
+    await fs.writeFile(path.join(root, '.math-workspace', 'config.json'), JSON.stringify({
+        lean: {
+            projects: [{
+                key: 'fixture',
+                root: 'formal',
+                sourceRoots: ['src'],
+                target: 'fixture',
+                anchorPrefix: 'Book anchor:'
+            }]
+        }
+    }, null, 2));
+    const leanPath = path.join(root, 'formal', 'src', 'Fixture.lean');
+    await fs.writeFile(leanPath, [
+        'namespace Fixture',
+        '',
+        '/-- Book anchor: h-3333333333333333 **Finite cover** -/',
+        'theorem finite_cover : True := by trivial',
+        '',
+        'end Fixture',
+        ''
+    ].join('\n'));
+
+    const prepare = runCli(root, ['prepare']);
+    assert.equal(prepare.status, 0, combinedOutput(prepare));
+    assert.match(combinedOutput(prepare), /Lean anchors: 1 matched formal objects, 1 declarations, 0 unknown anchors/);
+    const index = JSON.parse(await read(root, '.math-workspace/lean-index.json'));
+    assert.equal(index.summary.leanFiles, 1);
+    assert.equal(index.summary.anchors, 1);
+    assert.equal(index.summary.matchedAnchors, 1);
+    assert.equal(index.summary.eligibleFormalObjects, 1);
+    assert.equal(index.summary.anchoredEligibleFormalObjects, 1);
+    assert.equal(index.anchors['h-3333333333333333'].declarations[0].name, 'finite_cover');
+    assert.equal(index.anchors['h-3333333333333333'].declarations[0].qualifiedName, 'Fixture.finite_cover');
+    assert.equal(index.anchors['h-3333333333333333'].status.contract, 'untracked');
+    assert.match(await read(root, '.math-workspace/lean-report.md'), /Anchor records a deterministic link|An anchor records a deterministic link/);
+
+    const capture = runCli(root, ['lean', 'capture']);
+    assert.equal(capture.status, 0, combinedOutput(capture));
+    const captured = JSON.parse(await read(root, '.math-workspace/lean-index.json'));
+    assert.equal(captured.anchors['h-3333333333333333'].status.contract, 'current');
+
+    await fs.writeFile(path.join(root, 'book1', '01-foundations.md'), [
+        '# Chapter 1',
+        '',
+        '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover when the cover is indexed.',
+        '',
+        'Proof: direct.',
+        ''
+    ].join('\n'));
+    const drift = runCli(root, ['lean', 'verify']);
+    assert.equal(drift.status, 0, combinedOutput(drift));
+    const drifted = JSON.parse(await read(root, '.math-workspace/lean-index.json'));
+    assert.equal(drifted.anchors['h-3333333333333333'].status.contract, 'markdown-drifted');
+
+    const coverage = runCli(root, ['lean', 'coverage']);
+    assert.equal(coverage.status, 0, combinedOutput(coverage));
+    assert.match(combinedOutput(coverage), /Eligible objects with anchors \| 1/);
+
+    await fs.appendFile(leanPath, [
+        '',
+        '/-- Book anchor: h-9999999999999999 **Unknown** -/',
+        'lemma unknown_anchor : True := by trivial',
+        ''
+    ].join('\n'));
+    const verify = runCli(root, ['lean', 'verify']);
+    assert.notEqual(verify.status, 0, combinedOutput(verify));
+    assert.match(combinedOutput(verify), /1 unknown/);
+    assert.match(await read(root, '.math-workspace/lean-report.md'), /lean-anchor-unknown/);
+}
+
+async function testLeanBuildAndDependencyComparison() {
+    const root = await makeWorkspace('lean-dependencies');
+    await fs.writeFile(path.join(root, 'book1', '01-foundations.md'), [
+        '# Chapter 1',
+        '',
+        '定理 #h-1111111111111111（Seed）：A seed assertion.',
+        '',
+        'Proof: direct.',
+        '',
+        '命题 #h-2222222222222222（Consequence）：The conclusion holds.',
+        '',
+        'Proof: by @h-1111111111111111.',
+        ''
+    ].join('\n'));
+    await fs.mkdir(path.join(root, '.math-workspace'), { recursive: true });
+    await fs.mkdir(path.join(root, 'formal', 'src'), { recursive: true });
+    await fs.writeFile(path.join(root, '.math-workspace', 'config.json'), JSON.stringify({
+        lean: {
+            projects: [{
+                key: 'fixture',
+                root: 'formal',
+                sourceRoots: ['src'],
+                target: 'Fixture',
+                module: 'Fixture',
+                anchorPrefix: 'Book anchor:'
+            }]
+        }
+    }, null, 2));
+    await fs.writeFile(path.join(root, 'formal', 'lakefile.toml'), [
+        'name = "fixture"',
+        'version = "0.1.0"',
+        '',
+        '[[lean_lib]]',
+        'name = "Fixture"',
+        'srcDir = "src"',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'formal', 'src', 'Fixture.lean'), [
+        'namespace Fixture',
+        '',
+        '/-- Book anchor: h-1111111111111111 **Seed** -/',
+        'theorem seed : True := by trivial',
+        '',
+        '/-- Book anchor: h-2222222222222222 **Consequence** -/',
+        'theorem consequence : True := by exact seed',
+        '',
+        'end Fixture',
+        ''
+    ].join('\n'));
+
+    const capture = runCli(root, ['lean', 'capture']);
+    assert.equal(capture.status, 0, combinedOutput(capture));
+    const build = runCli(root, ['lean', 'build']);
+    assert.equal(build.status, 0, combinedOutput(build));
+    const dependencies = runCli(root, ['lean', 'dependencies']);
+    const graph = JSON.parse(await read(root, '.math-workspace/lean-dependency-graph.json'));
+    assert.equal(
+        dependencies.status,
+        0,
+        `${combinedOutput(dependencies)}\n${JSON.stringify(graph.diagnostics, null, 2)}`
+    );
+
+    const index = JSON.parse(await read(root, '.math-workspace/lean-index.json'));
+    assert.equal(index.anchors['h-1111111111111111'].status.build, 'passed');
+    assert.equal(index.anchors['h-2222222222222222'].status.dependencies, 'matched');
+    assert.ok(graph.comparisons['h-2222222222222222'].shared.includes('h-1111111111111111'));
+    assert.match(await read(root, '.math-workspace/lean-dependency-report.md'), /direct references in elaborated Lean declaration types and proof values/);
+}
+
 async function testReaderServer() {
     const root = await makeWorkspace('reader');
     const chapterPath = path.join(root, 'book1', '01-foundations.md');
@@ -1217,6 +1368,26 @@ async function testReaderServer() {
         '> 注（Related reading）：A later note cites @h-4444444444444444.',
         '',
         '注（Plain Note）：This explanatory note must not receive a marker.',
+        ''
+    ].join('\n'));
+    await fs.mkdir(path.join(root, '.math-workspace'), { recursive: true });
+    await fs.mkdir(path.join(root, 'formal', 'src'), { recursive: true });
+    await fs.writeFile(path.join(root, '.math-workspace', 'config.json'), JSON.stringify({
+        lean: {
+            projects: [{
+                key: 'reader-fixture',
+                root: 'formal',
+                sourceRoots: ['src'],
+                anchorPrefix: 'Book anchor:'
+            }]
+        }
+    }, null, 2));
+    await fs.writeFile(path.join(root, 'formal', 'src', 'Fixture.lean'), [
+        '/-- Book anchor: h-3333333333333333 **Finite cover** -/',
+        'theorem finite_cover : True := by trivial',
+        '',
+        '/-- Book anchor: h-5555555555555555 **Supporting Fact** -/',
+        'lemma supporting_fact : True := by trivial',
         ''
     ].join('\n'));
     const prepare = runCli(root, ['prepare']);
@@ -1248,11 +1419,17 @@ async function testReaderServer() {
         assert.equal(page.page.displayHeading, '第 1 章 Foundations');
         assert.equal(page.labels['h-3333333333333333'].content, undefined);
         const theoremMarker = page.dependencyMarkers['h-3333333333333333'];
+        assert.equal(theoremMarker.leanDeclarationCount, 1);
         assert.equal(theoremMarker.kind, 'theorem-like');
         assert.equal(theoremMarker.directDependencies, 0);
         assert.equal(theoremMarker.directDependents, 2);
         assert.equal(theoremMarker.impactCount, 2);
         assert.equal(theoremMarker.ambientReferenceCount, 1);
+        assert.deepEqual(theoremMarker.leanStatus, {
+            contract: 'untracked',
+            build: 'unverified',
+            dependencies: 'unavailable'
+        });
         assert.deepEqual(theoremMarker.downstream.map(item => item.id).sort(), ['h-4444444444444444', 'h-5555555555555555']);
         assert.deepEqual(page.dependencyMarkers['h-4444444444444444'], {
             directDependencies: 1,
@@ -1279,6 +1456,12 @@ async function testReaderServer() {
             ambientReferenceCount: 0,
             role: 'leaf',
             kind: 'remark',
+            leanDeclarationCount: 1,
+            leanStatus: {
+                contract: 'untracked',
+                build: 'unverified',
+                dependencies: 'unavailable'
+            },
             upstream: [{
                 id: 'h-3333333333333333',
                 display: '定理 1.1',
@@ -1288,6 +1471,12 @@ async function testReaderServer() {
             }],
             downstream: []
         });
+
+        const lean = await (await fetch(reader.url + '/api/lean?id=h-3333333333333333')).json();
+        assert.equal(lean.id, 'h-3333333333333333');
+        assert.equal(lean.declarations[0].name, 'finite_cover');
+        assert.equal(lean.status.contract, 'untracked');
+        assert.equal(lean.status.build, 'unverified');
 
         const recall = await (await fetch(reader.url + '/api/recall?id=h-3333333333333333')).json();
         assert.match(recall.content, /Finite cover/);
@@ -2139,6 +2328,8 @@ const tests = [
     ['scan exclude and zero introduction pages', testScanExcludeAndZeroIntroductionPages],
     ['page title uses unique highest heading', testPageTitleUsesUniqueHighestHeading],
     ['perf-dummy thresholds', testPerfDummyThresholds],
+    ['Lean anchor index', testLeanAnchorIndex],
+    ['Lean build and dependency comparison', testLeanBuildAndDependencyComparison],
     ['local Reader server', testReaderServer],
     ['local Reader MCP server', testReaderMcpServer],
     ['Reader plugin MCP configuration', testReaderPluginMcpConfig],

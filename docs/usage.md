@@ -200,6 +200,7 @@ The command prints a URL bound only to `127.0.0.1`. Open it in Codex's local bro
 - theorem-like recall loaded only when needed;
 - project-wide definition search and current-page symbols;
 - in-text dependency markers for propositions, lemmas, theorems, corollaries, and proof-backed hash remarks;
+- light Lean badges that open anchor, baseline, build, and direct-dependency details on demand;
 - live refresh after source changes.
 
 Dependency markers read only explicit `@h-...` relationships. A short line above the dot means the statement or proof explicitly references formal items such as a section, definition, theorem-like object, or proof-backed hash remark. A vertical line below means a later dependency node depends on it; a fork means multiple direct downstream nodes. Mainline theorem-like nodes use the ordinary impact colors: muted is a terminal node, blue is directly cited, and green is both explicitly grounded and cited later. Hash remarks use a muted supplemental color and label; plain `注（...）` / `Remark (...)` entries have no graph node or marker. Hover for reference and transitive-impact counts. These are structural signals, not measures of mathematical importance.
@@ -240,6 +241,7 @@ AI rules no longer live in a separate public documentation page. Target projects
 ```text
 skills/editor.md      # writing and migration rules
 skills/integrator.md  # how to merge those rules into native project instructions
+skills/lean-formalization.md  # Lean anchoring, implementation, and validation rules
 ```
 
 For npm installs, the paths are:
@@ -247,6 +249,7 @@ For npm installs, the paths are:
 ```text
 node_modules/math-workspace/skills/editor.md
 node_modules/math-workspace/skills/integrator.md
+node_modules/math-workspace/skills/lean-formalization.md
 ```
 
 If the target project uses VASMC, lock both artifacts through the catalog:
@@ -330,6 +333,34 @@ npm run workspace -- graph matrix chapter
 
 The graph records explicit `@h-...` references only. Its reports separate mainline theorem-like statistics from supplemental hash-remark statistics, and plain `注（...）` / `Remark (...)` entries are excluded. Suggested or inferred mathematical dependencies should be stored separately by the target project.
 
+### Lean Anchors
+
+After declaring a Lean project in `.math-workspace/config.json`, `prepare` scans `.lean` files under the configured source roots, reads stable hashes from named-declaration docstrings, and writes:
+
+```text
+.math-workspace/lean-index.json
+.math-workspace/lean-report.md
+.math-workspace/lean-contracts.json        # appears after capture
+.math-workspace/lean-build.json            # appears after build
+.math-workspace/lean-dependency-graph.json # appears after dependencies
+.math-workspace/lean-dependency-report.md  # appears after dependencies
+```
+
+Use `lean scan` to rebuild the index, `lean coverage` to print the anchor report, and `lean verify` to reject unknown hashes, unreadable roots, or anchored docstrings without a supported named declaration:
+
+```bash
+npm run workspace -- lean scan
+npm run workspace -- lean coverage
+npm run workspace -- lean verify
+npm run workspace -- lean capture
+npm run workspace -- lean build [--project <key>]
+npm run workspace -- lean dependencies
+```
+
+`capture` records a reviewed baseline for the Markdown object's type, title, content, and anchored declaration signature; later changes surface as contract drift. `build` runs `lake build [target]` in configured project roots and records the result; source changes make an older result stale. `dependencies` uses Lean elaboration to inspect direct references in anchored declaration types and proof values, then compares them only with explicit strict Markdown `@h-...` edges. Markdown-only edges merit review; Lean-only edges usually provide implementation or reusable-support context. Neither kind establishes a mathematical conflict by itself.
+
+The Reader marks anchored statements and graph nodes with a light `L`. Clicking an in-text `L` shows its anchored declarations, contract, latest build, and dependency-comparison state. These are auditable engineering signals, not a claim of semantic equivalence, complete formalization, or proof coverage. Coverage counts only configured `coverageTypes` and cannot substitute for a scope statement.
+
 ### Project Structure
 
 The scanner infers books, volumes, chapters, intro pages, summaries, and appendices from paths.
@@ -378,6 +409,19 @@ Common `.math-workspace/config.json`:
       "advanced-book": ["foundations-book"]
     }
   },
+  "lean": {
+    "projects": [
+      {
+        "key": "formal-book",
+        "root": "formal-book",
+        "sourceRoots": ["FormalBook"],
+        "target": "FormalBook",
+        "module": "FormalBook",
+        "anchorPrefix": "Book anchor:"
+      }
+    ],
+    "coverageTypes": ["theorem", "lemma", "prop", "cor", "remark"]
+  },
   "render": {
     "pageHeadingStyle": "label-title"
   }
@@ -385,6 +429,8 @@ Common `.math-workspace/config.json`:
 ```
 
 Cross-book references and lookup require explicit dependencies in `lookup.bookDependencies`.
+
+Lean `root` and `sourceRoots` paths are relative to the Math Workspace project root. `target` is the optional `lake build` target; `module` is imported for dependency inspection and defaults to `target`. `anchorPrefix` must match the prefix used in Lean docstrings; `coverageTypes` changes the report queue, not anchor parsing.
 
 ### PDF Export
 
@@ -709,6 +755,7 @@ AI 规则不再放在单独的 public doc 中。目标项目应直接读取随�
 ```text
 skills/editor.md      # 具体写作和迁移规则
 skills/integrator.md  # 如何融合进目标项目原生 AI 指令
+skills/lean-formalization.md  # Lean 锚定、实现与验证规则
 ```
 
 如果通过 npm 安装，对应路径是：
@@ -716,6 +763,7 @@ skills/integrator.md  # 如何融合进目标项目原生 AI 指令
 ```text
 node_modules/math-workspace/skills/editor.md
 node_modules/math-workspace/skills/integrator.md
+node_modules/math-workspace/skills/lean-formalization.md
 ```
 
 如果目标项目使用 VASMC，使用 catalog 锁定这两个 artifact：
@@ -799,6 +847,36 @@ npm run workspace -- graph matrix chapter
 
 依赖图只记录显式 `@h-...` 引用。报告把主线 theorem-like 对象与带 hash 补充注释分别统计，避免旁支事实改变主线结论；普通 `注（...）` 不成为节点。AI 或领域工具推测出的数学依赖应由目标项目单独维护，不要混入 canonical graph。
 
+## Lean 锚点
+
+在 `.math-workspace/config.json` 中声明 Lean 项目后，`prepare` 会扫描配置源码目录内的 `.lean` 文件，读取具名声明 docstring 中的稳定 hash，并生成：
+
+```text
+.math-workspace/lean-index.json
+.math-workspace/lean-report.md
+.math-workspace/lean-contracts.json        # 显式捕获后才出现
+.math-workspace/lean-build.json            # 执行 build 后才出现
+.math-workspace/lean-dependency-graph.json # 执行 dependencies 后才出现
+.math-workspace/lean-dependency-report.md  # 执行 dependencies 后才出现
+```
+
+常用命令：
+
+```bash
+npm run workspace -- lean scan
+npm run workspace -- lean coverage
+npm run workspace -- lean verify
+npm run workspace -- lean capture
+npm run workspace -- lean build [--project <key>]
+npm run workspace -- lean dependencies
+```
+
+`scan` 重建索引，`coverage` 打印锚点报告，`verify` 在锚点无法解析、源码根不可读或 docstring 后没有受支持的具名声明时失败。`capture` 把当前正文类型、标题、内容与锚定声明签名作为显式审阅基线；基线后的正文或声明改动会显示为漂移。`build` 在每个已配置项目根执行 `lake build [target]` 并记录结果；任何源码变动都会使旧构建结果过期。
+
+`dependencies` 通过 Lean elaborator 读取锚定声明的直接类型与证明值引用，并只与正文中显式、严格的 `@h-...` 边比较。Markdown-only 边是需要核对的候选；Lean-only 边通常是实现细节或复用支撑，仅作为补充上下文。两者都不自动构成数学冲突，也不证明语义等价。
+
+Reader 在命题正文与关系图节点上用轻量 `L` 表示存在一个或多个 Lean 声明锚点。点击正文中的 `L` 可查看锚定声明、正文/声明契约、最近构建和依赖比对状态。这个标记不声称完整形式化或证明覆盖；覆盖数字只统计配置的 `coverageTypes`，不能替代范围声明。
+
 ## 项目结构
 
 扫描器从路径推断书、卷、章节、导论、总结和附录。
@@ -847,6 +925,19 @@ multi-volume-book/
       "advanced-book": ["foundations-book"]
     }
   },
+  "lean": {
+    "projects": [
+      {
+        "key": "formal-book",
+        "root": "formal-book",
+        "sourceRoots": ["FormalBook"],
+        "target": "FormalBook",
+        "module": "FormalBook",
+        "anchorPrefix": "Book anchor:"
+      }
+    ],
+    "coverageTypes": ["theorem", "lemma", "prop", "cor", "remark"]
+  },
   "render": {
     "pageHeadingStyle": "label-title"
   }
@@ -854,6 +945,8 @@ multi-volume-book/
 ```
 
 跨 book 引用和查询必须在 `lookup.bookDependencies` 中显式声明。
+
+Lean 项目的 `root` 与 `sourceRoots` 都相对于 Math Workspace 项目根；`target` 是 `lake build` 的可选目标，`module` 是依赖查询时导入的模块（未设置时使用 `target`）；`anchorPrefix` 必须与 Lean docstring 中使用的前缀一致。`coverageTypes` 控制报告中的候选正文类型，不改变锚点解析。
 
 ## PDF 导出
 

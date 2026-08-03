@@ -20,6 +20,9 @@ import { projectReaderDependencyMarkers } from './dependency-markers';
 import { ReaderProjectRegistry } from './projects';
 import { ReaderTaskBindingRegistry, type ReaderTaskBindings } from './task-bindings';
 import { ReaderTemporaryDiscussionRegistry } from './temporary-discussions';
+import { isLeanSourcePath, scanLeanWorkspace } from '../lean/lean-index';
+import { readLeanBuild } from '../lean/lean-state';
+import { readLeanDependencyArtifact } from '../lean/lean-dependencies';
 
 const nodeFs = require('node:fs');
 const http = require('node:http');
@@ -231,7 +234,11 @@ class ReaderWorkspace {
         if (normalized === '.math-workspace/config.json') return true;
         if (normalized === '.math-workspace/definitions.json') return true;
         if (normalized === '.math-workspace/symbols.json') return true;
+        if (normalized === '.math-workspace/lean-build.json') return true;
+        if (normalized === '.math-workspace/lean-contracts.json') return true;
+        if (normalized === '.math-workspace/lean-dependency-graph.json') return true;
         if (normalized.startsWith('.math-workspace/')) return false;
+        if (isLeanSourcePath(this.snapshot?.state.config || mergeConfig({}), normalized)) return true;
         return !shouldExcludeScanPath(normalized, this.snapshot?.state.config || mergeConfig({}));
     }
 
@@ -292,7 +299,16 @@ class ReaderWorkspace {
                     this.readIndex('definitions'),
                     this.readIndex('symbols')
                 ]);
-                const state = scanFormalDocuments(documents, config, symbols, definitions);
+                const formalState = scanFormalDocuments(documents, config, symbols, definitions);
+                const leanIndex = await scanLeanWorkspace(this.rootPath, config, formalState.labels, formalState.dependencyGraph);
+                formalState.issues.push(...leanIndex.diagnostics.map(diagnostic => ({
+                    severity: diagnostic.severity,
+                    code: diagnostic.code,
+                    file: diagnostic.file,
+                    line: diagnostic.line,
+                    message: diagnostic.message
+                })));
+                const state = { ...formalState, leanIndex };
                 this.snapshot = {
                     revision: (this.snapshot?.revision || 0) + 1,
                     refreshedAt: new Date().toISOString(),
@@ -338,6 +354,7 @@ function stateProjection(snapshot: WorkspaceSnapshot, rootPath: string): Record<
         definitions: definitions.map(definitionSummary),
         issues: snapshot.state.issues || [],
         dependencySummary: snapshot.state.dependencyGraph?.summary || {},
+        leanSummary: snapshot.state.leanIndex?.summary || {},
         projectAnalysis: snapshot.state.projectAnalysis || { schemaVersion: 1, sources: [], summary: {} }
     };
 }
@@ -903,7 +920,7 @@ export async function startReaderServer(options: FormalReaderServerOptions): Pro
                     page: rawPage ? decoratePage(rawPage, snapshot.state.config) : undefined,
                     content,
                     labels: labelsForContent(snapshot, [content, ...symbols.map(symbol => symbol.meaning)].join('\n')),
-                    dependencyMarkers: projectReaderDependencyMarkers(snapshot.state.dependencyGraph, filePath),
+                    dependencyMarkers: projectReaderDependencyMarkers(snapshot.state.dependencyGraph, filePath, snapshot.state.leanIndex),
                     symbols
                 }));
                 return;
@@ -950,6 +967,34 @@ export async function startReaderServer(options: FormalReaderServerOptions): Pro
 
             if (url.pathname === '/api/graph') {
                 sendJson(response, 200, snapshot.state.dependencyGraph || {});
+                return;
+            }
+
+            if (url.pathname === '/api/lean') {
+                const id = url.searchParams.get('id') || '';
+                const anchor = snapshot.state.leanIndex?.anchors?.[id];
+                if (!anchor) {
+                    sendText(response, 404, 'Lean anchor not found.');
+                    return;
+                }
+                const projectKeys = [...new Set<string>((anchor.declarations || [])
+                    .map((declaration: any) => declaration.projectKey)
+                    .filter((key: unknown): key is string => typeof key === 'string' && key.length > 0))];
+                const [build, dependencies] = await Promise.all([
+                    readLeanBuild(rootPath),
+                    readLeanDependencyArtifact(rootPath)
+                ]);
+                const builds = Object.fromEntries(projectKeys
+                    .map(key => [key, build?.projects?.[key]])
+                    .filter(([, result]) => !!result));
+                sendJson(response, 200, stripUndefinedFields({
+                    id,
+                    formal: anchor.formal,
+                    declarations: anchor.declarations,
+                    status: anchor.status,
+                    ...(Object.keys(builds).length > 0 ? { builds } : {}),
+                    ...(dependencies?.comparisons?.[id] ? { comparison: dependencies.comparisons[id] } : {})
+                }));
                 return;
             }
 

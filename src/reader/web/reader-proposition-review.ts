@@ -29,7 +29,7 @@ export interface ReaderPropositionReviewLabels {
     terminalPropositionHint: string;
     assistantReview: string;
     assistantReviewHint: string;
-    nodeLabel: (display: string, upstream: number, downstream: number, ambientReferences: number, status: string) => string;
+    nodeLabel: (display: string, upstream: number, downstream: number, ambientReferences: number, leanDeclarations: number, status: string) => string;
 }
 
 export interface ReaderPropositionReviewHost {
@@ -358,6 +358,23 @@ function appendSupplementalReferenceBadge(
     svg.append(badge);
 }
 
+function appendLeanAnchorBadge(svg: SVGElement, x: number, y: number): void {
+    const badge = svgElement('g');
+    badge.setAttribute('class', 'reader-proposition-map-lean-badge');
+    badge.setAttribute('aria-hidden', 'true');
+    const background = svgElement('circle');
+    background.setAttribute('cx', String(x + 17));
+    background.setAttribute('cy', String(y + 17));
+    background.setAttribute('r', '7');
+    const label = svgElement('text');
+    label.setAttribute('x', String(x + 17));
+    label.setAttribute('y', String(y + 19.6));
+    label.setAttribute('text-anchor', 'middle');
+    label.textContent = 'L';
+    badge.append(background, label);
+    svg.append(badge);
+}
+
 /**
  * Owns the chapter-local graph projection, visual semantics, and terminal-node
  * necessity-review
@@ -468,10 +485,12 @@ export class ReaderPropositionReview {
                 item.marker.directDependencies,
                 item.marker.directDependents,
                 item.marker.ambientReferenceCount || 0,
+                item.marker.leanDeclarationCount || 0,
                 statusLabel(status, labels)
             ));
             const title = svgElement('title');
-            title.textContent = item.display + (item.title ? ' · ' + item.title : '') + ' · ' + statusLabel(status, labels);
+            title.textContent = item.display + (item.title ? ' · ' + item.title : '') + ' · ' + statusLabel(status, labels)
+                + ((item.marker.leanDeclarationCount || 0) > 0 ? ` · Lean ×${item.marker.leanDeclarationCount}` : '');
             const circle = svgElement('circle');
             circle.setAttribute('cx', String(position.x));
             circle.setAttribute('cy', String(position.y));
@@ -496,6 +515,9 @@ export class ReaderPropositionReview {
         layout.positions.forEach(position => {
             if (position.item.marker.ambientReferenceCount > 0) {
                 appendSupplementalReferenceBadge(svg, position.x, position.y, position.item.marker.ambientReferenceCount);
+            }
+            if ((position.item.marker.leanDeclarationCount || 0) > 0) {
+                appendLeanAnchorBadge(svg, position.x, position.y);
             }
         });
 

@@ -31,6 +31,10 @@ catalog:
     integrator:
       source: "skills-src/integrator.vasm.md"
       file: "math-workspace-integrator.md"
+    lean-formalization:
+      source: "skills-src/lean-formalization.vasm.md"
+      targetLang: "zh-CN"
+      file: "math-workspace-lean-formalization.zh-CN.md"
 
 ai:
   projectReview:

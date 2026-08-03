@@ -12,6 +12,8 @@
 
 `math-workspace` is a local Math Workspace service and CLI for long-form mathematical and technical writing. It can run beside Codex or in any browser side panel.
 
+The current release also builds stable anchor indexes for configured Lean projects, while keeping anchor presence distinct from claims of complete formalization.
+
 It keeps stable hash IDs in source Markdown, then renders human-facing numbering, references, navigation, definition lookup, symbol tables, dependency graphs, and publication exports from generated metadata.
 
 The design target is AI-assisted editing:
@@ -27,6 +29,7 @@ The design target is AI-assisted editing:
 - Definition lookup without forcing definitions into the numbering system, including deliberately named concept and glossary appendices.
 - Current-page symbol table for project-specific LaTeX notation.
 - Explicit dependency graph for theorem-like objects and proof-backed hash remarks, built from `@h-...` references.
+- Stable-hash scanning from Lean docstrings, with anchor indexes, coverage reports, reviewed Markdown/declaration baselines, build records, direct dependency comparison, and light Lean badges in the reader and proposition map.
 - Markdown and PDF export with title page, publication metadata page, and front matter pages.
 - Reviewed AI workflow artifacts in `skills/`, plus VASMC catalog exports for lockable reuse.
 
@@ -36,7 +39,7 @@ The design target is AI-assisted editing:
 npm run workspace -- serve /path/to/writing-project
 ```
 
-The Math Workspace listens only on `127.0.0.1` and never writes project files. Open the printed URL in Codex's local browser side panel or a normal browser for chapter navigation, a table of contents, current-page symbols, definition search, in-text explicit dependency markers for theorem-like objects and proof-backed hash remarks, recall, and live source refresh. Multi-volume projects naturally collapse to a volume-to-chapter navigation hierarchy. Markers reflect only structural relationships formed by `@h-...`; a hash remark uses a muted supplemental marker, while a plain remark has no graph node. Citation counts do not imply mathematical strength or importance.
+The Math Workspace listens only on `127.0.0.1` and never writes manuscript source. Open the printed URL in Codex's local browser side panel or a normal browser for chapter navigation, a table of contents, current-page symbols, definition search, in-text explicit dependency markers, Lean anchor badges, recall, and live source refresh. Multi-volume projects naturally collapse to a volume-to-chapter navigation hierarchy. Clicking a Lean badge shows its anchored declarations, reviewed baseline, latest build, and direct dependency comparison; none of these states claims complete formalization or proof coverage.
 
 If the Codex CLI is installed and signed in locally, Math Workspace can open a read-only, ephemeral local discussion for a text or formula selection. Its first message carries the relative path, source line range, selected Markdown, project root, and tool boundary; later messages retain that context. The discussion never writes the manuscript or local task state. You can also bind a Codex task whose working directory exactly matches the Math Workspace project, then explicitly send a chosen discussion conclusion to that task for verification and further work. Math Workspace does not handle Codex tool approvals; continue in Codex when tools are needed.
 
@@ -132,8 +135,8 @@ npm install -D math-workspace
 
 `math-workspace` does not provide a remote auto-installed skill. AI integrations should read the reviewed artifacts that ship with the release bundle or npm package:
 
-- Plain AI / ordinary projects: read `skills/editor.md` and `skills/integrator.md`, then merge the rules into the target project's native `AGENTS.md`, writing skill, or project guide.
-- VASMC projects: lock the `editor` and `integrator` exports from `vasm-catalog/vasmc-catalog.yaml`.
+- Plain AI / ordinary projects: read `skills/editor.md` and `skills/integrator.md`; for Lean projects, also read `skills/lean-formalization.md`, then merge the rules into the target project's native instructions.
+- VASMC projects: lock the `editor`, `integrator`, and optional `lean-formalization` exports from `vasm-catalog/vasmc-catalog.yaml`.
 - npm projects: use `node_modules/math-workspace/skills/` and `node_modules/math-workspace/vasm-catalog/`.
 
 The CLI can print paths for the current installation:
@@ -189,6 +192,7 @@ Before committing, run `npm run content:build`, read `.vasmc/build-report.yaml`,
 - [docs/release.md](docs/release.md): release bundle structure and publishing checks.
 - [skills/editor.md](skills/editor.md): detailed AI writing rules.
 - [skills/integrator.md](skills/integrator.md): AI composition guidance artifact.
+- [skills/lean-formalization.md](skills/lean-formalization.md): Lean anchoring and validation rules.
 
 ### Release
 
@@ -255,7 +259,7 @@ The Math Workspace and CLI outputs remain dependency-free after bundling. Develo
 
 Math Workspace 是一个本地数学工作区，用于长期维护数学或技术类书稿，并将写作、形式化锚点、审阅和项目导航放在同一个界面中。它可与 Codex 或任意浏览器侧栏并行运行。
 
-`math-workspace` 是 Math Workspace 当前稳定的 Markdown 引擎和 CLI：包名、命令名与 `.math-workspace/` 项目配置保持兼容。工作区的范围面向数学写作、形式化与审阅的完整工作流；当前发布实现聚焦 Markdown 与本地 Math Workspace，Lean 管理等后续后端会在此基础上扩展，而不被产品名称限制。
+`math-workspace` 是 Math Workspace 当前稳定的 Markdown 引擎和 CLI：包名、命令名与 `.math-workspace/` 项目配置保持兼容。工作区的范围面向数学写作、形式化与审阅的完整工作流；除 Markdown 与本地 Math Workspace 外，当前版本也可为配置的 Lean 项目建立稳定锚点索引。
 
 它让源码保存稳定的 hash ID，再由工具渲染面向读者的编号、引用、导航、定义查询、符号表、依赖图和发布产物。
 
@@ -272,6 +276,7 @@ Math Workspace 是一个本地数学工作区，用于长期维护数学或技�
 - 定义查询不侵入编号系统，并能利用明确命名的概念/术语附录。
 - 当前页符号表用于展示项目特有 LaTeX 记号。
 - 从显式 `@h-...` 引用生成主线命题与带 hash 补充注释的依赖图。
+- 从 Lean docstring 扫描稳定 hash，生成锚点索引、覆盖报告、正文/声明审阅基线、构建记录和直接依赖比对，并在正文和命题图中显示轻量 Lean 锚点徽章。
 - Markdown/PDF 导出，支持封面、出版元数据页和前置声明页。
 - `skills/` 提供给目标项目 AI 指令融合的规则 artifact；`vasm-catalog/` 提供可由 VASMC 锁定消费的 catalog exports。
 
@@ -283,7 +288,7 @@ Math Workspace 是一个本地数学工作区，用于长期维护数学或技�
 npm run workspace -- serve /path/to/writing-project
 ```
 
-Math Workspace 只监听 `127.0.0.1`，不写入项目文件。打开命令打印的 URL 后，可获得章节导航、目录、当前页符号表、定义搜索、命题类对象和带 hash 补充注释旁的显式依赖标记、引用回溯和源文件实时刷新。多卷结构会自然折叠成卷到章的导航层级。标记只反映 `@h-...` 形成的结构关系，不把引用次数解释为数学上的强弱或重要性。
+Math Workspace 只监听 `127.0.0.1`，不写入书稿源码。打开命令打印的 URL 后，可获得章节导航、目录、当前页符号表、定义搜索、命题类对象和带 hash 补充注释旁的显式依赖标记、Lean 锚点徽章、引用回溯和源文件实时刷新。多卷结构会自然折叠成卷到章的导航层级。点击正文中的 Lean 徽章可查看锚定声明、审阅基线、最近构建与直接依赖比对；它们都只反映可审计的工程状态，不表示完整形式化或证明覆盖。
 
 若本机已安装并登录 Codex CLI，工作区可为正文或公式选区打开只读、临时的本地讨论浮窗。首条消息携带相对路径、源码行范围、选中 Markdown、项目根和可用工具边界；后续消息保留这一上下文。临时讨论不会写入书稿或本机任务状态。也可绑定一个工作目录与当前项目完全一致、且可直接接收输入的 Codex 任务，再将某条临时讨论结论显式发送到任务继续核验和执行。Math Workspace 不承接 Codex 的工具审批，需要工具时应回到 Codex 继续。
 
@@ -379,8 +384,8 @@ npm install -D math-workspace
 
 `math-workspace` 不提供自动安装的远端 skill。AI 接入时只读 release 或 npm 包里的可审阅 artifact：
 
-- 裸 AI / 普通项目：读取 `skills/editor.md` 和 `skills/integrator.md`，然后把规则融合进目标项目原生 `AGENTS.md`、写作 skill 或项目指南。
-- VASMC 项目：通过 `vasm-catalog/vasmc-catalog.yaml` 锁定 `editor` 和 `integrator` exports。
+- 裸 AI / 普通项目：读取 `skills/editor.md`、`skills/integrator.md`；项目使用 Lean 时再读取 `skills/lean-formalization.md`，然后把规则融合进目标项目原生 `AGENTS.md`、写作 skill 或项目指南。
+- VASMC 项目：通过 `vasm-catalog/vasmc-catalog.yaml` 锁定 `editor`、`integrator` 和按需使用的 `lean-formalization` exports。
 - npm 项目：对应路径是 `node_modules/math-workspace/skills/` 和 `node_modules/math-workspace/vasm-catalog/`。
 
 CLI 可以打印当前安装位置：
@@ -437,6 +442,7 @@ npm run content:build
 - [docs/release.md](docs/release.md)：release 包结构和发布检查。
 - [skills/editor.md](skills/editor.md)：详细 AI 写作规则。
 - [skills/integrator.md](skills/integrator.md)：AI 组合指导 artifact。
+- [skills/lean-formalization.md](skills/lean-formalization.md)：Lean 锚定与验证规则。
 
 ### Release
 

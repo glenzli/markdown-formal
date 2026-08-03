@@ -364,6 +364,10 @@ export const DEFAULT_CONFIG = {
     lookup: {
         bookDependencies: {}
     },
+    lean: {
+        projects: [],
+        coverageTypes: ['theorem', 'lemma', 'prop', 'cor', 'remark']
+    },
     render: {
         pageHeadingStyle: 'label-title'
     },
@@ -463,6 +467,27 @@ export function mergeConfig(config: any): any {
             bookDependencies: existing.lookup?.bookDependencies && typeof existing.lookup.bookDependencies === 'object'
                 ? existing.lookup.bookDependencies
                 : {}
+        },
+        lean: {
+            ...DEFAULT_CONFIG.lean,
+            ...(existing.lean || {}),
+            projects: (Array.isArray(existing.lean?.projects) ? existing.lean.projects : [])
+                .filter((project: unknown) => project && typeof project === 'object')
+                .map((project: any) => ({
+                    ...project,
+                    key: typeof project.key === 'string' ? project.key : '',
+                    root: typeof project.root === 'string' ? project.root : '',
+                    sourceRoots: unique((Array.isArray(project.sourceRoots) ? project.sourceRoots : ['.'])
+                        .filter((item: unknown) => typeof item === 'string')),
+                    target: typeof project.target === 'string' ? project.target : '',
+                    anchorPrefix: typeof project.anchorPrefix === 'string' && project.anchorPrefix.trim()
+                        ? project.anchorPrefix.trim()
+                        : 'Math Workspace anchor:'
+                })),
+            coverageTypes: unique((Array.isArray(existing.lean?.coverageTypes)
+                ? existing.lean.coverageTypes
+                : DEFAULT_CONFIG.lean.coverageTypes)
+                .filter((item: unknown) => typeof item === 'string'))
         },
         render: {
             ...DEFAULT_CONFIG.render,

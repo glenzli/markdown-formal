@@ -113,6 +113,16 @@
     "frontMatter": [],
     "variables": []
   },
+  "lean": {
+    "projects": [],
+    "coverageTypes": [
+      "theorem",
+      "lemma",
+      "prop",
+      "cor",
+      "remark"
+    ]
+  },
   "debug": {
     "markerTraceIds": []
   }

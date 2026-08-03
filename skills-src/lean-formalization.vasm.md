@@ -1,0 +1,44 @@
+---
+vasm:
+  alias: math-workspace-lean-formalization-skill
+  version: "0.1.0"
+  intent: "Executable AI rules for anchoring Lean declarations to Math Workspace formal objects."
+  compile:
+    format: executable
+    targetLangs: ["zh-CN"]
+---
+
+# Math Workspace Lean 形式化规则
+
+用 Math Workspace 稳定 hash 作为数学正文与 Lean 声明之间的对应层。Lean 锚点只表示存在可审计的对应关系，不自动表示正文对象已被完整形式化、Lean 与正文语义完全等价，或项目已经构建通过。
+
+## 建立正文契约
+
+1. 开始前运行 `math-workspace prepare` 或项目 wrapper。
+2. 读取 `.math-workspace/config.json`、`.math-workspace/agent-guide.md`、`.math-workspace/lean-index.json`、`.math-workspace/lean-report.md` 与目标正文对象；已有时也读取 `.math-workspace/lean-contracts.json`、`.math-workspace/lean-build.json` 与 `.math-workspace/lean-dependency-report.md`。
+3. 只用稳定 `h-*` 对齐正文；不得把生成的显示编号写入 Lean 名称、文件名或 docstring。
+4. 同时遵守目标项目自己的数学、Lean、构建与发布规范；目标项目规则可以比本规则更严格。
+
+若正文与 Lean 在假设、量词、定义域、局部/全局范围或结论形态上不一致，先报告冲突，再决定修改哪一侧。不得为了简化 Lean 静默强化或弱化正文。
+
+## 编写锚点与声明
+
+- 在具名 Lean 声明正上方的 `/-- ... -/` docstring 中写配置声明的 anchor prefix、稳定 hash 与正文标题或准确语义描述。
+- 同一正文对象确实由多个声明共同实现时，可以共享一个锚点；不得为了提高覆盖数字制造无意义的重复声明。
+- 值级声明使用 `snake_case`；结构、类、归纳类型、命名谓词等类型级声明使用 `UpperCamelCase`。
+- 文件按数学概念组织，不按正文显示编号命名。
+- 从真实前提证明结论；不得把目标结论藏进宽泛的 certificate 字段后原样返回。
+- 只有确属外部背景定理的内容才可建立具名 certificate 边界，并在 docstring 中说明其外部角色。
+
+## 验证闭环
+
+1. 先运行覆盖改动文件或模块的最小 Lean 检查。
+2. imports、共享定义或入口变化时，扩大到配置的项目 target。
+3. 改动锚点后运行 `math-workspace lean verify`，修复未知 hash、不可读取的源码根与未跟随具名声明的锚点。
+4. 用 `math-workspace lean coverage` 查看当前锚点队列；未锚定对象是审阅候选，不等于必须立即形式化。
+5. 在确认本轮正文与声明对应关系后运行 `math-workspace lean capture`；它记录正文对象和声明签名的审阅基线。后续改动出现 contract drift 时，先核对语义再重新 capture，不能把 capture 当作修复手段。
+6. 运行 `math-workspace lean build [--project <key>]` 记录配置项目的 `lake build` 结果。源码改动会使该结果过期，故在最终验收前应重新构建。
+7. 运行 `math-workspace lean dependencies` 比较正文的显式严格引用与 Lean elaborator 读取到的直接声明引用。Markdown-only 是需核对候选；Lean-only 通常是实现细节或复用支撑，不能单独当作冲突。不得用文件名、声明顺序、显示编号或共现关系替代此比较。
+8. 声明里程碑完成前，运行目标项目规定的全量 Lean build、占位符扫描与命名检查。
+
+`math-workspace lean scan` 只重建确定性索引。锚点、build、契约和依赖比对分别表达对应、可构建性、变更审阅和直接引用结构；它们的任一组合都不自动证明 Lean 与正文的完整语义等价或完整形式化。

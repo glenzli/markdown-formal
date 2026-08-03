@@ -103,9 +103,53 @@ function renderDependencyMarker(id: string, marker: ReaderDependencyMarker, lang
     ].join('');
     const label = dependencyMarkerText(marker, language);
     const intensity = marker.impactCount > marker.directDependents ? ' is-propagating' : '';
-    return '<button type="button" class="reader-dependency-marker is-' + marker.role + ' is-' + marker.kind + intensity
+    const verticalAlignment = hasInput && !hasOutput
+        ? ' is-upstream-only'
+        : !hasInput && hasOutput
+            ? ' is-downstream-only'
+            : '';
+    return '<button type="button" class="reader-dependency-marker is-' + marker.role + ' is-' + marker.kind + intensity + verticalAlignment
         + '" aria-label="' + escapeHtml(label) + '" data-reader-dependency="' + escapeHtml(id) + '">'
         + svg + '</button>';
+}
+
+function leanStatusText(status: ReaderDependencyMarker['leanStatus'], language: 'zh' | 'en'): string {
+    if (!status) return language === 'en' ? 'status not recorded' : '尚未记录状态';
+    const contract = status.contract === 'current'
+        ? (language === 'en' ? 'contract current' : '正文契约当前')
+        : status.contract === 'markdown-drifted'
+            ? (language === 'en' ? 'Markdown changed' : '正文已变更')
+            : status.contract === 'declaration-drifted'
+                ? (language === 'en' ? 'Lean declaration changed' : 'Lean 声明已变更')
+                : status.contract === 'drifted'
+                    ? (language === 'en' ? 'both sides changed' : '正文与 Lean 均已变更')
+                    : (language === 'en' ? 'contract not captured' : '契约尚未记录');
+    const build = status.build === 'passed'
+        ? (language === 'en' ? 'build passed' : '构建通过')
+        : status.build === 'failed'
+            ? (language === 'en' ? 'build failed' : '构建失败')
+            : status.build === 'stale'
+                ? (language === 'en' ? 'build stale' : '构建结果已过期')
+                : (language === 'en' ? 'build unverified' : '未记录构建');
+    const dependencies = status.dependencies === 'matched'
+        ? (language === 'en' ? 'dependencies aligned' : '依赖已对齐')
+        : status.dependencies === 'markdown-gap'
+            ? (language === 'en' ? 'Markdown dependency needs review' : '存在需复核的正文依赖')
+            : status.dependencies === 'supplemental'
+                ? (language === 'en' ? 'additional Lean support' : '存在额外 Lean 支撑')
+                : status.dependencies === 'stale'
+                    ? (language === 'en' ? 'dependency comparison stale' : '依赖比对已过期')
+                    : (language === 'en' ? 'dependencies not compared' : '尚未比对依赖');
+    return `${contract}; ${build}; ${dependencies}`;
+}
+
+function renderLeanAnchorBadge(id: string, count: number, status: ReaderDependencyMarker['leanStatus'], language: 'zh' | 'en'): string {
+    const review = leanStatusText(status, language);
+    const label = language === 'en'
+        ? `Lean anchor: ${count} declaration${count === 1 ? '' : 's'}; ${review}; open alignment details`
+        : `Lean 锚点：${count} 个声明；${review}；点击查看对齐详情`;
+    return '<button type="button" class="reader-lean-anchor" aria-label="' + escapeHtml(label)
+        + '" title="' + escapeHtml(label) + '" data-reader-lean-anchor="' + escapeHtml(id) + '">L</button>';
 }
 
 function hasOddBackslashPrefix(value: string, index: number): boolean {
@@ -374,6 +418,12 @@ function installFormalRules(markdown: MarkdownIt): void {
             open.attrJoin('class', 'formal-anchor');
             const dependencyMarker = state.env.readerDependencyMarkers?.[markerId] as ReaderDependencyMarker | undefined;
             if (dependencyMarker && Array.isArray(token.children)) {
+                if ((dependencyMarker.leanDeclarationCount || 0) > 0) {
+                    const leanToken = new token.constructor('html_inline', '', 0);
+                    leanToken.content = renderLeanAnchorBadge(markerId, dependencyMarker.leanDeclarationCount || 0, dependencyMarker.leanStatus, state.env.readerLanguage || 'zh');
+                    const titleEnd = token.children.findIndex((child: any) => child.type === 'strong_close');
+                    token.children.splice(titleEnd >= 0 ? titleEnd + 1 : token.children.length, 0, leanToken);
+                }
                 const markerToken = new token.constructor('html_inline', '', 0);
                 markerToken.content = renderDependencyMarker(markerId, dependencyMarker, state.env.readerLanguage || 'zh');
                 token.children.push(markerToken);

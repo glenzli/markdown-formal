@@ -14,3 +14,9 @@ exports:
     hash: sha256:593c88ed6d560c916a431e27203914f7a4ec3d1591714cae11dabcf91b9ea8ee
     appliesTo:
       - sha256:b79c597a5269e89cf447f057e6679698812c1639d0430387bcb2de14c85cf496
+  lean-formalization:
+    name: math-workspace-lean-formalization-skill
+    version: 0.1.0
+    format: executable
+    file: math-workspace-lean-formalization.zh-CN.md
+    hash: sha256:58f6a54fd6e557f0ce2be12696f31b8ae640a13292a5df533540d050c33990bc

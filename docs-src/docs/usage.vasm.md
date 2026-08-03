@@ -239,6 +239,7 @@ AI 规则不再放在单独的 public doc 中。目标项目应直接读取随�
 ```text
 skills/editor.md      # 具体写作和迁移规则
 skills/integrator.md  # 如何融合进目标项目原生 AI 指令
+skills/lean-formalization.md  # Lean 锚定、实现与验证规则
 ```
 
 如果通过 npm 安装，对应路径是：
@@ -246,6 +247,7 @@ skills/integrator.md  # 如何融合进目标项目原生 AI 指令
 ```text
 node_modules/math-workspace/skills/editor.md
 node_modules/math-workspace/skills/integrator.md
+node_modules/math-workspace/skills/lean-formalization.md
 ```
 
 如果目标项目使用 VASMC，使用 catalog 锁定这两个 artifact：
@@ -329,6 +331,36 @@ npm run workspace -- graph matrix chapter
 
 依赖图只记录显式 `@h-...` 引用。报告把主线 theorem-like 对象与带 hash 补充注释分别统计，避免旁支事实改变主线结论；普通 `注（...）` 不成为节点。AI 或领域工具推测出的数学依赖应由目标项目单独维护，不要混入 canonical graph。
 
+## Lean 锚点
+
+在 `.math-workspace/config.json` 中声明 Lean 项目后，`prepare` 会扫描配置源码目录内的 `.lean` 文件，读取具名声明 docstring 中的稳定 hash，并生成：
+
+```text
+.math-workspace/lean-index.json
+.math-workspace/lean-report.md
+.math-workspace/lean-contracts.json        # 显式捕获后才出现
+.math-workspace/lean-build.json            # 执行 build 后才出现
+.math-workspace/lean-dependency-graph.json # 执行 dependencies 后才出现
+.math-workspace/lean-dependency-report.md  # 执行 dependencies 后才出现
+```
+
+常用命令：
+
+```bash
+npm run workspace -- lean scan
+npm run workspace -- lean coverage
+npm run workspace -- lean verify
+npm run workspace -- lean capture
+npm run workspace -- lean build [--project <key>]
+npm run workspace -- lean dependencies
+```
+
+`scan` 重建索引，`coverage` 打印锚点报告，`verify` 在锚点无法解析、源码根不可读或 docstring 后没有受支持的具名声明时失败。`capture` 把当前正文类型、标题、内容与锚定声明签名作为显式审阅基线；基线后的正文或声明改动会显示为漂移。`build` 在每个已配置项目根执行 `lake build [target]` 并记录结果；任何源码变动都会使旧构建结果过期。
+
+`dependencies` 通过 Lean elaborator 读取锚定声明的直接类型与证明值引用，并只与正文中显式、严格的 `@h-...` 边比较。Markdown-only 边是需要核对的候选；Lean-only 边通常是实现细节或复用支撑，仅作为补充上下文。两者都不自动构成数学冲突，也不证明语义等价。
+
+Reader 在命题正文与关系图节点上用轻量 `L` 表示存在一个或多个 Lean 声明锚点。点击正文中的 `L` 可查看锚定声明、正文/声明契约、最近构建和依赖比对状态。这个标记不声称完整形式化或证明覆盖；覆盖数字只统计配置的 `coverageTypes`，不能替代范围声明。
+
 ## 项目结构
 
 扫描器从路径推断书、卷、章节、导论、总结和附录。
@@ -377,6 +409,19 @@ multi-volume-book/
       "advanced-book": ["foundations-book"]
     }
   },
+  "lean": {
+    "projects": [
+      {
+        "key": "formal-book",
+        "root": "formal-book",
+        "sourceRoots": ["FormalBook"],
+        "target": "FormalBook",
+        "module": "FormalBook",
+        "anchorPrefix": "Book anchor:"
+      }
+    ],
+    "coverageTypes": ["theorem", "lemma", "prop", "cor", "remark"]
+  },
   "render": {
     "pageHeadingStyle": "label-title"
   }
@@ -384,6 +429,8 @@ multi-volume-book/
 ```
 
 跨 book 引用和查询必须在 `lookup.bookDependencies` 中显式声明。
+
+Lean 项目的 `root` 与 `sourceRoots` 都相对于 Math Workspace 项目根；`target` 是 `lake build` 的可选目标，`module` 是依赖查询时导入的模块（未设置时使用 `target`）；`anchorPrefix` 必须与 Lean docstring 中使用的前缀一致。`coverageTypes` 控制报告中的候选正文类型，不改变锚点解析。
 
 ## PDF 导出
 

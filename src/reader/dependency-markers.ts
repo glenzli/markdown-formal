@@ -39,8 +39,25 @@ export interface ReaderDependencyMarker {
     ambientReferenceCount: number;
     role: ReaderDependencyMarkerRole;
     kind: ReaderDependencyMarkerKind;
+    leanDeclarationCount?: number;
+    leanStatus?: {
+        contract?: string;
+        build?: string;
+        dependencies?: string;
+    };
     upstream: ReaderDependencyNeighbor[];
     downstream: ReaderDependencyNeighbor[];
+}
+
+interface ReaderLeanIndex {
+    anchors?: Record<string, {
+        declarations?: unknown[];
+        status?: {
+            contract?: string;
+            build?: string;
+            dependencies?: string;
+        };
+    }>;
 }
 
 function addAdjacent(adjacency: Map<string, Set<string>>, from: string, to: string): void {
@@ -99,7 +116,8 @@ function isStrictDependencyEdge(edge: NonNullable<ReaderDependencyGraph['edges']
  */
 export function projectReaderDependencyMarkers(
     graph: ReaderDependencyGraph | undefined,
-    filePath: string
+    filePath: string,
+    leanIndex?: ReaderLeanIndex
 ): Record<string, ReaderDependencyMarker> {
     const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
     const edges = Array.isArray(graph?.edges) ? graph.edges : [];
@@ -137,6 +155,10 @@ export function projectReaderDependencyMarkers(
         const directDependencies = (dependencies.get(node.id) || new Set()).size;
         const directDependents = (dependents.get(node.id) || new Set()).size;
         const sourceReferenceCount = Math.max(0, node.sourceReferenceCount || 0);
+        const leanDeclarationCount = Array.isArray(leanIndex?.anchors?.[node.id]?.declarations)
+            ? leanIndex?.anchors?.[node.id]?.declarations?.length || 0
+            : 0;
+        const leanStatus = leanIndex?.anchors?.[node.id]?.status;
         markers[node.id] = {
             directDependencies,
             sourceReferenceCount,
@@ -145,6 +167,8 @@ export function projectReaderDependencyMarkers(
             ambientReferenceCount: ambientReferenceCounts.get(node.id) || 0,
             role: directDependents === 0 ? 'leaf' : directDependencies > 0 ? 'bridge' : 'referenced',
             kind: node.kind === 'remark' ? 'remark' : 'theorem-like',
+            ...(leanDeclarationCount > 0 ? { leanDeclarationCount } : {}),
+            ...(leanDeclarationCount > 0 && leanStatus ? { leanStatus } : {}),
             upstream: dependencyNeighbors(dependencies.get(node.id), nodeById),
             downstream: dependencyNeighbors(dependents.get(node.id), nodeById)
         };

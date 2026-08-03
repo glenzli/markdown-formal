@@ -16,6 +16,7 @@ import {
 } from './source-actions';
 import { ReaderRecallPopover } from './recall-popover';
 import { ReaderDependencyPopover } from './reader-dependency-popover';
+import { ReaderLeanPopover, type ReaderLeanAnchorPayload } from './reader-lean-popover';
 import { readerIcon, replaceReaderButtonIcon, type ReaderIconName } from './reader-icons';
 import { ReaderDiscussionDialog } from './reader-discussion';
 import { ReaderToolbarPanel } from './reader-toolbar-panel';
@@ -39,6 +40,7 @@ interface ReaderState {
     pages: ReaderPage[];
     definitions: DefinitionSummary[];
     issues: Array<{ severity: string; code: string; message: string }>;
+    leanSummary?: Record<string, number>;
     requestToken?: string;
     codex?: { bindings?: ReaderTaskBindings };
     recentProjects?: Array<{ index: number; rootName: string; openedAt: string }>;
@@ -101,7 +103,7 @@ const words = {
         noChapterDefinitions: '本章没有提及可检索定义',
         noSymbols: '当前页没有已索引的项目符号',
         propositionReviewGraphTitle: '本章关系图',
-        propositionReviewGraphHint: '实线为严格依赖；数字虚线为图外严格关系；节点上的数字徽章表示正文补充提及数量。颜色与快审只看严格下游。',
+        propositionReviewGraphHint: '实线为严格依赖；数字虚线为图外严格关系；数字徽章表示正文补充提及，L 表示存在 Lean 锚点。颜色与快审只看严格下游。',
         propositionReviewEmpty: '当前章没有命题、引理、定理或推论。',
         propositionReviewHub: '支撑枢纽',
         propositionReviewLinked: '一般关联',
@@ -112,7 +114,7 @@ const words = {
         propositionReviewTerminalPropositionHint: '这些命题当前在严格依赖图中没有下游引用；其章节作用与形式化锚点可按需审阅。',
         propositionReviewAssistantReview: '辅助快审',
         propositionReviewAssistantReviewHint: '将本章终端命题送至主任务，进行一次只读必要性快审；不会自动删改正文。',
-        propositionReviewNodeLabel: (display: string, upstream: number, downstream: number, ambientReferences: number, status: string) => `${display}；严格上游 ${upstream} 项，严格下游 ${downstream} 项，正文补充提及 ${ambientReferences} 处；${status}`,
+        propositionReviewNodeLabel: (display: string, upstream: number, downstream: number, ambientReferences: number, leanDeclarations: number, status: string) => `${display}；严格上游 ${upstream} 项，严格下游 ${downstream} 项，正文补充提及 ${ambientReferences} 处${leanDeclarations > 0 ? `，Lean 锚点 ${leanDeclarations} 个声明` : ''}；${status}`,
         source: '来源',
         jump: '定位',
         recall: '引用回溯',
@@ -174,7 +176,17 @@ const words = {
         temporaryDiscussionInject: '将此结论发送到默认任务',
         temporaryDiscussionInjecting: '正在将该结论发送到默认任务…',
         temporaryDiscussionInjected: '结论已发送到默认任务。',
-        temporaryDiscussionRefresh: '刷新讨论'
+        temporaryDiscussionRefresh: '刷新讨论',
+        leanAlignment: 'Lean 对齐',
+        leanLoading: '正在读取 Lean 对齐信息…',
+        leanUnavailable: '暂时无法读取 Lean 对齐信息。',
+        leanContract: '契约',
+        leanBuild: '构建',
+        leanDependencies: '依赖',
+        leanDeclarations: 'Lean 声明',
+        leanMarkdownOnly: '正文声明但 Lean 未观察到',
+        leanOnly: '额外 Lean 支撑',
+        leanNone: '没有可显示的条目'
     },
     en: {
         contents: 'Contents',
@@ -193,7 +205,7 @@ const words = {
         noChapterDefinitions: 'No indexed definitions are mentioned in this chapter',
         noSymbols: 'No indexed project notation occurs on this page',
         propositionReviewGraphTitle: 'Chapter relation map',
-        propositionReviewGraphHint: 'Solid lines are strict dependencies; numbered dashed lines are outside-map strict relations; numbered node badges count supplemental text mentions. Color and review use strict downstream only.',
+        propositionReviewGraphHint: 'Solid lines are strict dependencies; numbered dashed lines are outside-map strict relations; numbered badges count supplemental text mentions, and L marks a Lean anchor. Color and review use strict downstream only.',
         propositionReviewEmpty: 'No proposition, lemma, theorem, or corollary occurs in this chapter.',
         propositionReviewHub: 'Support hub',
         propositionReviewLinked: 'Linked',
@@ -204,7 +216,7 @@ const words = {
         propositionReviewTerminalPropositionHint: 'These propositions currently have no downstream reference in the strict dependency graph; their chapter role and formalization anchors can be reviewed when useful.',
         propositionReviewAssistantReview: 'Assisted quick review',
         propositionReviewAssistantReviewHint: 'Send this chapter’s terminal propositions to the primary task for one read-only necessity review; no source changes are made automatically.',
-        propositionReviewNodeLabel: (display: string, upstream: number, downstream: number, ambientReferences: number, status: string) => `${display}; ${upstream} strict upstream, ${downstream} strict downstream, ${ambientReferences} supplemental text mention${ambientReferences === 1 ? '' : 's'}; ${status}`,
+        propositionReviewNodeLabel: (display: string, upstream: number, downstream: number, ambientReferences: number, leanDeclarations: number, status: string) => `${display}; ${upstream} strict upstream, ${downstream} strict downstream, ${ambientReferences} supplemental text mention${ambientReferences === 1 ? '' : 's'}${leanDeclarations > 0 ? `, Lean anchor with ${leanDeclarations} declaration${leanDeclarations === 1 ? '' : 's'}` : ''}; ${status}`,
         source: 'Source',
         jump: 'Locate',
         recall: 'Recall',
@@ -266,7 +278,17 @@ const words = {
         temporaryDiscussionInject: 'Send this conclusion to the default task',
         temporaryDiscussionInjecting: 'Sending this conclusion to the default task…',
         temporaryDiscussionInjected: 'The conclusion was sent to the default task.',
-        temporaryDiscussionRefresh: 'Refresh discussion'
+        temporaryDiscussionRefresh: 'Refresh discussion',
+        leanAlignment: 'Lean alignment',
+        leanLoading: 'Loading Lean alignment…',
+        leanUnavailable: 'Lean alignment details are unavailable.',
+        leanContract: 'Contract',
+        leanBuild: 'Build',
+        leanDependencies: 'Dependencies',
+        leanDeclarations: 'Lean declarations',
+        leanMarkdownOnly: 'Markdown-only review',
+        leanOnly: 'Additional Lean support',
+        leanNone: 'Nothing to show'
     }
 } as const;
 
@@ -289,6 +311,28 @@ function normalizeQuery(value: string): string {
 
 function compactPropositionDisplay(display: string): string {
     return display.match(/\d+(?:\.\d+)+/)?.[0] || display;
+}
+
+function leanStatusLabel(language: Language, kind: 'contract' | 'build' | 'dependencies', value: string | undefined): string {
+    const zh = language === 'zh';
+    if (kind === 'contract') {
+        if (value === 'current') return zh ? '已记录，当前未变更' : 'captured and current';
+        if (value === 'markdown-drifted') return zh ? '正文已变更，需复核' : 'Markdown changed; review needed';
+        if (value === 'declaration-drifted') return zh ? 'Lean 声明已变更，需复核' : 'Lean declaration changed; review needed';
+        if (value === 'drifted') return zh ? '正文与 Lean 均已变更，需复核' : 'both sides changed; review needed';
+        return zh ? '尚未记录' : 'not captured';
+    }
+    if (kind === 'build') {
+        if (value === 'passed') return zh ? '最近一次通过' : 'last build passed';
+        if (value === 'failed') return zh ? '最近一次失败' : 'last build failed';
+        if (value === 'stale') return zh ? '结果已过期' : 'result is stale';
+        return zh ? '尚未验证' : 'not verified';
+    }
+    if (value === 'matched') return zh ? '严格边已观察到' : 'strict edges observed';
+    if (value === 'markdown-gap') return zh ? '存在正文边待复核' : 'Markdown edges need review';
+    if (value === 'supplemental') return zh ? '存在额外 Lean 支撑' : 'additional Lean support';
+    if (value === 'stale') return zh ? '比对已过期' : 'comparison is stale';
+    return zh ? '尚未比对' : 'not compared';
 }
 
 const DEFAULT_FONT_SIZE = 14;
@@ -332,6 +376,7 @@ class ReaderApplication {
     private sourceActions!: ReaderSourceActions;
     private recallPopover!: ReaderRecallPopover;
     private dependencyPopover!: ReaderDependencyPopover;
+    private leanPopover!: ReaderLeanPopover;
     private discussionDialog!: ReaderDiscussionDialog;
     private toolbarPanel!: ReaderToolbarPanel;
     private propositionReview!: ReaderPropositionReview;
@@ -430,6 +475,25 @@ class ReaderApplication {
                     noUpstream: dictionary.noUpstreamDependencies,
                     noDownstream: dictionary.noDownstreamDependencies,
                     otherFormalReferences: dictionary.otherFormalReferences
+                };
+            }
+        });
+        this.leanPopover = new ReaderLeanPopover({
+            fetchAnchor: id => this.fetchJson<ReaderLeanAnchorPayload>('/api/lean?id=' + encodeURIComponent(id)),
+            labels: () => {
+                const dictionary = this.dictionary();
+                return {
+                    title: dictionary.leanAlignment,
+                    loading: dictionary.leanLoading,
+                    unavailable: dictionary.leanUnavailable,
+                    contract: dictionary.leanContract,
+                    build: dictionary.leanBuild,
+                    dependencies: dictionary.leanDependencies,
+                    declarations: dictionary.leanDeclarations,
+                    markdownOnly: dictionary.leanMarkdownOnly,
+                    leanOnly: dictionary.leanOnly,
+                    none: dictionary.leanNone,
+                    status: (kind, value) => leanStatusLabel(this.state?.language || 'zh', kind, value)
                 };
             }
         });
@@ -772,6 +836,7 @@ class ReaderApplication {
         });
         this.recallPopover.bind(this.article);
         this.dependencyPopover.bind(this.article);
+        this.leanPopover.bind(this.article);
     }
 
     private openDependencyTarget(filePath: string, id: string): void {
