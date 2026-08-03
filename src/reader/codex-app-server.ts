@@ -86,10 +86,7 @@ export class CodexAppServerClient {
 
     async sendTurn(threadId: string, rootPath: string, prompt: string, selectionContext: Record<string, unknown>): Promise<string> {
         return this.withTurn(async () => {
-            const resumed = await this.request('thread/resume', { threadId, excludeTurns: true });
-            if (this.normalizePath(resumed?.cwd || resumed?.thread?.cwd || '') !== this.normalizePath(rootPath)) {
-                throw new Error('The bound Codex task no longer belongs to the current project. Bind a task for this project again.');
-            }
+            await this.resumeBoundThread(threadId, rootPath);
             return this.startTurn(threadId, prompt, selectionContext);
         });
     }
@@ -206,16 +203,7 @@ export class CodexAppServerClient {
                 }, TURN_TIMEOUT_MS)
             };
             this.activeTurn = activeTurn;
-            void this.request('turn/start', {
-                threadId,
-                input: [{ type: 'text', text: prompt, text_elements: [] }],
-                additionalContext: {
-                    'markdown-formal-reader-selection': {
-                        kind: 'untrusted',
-                        value: JSON.stringify(selectionContext)
-                    }
-                }
-            }, TURN_TIMEOUT_MS).then(response => {
+            void this.request('turn/start', this.turnStartParams(threadId, prompt, selectionContext), TURN_TIMEOUT_MS).then(response => {
                 if (this.activeTurn !== activeTurn) return;
                 const turnId = typeof response?.turn?.id === 'string' ? response.turn.id : '';
                 if (!turnId) {
@@ -231,6 +219,26 @@ export class CodexAppServerClient {
             }, error => this.finishTurn(activeTurn, error instanceof Error ? error : new Error(String(error))));
         });
         return result.trim();
+    }
+
+    private async resumeBoundThread(threadId: string, rootPath: string): Promise<void> {
+        const resumed = await this.request('thread/resume', { threadId });
+        if (this.normalizePath(resumed?.cwd || resumed?.thread?.cwd || '') !== this.normalizePath(rootPath)) {
+            throw new Error('The bound Codex task no longer belongs to the current project. Bind a task for this project again.');
+        }
+    }
+
+    private turnStartParams(threadId: string, prompt: string, selectionContext: Record<string, unknown>): Record<string, unknown> {
+        return {
+            threadId,
+            input: [{ type: 'text', text: prompt, text_elements: [] }],
+            additionalContext: {
+                'markdown-formal-reader-selection': {
+                    kind: 'untrusted',
+                    value: JSON.stringify(selectionContext)
+                }
+            }
+        };
     }
 
     private async start(): Promise<void> {
@@ -287,6 +295,9 @@ export class CodexAppServerClient {
                             name: 'markdown_formal_reader',
                             title: 'Markdown Formal Reader',
                             version: '0.1.0'
+                        },
+                        capabilities: {
+                            experimentalApi: true
                         }
                     }
                 });

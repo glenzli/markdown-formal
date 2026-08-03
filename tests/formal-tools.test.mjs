@@ -1405,9 +1405,15 @@ const temporaryThread = {
 };
 const temporaryTurns = [];
 const receive = message => {
-  if (message.method === 'initialize') return write({ id: message.id, result: { platformFamily: 'test' } });
+  if (message.method === 'initialize') {
+    if (message.params.capabilities?.experimentalApi !== true) {
+      return write({ id: message.id, error: { message: 'Reader must opt in to Codex experimental API capabilities.' } });
+    }
+    return write({ id: message.id, result: { platformFamily: 'test' } });
+  }
   if (message.method === 'thread/list') return write({ id: message.id, result: { data: persistentThreads } });
   if (message.method === 'thread/resume') {
+    if ('excludeTurns' in message.params) return write({ id: message.id, error: { message: 'excludeTurns must not be used by the Reader bridge' } });
     const thread = persistentThreads.find(item => item.id === message.params.threadId);
     if (!thread) return write({ id: message.id, error: { message: 'Unknown Reader task.' } });
     return write({ id: message.id, result: { thread, cwd } });
