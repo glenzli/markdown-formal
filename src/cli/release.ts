@@ -65,12 +65,12 @@ function makeCliPackageJson(pkg: any): any {
         private: true,
         license: pkg.license,
         repository: pkg.repository,
-        description: 'CLI and local Reader artifacts for markdown-formal',
+        description: 'CLI and local Math Workspace artifacts for math-workspace',
         bin: {
-            'markdown-formal': 'out/cli/formal-tools.js'
+            'math-workspace': 'out/cli/math-workspace.js'
         },
         scripts: {
-            formal: 'node out/cli/formal-tools.js'
+            formal: 'node out/cli/math-workspace.js'
         }
     };
 }
@@ -128,43 +128,43 @@ Language: [English](#english) | [中文](#中文)
 
 ## English
 
-This release bundle contains the local Reader, CLI runtime, Codex MCP plugin, documentation, AI workflow artifacts, and a VASMC catalog for lockable reuse.
+This release bundle contains Math Workspace, the CLI runtime, Codex MCP plugin, documentation, AI workflow artifacts, and a VASMC catalog for lockable reuse.
 
 ### Artifacts
 
-- \`cli/\`: dependency-free CLI runtime and bundled local Reader for target projects.
-- \`.agents/plugins/\` and \`plugins/\`: Codex marketplace and the Reader MCP plugin.
+- \`cli/\`: dependency-free CLI runtime and bundled Math Workspace for target projects.
+- \`.agents/plugins/\` and \`plugins/\`: Codex marketplace and the Math Workspace MCP plugin.
 - \`skills/\`: reviewed AI workflow artifacts.
 - \`vasm-catalog/\`: VASMC catalog exports for lockable reuse.
 - \`docs/\`: usage and release documentation.
 - \`manifest.json\`: machine-readable artifact map.
 - \`checksums.txt\`: SHA-256 checksums.
 
-### Run the Reader
+### Run Math Workspace
 
 \`\`\`bash
-node cli/out/cli/formal-tools.js serve /path/to/project
+node cli/out/cli/math-workspace.js serve /path/to/project
 \`\`\`
 
-Open the printed localhost URL in your preferred browser or local side panel. The Reader is read-only and binds only to \`127.0.0.1\`.
+Open the printed localhost URL in your preferred browser or local side panel. Math Workspace is read-only and binds only to \`127.0.0.1\`.
 
 ### Use the Codex MCP Plugin
 
-Install the bundled CLI so \`markdown-formal\` is on \`PATH\`, then add the release bundle as a marketplace:
+Install the bundled CLI so \`math-workspace\` is on \`PATH\`, then add the release bundle as a marketplace:
 
 \`\`\`bash
 npm install -g ./cli
-codex plugin marketplace add /path/to/markdown-formal-release
-codex plugin add markdown-formal-reader@personal
+codex plugin marketplace add /path/to/math-workspace-release
+codex plugin add math-workspace@personal
 \`\`\`
 
-The plugin returns a local URL for the browser-based Reader; it does not embed or replace the Reader UI.
+The plugin returns a local URL for browser-based Math Workspace; it does not embed or replace the workspace UI.
 
 ### Vendor CLI
 
 \`\`\`bash
-mkdir -p tools/markdown-formal
-cp -R cli/* tools/markdown-formal/
+mkdir -p tools/math-workspace
+cp -R cli/* tools/math-workspace/
 \`\`\`
 
 Then add a project script:
@@ -172,12 +172,12 @@ Then add a project script:
 \`\`\`json
 {
   "scripts": {
-    "formal": "node tools/markdown-formal/out/cli/formal-tools.js"
+    'workspace': "node tools/math-workspace/out/cli/math-workspace.js"
   }
 }
 \`\`\`
 
-Run \`npm run formal -- prepare\` from the project root that owns \`.markdown-formal/config.json\`.
+Run \`npm run workspace -- prepare\` from the project root that owns \`.math-workspace/config.json\`.
 
 ### AI Artifacts
 
@@ -187,43 +187,43 @@ Review \`skills/editor.md\` and \`skills/integrator.md\`, then merge the rules i
 
 ## 中文
 
-这个 release 包包含本地 Reader、CLI 运行时、Codex MCP plugin、文档、面向 AI 的工作流 artifact，以及可锁定复用的 VASMC catalog。
+这个 release 包包含本地 Math Workspace、CLI 运行时、Codex MCP plugin、文档、面向 AI 的工作流 artifact，以及可锁定复用的 VASMC catalog。
 
 ### 产物
 
-- \`cli/\`：目标项目使用的无运行时依赖 CLI 与内置本地 Reader。
-- \`.agents/plugins/\` 与 \`plugins/\`：Codex marketplace 和 Reader MCP plugin。
+- \`cli/\`：目标项目使用的无运行时依赖 CLI 与内置 Math Workspace。
+- \`.agents/plugins/\` 与 \`plugins/\`：Codex marketplace 和 Math Workspace MCP plugin。
 - \`skills/\`：需要审阅和融合的 AI 工作流 artifact。
 - \`vasm-catalog/\`：供 VASMC consumer 锁定复用的 catalog exports。
 - \`docs/\`：使用和 release 文档。
 - \`manifest.json\`：机器可读产物表。
 - \`checksums.txt\`：SHA-256 校验和。
 
-### 启动 Reader
+### 启动 Math Workspace
 
 \`\`\`bash
-node cli/out/cli/formal-tools.js serve /path/to/project
+node cli/out/cli/math-workspace.js serve /path/to/project
 \`\`\`
 
-在浏览器或本地侧栏中打开命令输出的 localhost URL。Reader 只读，并且只绑定 \`127.0.0.1\`。
+在浏览器或本地侧栏中打开命令输出的 localhost URL。Math Workspace 只读，并且只绑定 \`127.0.0.1\`。
 
 ### 使用 Codex MCP Plugin
 
-先安装 bundle 内的 CLI，使 \`markdown-formal\` 位于 \`PATH\`，再将 release 根目录作为 marketplace 添加：
+先安装 bundle 内的 CLI，使 \`math-workspace\` 位于 \`PATH\`，再将 release 根目录作为 marketplace 添加：
 
 \`\`\`bash
 npm install -g ./cli
-codex plugin marketplace add /path/to/markdown-formal-release
-codex plugin add markdown-formal-reader@personal
+codex plugin marketplace add /path/to/math-workspace-release
+codex plugin add math-workspace@personal
 \`\`\`
 
-plugin 返回浏览器 Reader 的本地 URL，不嵌入或替代 Reader UI。
+plugin 返回浏览器 Math Workspace 的本地 URL，不嵌入或替代工作区 UI。
 
 ### Vendoring CLI
 
 \`\`\`bash
-mkdir -p tools/markdown-formal
-cp -R cli/* tools/markdown-formal/
+mkdir -p tools/math-workspace
+cp -R cli/* tools/math-workspace/
 \`\`\`
 
 然后添加项目脚本：
@@ -231,12 +231,12 @@ cp -R cli/* tools/markdown-formal/
 \`\`\`json
 {
   "scripts": {
-    "formal": "node tools/markdown-formal/out/cli/formal-tools.js"
+    'workspace': "node tools/math-workspace/out/cli/math-workspace.js"
   }
 }
 \`\`\`
 
-在拥有 \`.markdown-formal/config.json\` 的项目根目录运行 \`npm run formal -- prepare\`。
+在拥有 \`.math-workspace/config.json\` 的项目根目录运行 \`npm run workspace -- prepare\`。
 
 ### AI Artifacts
 
@@ -252,7 +252,7 @@ async function main(): Promise<void> {
     const marketplaceRoot = path.join(ROOT, '.agents', 'plugins');
     const pluginRoot = path.join(ROOT, 'plugins');
 
-    await requiredPath(path.join(ROOT, 'out', 'cli', 'formal-tools.js'));
+    await requiredPath(path.join(ROOT, 'out', 'cli', 'math-workspace.js'));
     await requiredPath(path.join(ROOT, 'out', 'cli', 'release.js'));
     await requiredPath(path.join(ROOT, 'out', 'reader', 'index.html'));
     await requiredPath(path.join(ROOT, 'skills', 'editor.md'));
@@ -263,7 +263,7 @@ async function main(): Promise<void> {
     await requiredPath(path.join(ROOT, 'docs', 'usage.md'));
     await requiredPath(path.join(ROOT, 'docs', 'release.md'));
     await requiredPath(path.join(marketplaceRoot, 'marketplace.json'));
-    await requiredPath(path.join(pluginRoot, 'markdown-formal-reader', '.codex-plugin', 'plugin.json'));
+    await requiredPath(path.join(pluginRoot, 'math-workspace', '.codex-plugin', 'plugin.json'));
 
     await cleanDir(releaseRoot);
 
@@ -278,7 +278,7 @@ async function main(): Promise<void> {
     await writeText(path.join(releaseRoot, 'INSTALL.md'), releaseInstallDoc(pkg));
 
     await writeJson(path.join(cliRoot, 'package.json'), makeCliPackageJson(pkg));
-    await copyFile(path.join(ROOT, 'out', 'cli', 'formal-tools.js'), path.join(cliRoot, 'out', 'cli', 'formal-tools.js'));
+    await copyFile(path.join(ROOT, 'out', 'cli', 'math-workspace.js'), path.join(cliRoot, 'out', 'cli', 'math-workspace.js'));
     await copyFile(path.join(ROOT, 'out', 'cli', 'release.js'), path.join(cliRoot, 'out', 'cli', 'release.js'));
     await copyDir(path.join(ROOT, 'out', 'reader'), path.join(cliRoot, 'out', 'reader'));
     await copyDir(path.join(ROOT, 'skills'), path.join(cliRoot, 'skills'));
@@ -293,22 +293,22 @@ async function main(): Promise<void> {
         artifacts: {
             reader: {
                 path: 'cli/out/reader',
-                serve: 'node cli/out/cli/formal-tools.js serve /path/to/project',
+                serve: 'node cli/out/cli/math-workspace.js serve /path/to/project',
                 mode: 'Primary local read-only interface, bound to 127.0.0.1'
             },
             cli: {
                 path: 'cli',
-                entry: 'out/cli/formal-tools.js',
-                bin: 'markdown-formal',
+                entry: 'out/cli/math-workspace.js',
+                bin: 'math-workspace',
                 skillsPath: 'cli/skills',
                 vasmCatalogPath: 'cli/vasm-catalog/vasmc-catalog.yaml',
-                install: 'Copy this directory into tools/markdown-formal and run node tools/markdown-formal/out/cli/formal-tools.js.'
+                install: 'Copy this directory into tools/math-workspace and run node tools/math-workspace/out/cli/math-workspace.js.'
             },
             codexMcpPlugin: {
                 marketplace: '.agents/plugins/marketplace.json',
-                plugin: 'plugins/markdown-formal-reader',
-                command: 'markdown-formal mcp',
-                mode: 'Codex MCP launcher that returns a localhost URL for the independent browser-based Reader; install cli/ first so markdown-formal is on PATH.'
+                plugin: 'plugins/math-workspace',
+                command: 'math-workspace mcp',
+                mode: 'Codex MCP launcher that returns a localhost URL for the independent browser-based Math Workspace; install cli/ first so math-workspace is on PATH.'
             },
             skills: {
                 path: 'skills',

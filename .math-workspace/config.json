@@ -65,7 +65,7 @@
   "scan": {
     "exclude": [
       ".git/**",
-      ".markdown-formal/**",
+      ".math-workspace/**",
       "node_modules/**",
       "out/**",
       "dist/**"

@@ -8,10 +8,10 @@
 
 ## 🌍 English
 
-`markdown-formal` releases include five primary surfaces:
+`math-workspace` releases include five primary surfaces:
 
-- a vendorable CLI and local Reader runtime;
-- a Codex MCP plugin that launches the Reader in a local browser;
+- a vendorable CLI and local Math Workspace runtime;
+- a Codex MCP plugin that launches the Math Workspace in a local browser;
 - human-facing public documentation;
 - reviewed AI workflow artifacts that should be merged into target projects;
 - VASMC catalog exports for lockable reuse.
@@ -63,8 +63,8 @@ dist/
 
 Artifact roles:
 
-- `cli/`: dependency-free CLI runtime and bundled Reader assets for target projects.
-- `.agents/plugins/` and `plugins/`: Codex marketplace and the `markdown-formal-reader` MCP plugin.
+- `cli/`: dependency-free CLI runtime and bundled Math Workspace assets for target projects.
+- `.agents/plugins/` and `plugins/`: Codex marketplace and the `math-workspace` MCP plugin.
 - `skills/`: AI rule and composition guidance artifacts, currently `skills/editor.md` and `skills/integrator.md`.
 - `vasm-catalog/`: catalog for VASMC consumers, including `vasmc-catalog.yaml`, the `editor` export, and the `integrator` export.
 - `docs/`: human-facing documentation.
@@ -76,10 +76,10 @@ repository-internal content sources or build state files are not release artifac
 
 ### npm Package
 
-The npm package installs the CLI, local Reader, AI artifacts, and VASMC catalog:
+The npm package installs the CLI, local Math Workspace, AI artifacts, and VASMC catalog:
 
 ```bash
-npm install -D markdown-formal
+npm install -D math-workspace
 ```
 
 Target project script:
@@ -87,16 +87,16 @@ Target project script:
 ```json
 {
   "scripts": {
-    "formal": "markdown-formal"
+    'workspace': "math-workspace"
   }
 }
 ```
 
 npm package entries:
 
-- `bin.markdown-formal`: points to `out/cli/formal-tools.js`.
-- `out/reader/`: local Reader assets served by the CLI `serve` command.
-- `.agents/plugins/` and `plugins/`: the Codex marketplace and `markdown-formal-reader` MCP plugin.
+- `bin.math-workspace`: points to `out/cli/math-workspace.js`.
+- `out/reader/`: local Math Workspace assets served by the CLI `serve` command.
+- `.agents/plugins/` and `plugins/`: the Codex marketplace and `math-workspace` MCP plugin.
 - `skills/`: `editor.md` and `integrator.md` for plain AI review and integration.
 - `vasm-catalog/`: catalog exports for VASMC consumers.
 - `docs/`: human-facing usage and release documentation.
@@ -106,51 +106,51 @@ The npm package is scoped by the root `package.json.files`.
 Use the npm package catalog:
 
 ```bash
-vasmc add --catalog node_modules/markdown-formal/vasm-catalog/vasmc-catalog.yaml --export editor --alias markdown-formal-editor
-vasmc add --catalog node_modules/markdown-formal/vasm-catalog/vasmc-catalog.yaml --export integrator --alias markdown-formal-integrator
+vasmc add --catalog node_modules/math-workspace/vasm-catalog/vasmc-catalog.yaml --export editor --alias math-workspace-editor
+vasmc add --catalog node_modules/math-workspace/vasm-catalog/vasmc-catalog.yaml --export integrator --alias math-workspace-integrator
 ```
 
-### Run the Local Reader
+### Run the Local Math Workspace
 
-From any writing-project root that contains `.markdown-formal/config.json`:
+From any writing-project root that contains `.math-workspace/config.json`:
 
 ```bash
-markdown-formal serve .
+math-workspace serve .
 ```
 
 Or use the vendored release CLI:
 
 ```bash
-node tools/markdown-formal/out/cli/formal-tools.js serve .
+node tools/math-workspace/out/cli/math-workspace.js serve .
 ```
 
 Omit the project directory to open the local launcher and choose a target from the native folder chooser or recent projects:
 
 ```bash
-markdown-formal serve
+math-workspace serve
 ```
 
 The command listens only on `127.0.0.1`, scans the project read-only, and refreshes after source changes. Recent-project records stay in local user state rather than the project.
 
 ### Use the Codex MCP Plugin
 
-The release bundle includes a marketplace and `markdown-formal-reader` plugin. Install the bundled CLI so `markdown-formal` is on `PATH`, then add the release bundle as a marketplace:
+The release bundle includes a marketplace and `math-workspace` plugin. Install the bundled CLI so `math-workspace` is on `PATH`, then add the release bundle as a marketplace:
 
 ```bash
 npm install -g ./cli
-codex plugin marketplace add /path/to/markdown-formal-release
-codex plugin add markdown-formal-reader@personal
+codex plugin marketplace add /path/to/math-workspace-release
+codex plugin add math-workspace@personal
 ```
 
-The plugin calls `markdown-formal mcp`, which starts or reuses the local Reader and returns its localhost URL for Codex's built-in browser. It does not embed or replace the Reader UI.
+The plugin calls `math-workspace mcp`, which starts or reuses the local Math Workspace and returns its localhost URL for Codex's built-in browser. It does not embed or replace the Math Workspace UI.
 
 ### Vendor CLI
 
 Copy the CLI into a target project:
 
 ```bash
-mkdir -p path/to/project/tools/markdown-formal
-cp -R dist/cli/* path/to/project/tools/markdown-formal/
+mkdir -p path/to/project/tools/math-workspace
+cp -R dist/cli/* path/to/project/tools/math-workspace/
 ```
 
 Add the script in the target project:
@@ -158,7 +158,7 @@ Add the script in the target project:
 ```json
 {
   "scripts": {
-    "formal": "node tools/markdown-formal/out/cli/formal-tools.js"
+    'workspace': "node tools/math-workspace/out/cli/math-workspace.js"
   }
 }
 ```
@@ -166,13 +166,13 @@ Add the script in the target project:
 Initialize:
 
 ```bash
-npm run formal -- prepare
+npm run workspace -- prepare
 ```
 
 Verify:
 
 ```bash
-npm run formal -- verify
+npm run workspace -- verify
 ```
 
 ### AI Skill Distribution
@@ -189,8 +189,8 @@ Target projects should:
 If the target project also uses VASMC, lock the catalog exports:
 
 ```bash
-vasmc add --catalog path/to/vasm-catalog/vasmc-catalog.yaml --export editor --alias markdown-formal-editor
-vasmc add --catalog path/to/vasm-catalog/vasmc-catalog.yaml --export integrator --alias markdown-formal-integrator
+vasmc add --catalog path/to/vasm-catalog/vasmc-catalog.yaml --export editor --alias math-workspace-editor
+vasmc add --catalog path/to/vasm-catalog/vasmc-catalog.yaml --export integrator --alias math-workspace-integrator
 ```
 
 The consumer `vasmc-lock.yaml` fixes artifact hashes; the integrative export's `appliesTo` is also resolved to the editor artifact hash. The target project does not need to scan a remote repository or trust an unlocked path.
@@ -258,7 +258,7 @@ npm run release:check
 
 Default release targets:
 
-- `npm`: publish the `markdown-formal` npm package with CLI, Reader, Codex MCP plugin, public docs, `skills/`, and `vasm-catalog/`.
+- `npm`: publish the `math-workspace` npm package with CLI, Math Workspace, Codex MCP plugin, public docs, `skills/`, and `vasm-catalog/`.
 - `github`: push the current branch and release tag to the `github` remote, then create a GitHub release with `gh`.
 - `gitlab`: push the current branch and release tag to the `gitlab` remote, then create a GitLab release with `glab`.
 
@@ -274,15 +274,15 @@ Common arguments:
 npm run release -- --tag v0.1.0
 npm run release -- --npm-tag latest
 npm run release -- --otp 123456
-npm run release -- --github-repo glenzli/markdown-formal
-npm run release -- --gitlab-repo glenzli/markdown-formal
+npm run release -- --github-repo glenzli/math-workspace
+npm run release -- --gitlab-repo glenzli/math-workspace
 ```
 
 Real publishing requires a clean Git worktree. `--dry-run` can preview commands from a dirty worktree, but it warns that a real release would stop.
 
 ### Dependency Policy
 
-The built Reader and CLI should remain runtime dependency-free.
+The built Math Workspace and CLI should remain runtime dependency-free.
 
 Development dependencies are allowed for:
 
@@ -296,7 +296,7 @@ Rules:
 - avoid fresh major versions unless needed for a security fix;
 - run audit against the official npm registry;
 - do not add postinstall hooks or runtime remote loaders;
-- keep project-specific release hooks outside `markdown-formal`.
+- keep project-specific release hooks outside `math-workspace`.
 
 ---
 
@@ -304,9 +304,9 @@ Rules:
 
 ## 🇨🇳 中文
 
-`markdown-formal` 的 release 包含四类主产物：
+`math-workspace` 的 release 包含四类主产物：
 
-- 可 vendoring 的 CLI 与本地 Reader 运行时；
+- 可 vendoring 的 CLI 与本地 Math Workspace 运行时；
 - 面向人的公开文档；
 - 需要融合到目标项目的 AI 工作流 artifact；
 - 可由 VASMC 锁定消费的 catalog exports。
@@ -358,8 +358,8 @@ dist/
 
 各产物职责：
 
-- `cli/`：目标项目使用的无运行时依赖 CLI 与内置 Reader 静态资源。
-- `.agents/plugins/` 与 `plugins/`：Codex marketplace 与 `markdown-formal-reader` MCP plugin。
+- `cli/`：目标项目使用的无运行时依赖 CLI 与内置 Math Workspace 静态资源。
+- `.agents/plugins/` 与 `plugins/`：Codex marketplace 与 `math-workspace` MCP plugin。
 - `skills/`：AI 规则与组合指导 artifact，目前包含 `skills/editor.md` 和 `skills/integrator.md`。
 - `vasm-catalog/`：面向 VASMC consumer 的 catalog，包含 `vasmc-catalog.yaml`、`editor` export 和 `integrator` export。
 - `docs/`：面向人的文档。
@@ -371,10 +371,10 @@ dist/
 
 ## npm 包
 
-npm 包用于安装 CLI、本地 Reader、AI artifacts 和 VASMC catalog：
+npm 包用于安装 CLI、本地 Math Workspace、AI artifacts 和 VASMC catalog：
 
 ```bash
-npm install -D markdown-formal
+npm install -D math-workspace
 ```
 
 目标项目脚本：
@@ -382,16 +382,16 @@ npm install -D markdown-formal
 ```json
 {
   "scripts": {
-    "formal": "markdown-formal"
+    'workspace': "math-workspace"
   }
 }
 ```
 
 npm 包入口：
 
-- `bin.markdown-formal`：指向 `out/cli/formal-tools.js`。
-- `out/reader/`：由 CLI 的 `serve` 命令提供的本地 Reader 静态资源。
-- `.agents/plugins/` 与 `plugins/`：Codex marketplace 和 `markdown-formal-reader` MCP plugin。
+- `bin.math-workspace`：指向 `out/cli/math-workspace.js`。
+- `out/reader/`：由 CLI 的 `serve` 命令提供的本地 Math Workspace 静态资源。
+- `.agents/plugins/` 与 `plugins/`：Codex marketplace 和 `math-workspace` MCP plugin。
 - `skills/`：裸 AI 审阅和融合用的 `editor.md` / `integrator.md`。
 - `vasm-catalog/`：VASMC consumer 使用的 catalog exports。
 - `docs/`：面向人的 usage 和 release 文档。
@@ -401,51 +401,51 @@ npm 包由根目录 `package.json.files` 控制包含范围。
 使用 npm 包里的 catalog：
 
 ```bash
-vasmc add --catalog node_modules/markdown-formal/vasm-catalog/vasmc-catalog.yaml --export editor --alias markdown-formal-editor
-vasmc add --catalog node_modules/markdown-formal/vasm-catalog/vasmc-catalog.yaml --export integrator --alias markdown-formal-integrator
+vasmc add --catalog node_modules/math-workspace/vasm-catalog/vasmc-catalog.yaml --export editor --alias math-workspace-editor
+vasmc add --catalog node_modules/math-workspace/vasm-catalog/vasmc-catalog.yaml --export integrator --alias math-workspace-integrator
 ```
 
-## 使用本地 Reader
+## 使用 Math Workspace
 
-在任何包含 `.markdown-formal/config.json` 的写作项目根目录运行：
+在任何包含 `.math-workspace/config.json` 的写作项目根目录运行：
 
 ```bash
-markdown-formal serve .
+math-workspace serve .
 ```
 
 或使用 release vendored CLI：
 
 ```bash
-node tools/markdown-formal/out/cli/formal-tools.js serve .
+node tools/math-workspace/out/cli/math-workspace.js serve .
 ```
 
 省略项目目录可打开本机启动台，并从系统目录选择器或最近项目中选择目标：
 
 ```bash
-markdown-formal serve
+math-workspace serve
 ```
 
 命令只监听 `127.0.0.1`，只读扫描项目，并在源文件变化后刷新页面。最近项目记录保存在用户本机状态目录，不写入项目。
 
 ## 使用 Codex MCP plugin
 
-release bundle 也包含 Codex marketplace 和 plugin。先安装 bundle 内的 CLI，使 `markdown-formal` 位于 `PATH`，再将 release 根目录注册为 marketplace：
+release bundle 也包含 Codex marketplace 和 plugin。先安装 bundle 内的 CLI，使 `math-workspace` 位于 `PATH`，再将 release 根目录注册为 marketplace：
 
 ```bash
 npm install -g ./cli
-codex plugin marketplace add /path/to/markdown-formal-release
-codex plugin add markdown-formal-reader@personal
+codex plugin marketplace add /path/to/math-workspace-release
+codex plugin add math-workspace@personal
 ```
 
-plugin 调用 `markdown-formal mcp`，返回可在 Codex 内置浏览器直接访问的 localhost URL；它不嵌入或替代 Reader UI，只会启动或复用绑定 `127.0.0.1` 的本地 Reader。
+plugin 调用 `math-workspace mcp`，返回可在 Codex 内置浏览器直接访问的 localhost URL；它不嵌入或替代 Math Workspace UI，只会启动或复用绑定 `127.0.0.1` 的本地工作区。
 
 ## Vendoring CLI
 
 把 CLI 复制到目标项目：
 
 ```bash
-mkdir -p path/to/project/tools/markdown-formal
-cp -R dist/cli/* path/to/project/tools/markdown-formal/
+mkdir -p path/to/project/tools/math-workspace
+cp -R dist/cli/* path/to/project/tools/math-workspace/
 ```
 
 目标项目添加脚本：
@@ -453,7 +453,7 @@ cp -R dist/cli/* path/to/project/tools/markdown-formal/
 ```json
 {
   "scripts": {
-    "formal": "node tools/markdown-formal/out/cli/formal-tools.js"
+    'workspace': "node tools/math-workspace/out/cli/math-workspace.js"
   }
 }
 ```
@@ -461,13 +461,13 @@ cp -R dist/cli/* path/to/project/tools/markdown-formal/
 初始化：
 
 ```bash
-npm run formal -- prepare
+npm run workspace -- prepare
 ```
 
 校验：
 
 ```bash
-npm run formal -- verify
+npm run workspace -- verify
 ```
 
 ## AI Skill 分发
@@ -484,8 +484,8 @@ npm run formal -- verify
 如果目标项目本身也使用 VASMC，推荐锁定 catalog exports：
 
 ```bash
-vasmc add --catalog path/to/vasm-catalog/vasmc-catalog.yaml --export editor --alias markdown-formal-editor
-vasmc add --catalog path/to/vasm-catalog/vasmc-catalog.yaml --export integrator --alias markdown-formal-integrator
+vasmc add --catalog path/to/vasm-catalog/vasmc-catalog.yaml --export editor --alias math-workspace-editor
+vasmc add --catalog path/to/vasm-catalog/vasmc-catalog.yaml --export integrator --alias math-workspace-integrator
 ```
 
 consumer 的 `vasmc-lock.yaml` 会固定 artifact hash；integrative export 的 `appliesTo` 也会被解析为 editor artifact 的 hash。这样目标项目不需要扫描远端仓库，也不需要信任未锁定路径。
@@ -554,7 +554,7 @@ npm run release:check
 
 默认发布目标是：
 
-- `npm`：发布 `markdown-formal` npm 包，包内包含 CLI、Reader、Codex MCP plugin、public docs、`skills/` 与 `vasm-catalog/`。
+- `npm`：发布 `math-workspace` npm 包，包内包含 CLI、Math Workspace、Codex MCP plugin、public docs、`skills/` 与 `vasm-catalog/`。
 - `github`：推送当前 branch 和 release tag 到 `github` remote，并用 `gh` 创建 GitHub release。
 - `gitlab`：推送当前 branch 和 release tag 到 `gitlab` remote，并用 `glab` 创建 GitLab release。
 
@@ -570,15 +570,15 @@ GitHub/GitLab release 会附带：
 npm run release -- --tag v0.1.0
 npm run release -- --npm-tag latest
 npm run release -- --otp 123456
-npm run release -- --github-repo glenzli/markdown-formal
-npm run release -- --gitlab-repo glenzli/markdown-formal
+npm run release -- --github-repo glenzli/math-workspace
+npm run release -- --gitlab-repo glenzli/math-workspace
 ```
 
 真实发布会要求 Git worktree 干净。`--dry-run` 允许在 dirty worktree 下预览命令，但会提示真实发布会停止。
 
 ## 依赖策略
 
-构建后的 Reader、CLI 和 legacy 扩展应保持无 npm 运行时依赖。
+构建后的 Math Workspace、CLI 和 legacy 扩展应保持无 npm 运行时依赖。
 
 开发依赖只用于：
 
@@ -592,4 +592,4 @@ npm run release -- --gitlab-repo glenzli/markdown-formal
 - 除非安全补丁需要，避免刚发布的大版本；
 - audit 使用官方 npm registry；
 - 不增加 postinstall hook 或运行时远程加载；
-- 项目特有 release hook 不写进 `markdown-formal`。
+- 项目特有 release hook 不写进 `math-workspace`。

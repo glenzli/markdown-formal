@@ -357,7 +357,7 @@ function installFormalRules(markdown: MarkdownIt): void {
         return '<a class="formal-page-reference" data-reader-page="' + escapeHtml(meta.filePath) + '" href="' + makePageHref(meta.filePath) + '">' + escapeHtml(formatPageReference(page, meta.mode, env.readerLanguage)) + '</a>';
     };
 
-    markdown.core.ruler.after('inline', 'formal_reader_anchors', (state: any) => {
+    markdown.core.ruler.after('inline', 'math_workspace_anchors', (state: any) => {
         const markers = state.env.readerMarkersByLine || {};
         for (let index = 0; index < state.tokens.length; index++) {
             const token = state.tokens[index];

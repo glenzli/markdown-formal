@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const cliPath = path.join(repoRoot, 'out', 'cli', 'formal-tools.js');
+const cliPath = path.join(repoRoot, 'out', 'cli', 'math-workspace.js');
 const require = createRequire(import.meta.url);
 
 function formalCore() {
@@ -15,7 +15,7 @@ function formalCore() {
 }
 
 async function makeWorkspace(name) {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), `markdown-formal-${name}-`));
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), `math-workspace-${name}-`));
     await fs.mkdir(path.join(root, 'book1'), { recursive: true });
     return root;
 }
@@ -80,7 +80,7 @@ async function startReader(root, { projectPath = root, env = {} } = {}) {
         const timeout = setTimeout(() => reject(new Error('Reader did not report a localhost URL.\n' + output)), 5000);
         const receive = chunk => {
             output += String(chunk);
-            const match = output.match(/Markdown Formal Reader: (http:\/\/127\.0\.0\.1:\d+)/);
+            const match = output.match(/Math Workspace: (http:\/\/127\.0\.0\.1:\d+)/);
             if (!match) return;
             clearTimeout(timeout);
             resolve(match[1]);
@@ -92,7 +92,7 @@ async function startReader(root, { projectPath = root, env = {} } = {}) {
             reject(error);
         });
         child.once('exit', code => {
-            if (output.includes('Markdown Formal Reader:')) return;
+            if (output.includes('Math Workspace:')) return;
             clearTimeout(timeout);
             reject(new Error('Reader exited before startup with code ' + code + '.\n' + output));
         });
@@ -151,7 +151,7 @@ async function startMcp(root) {
     await request('initialize', {
         protocolVersion: '2025-03-26',
         capabilities: {},
-        clientInfo: { name: 'markdown-formal-test', version: '1.0.0' }
+        clientInfo: { name: 'math-workspace-test', version: '1.0.0' }
     });
     child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
     return { child, request };
@@ -294,7 +294,7 @@ async function testMigrateTextRefsReport() {
     assert.match(chapter, /Fenced 定理 1\.1 must stay unchanged\./);
     assert.match(chapter, /Unresolved 定理 9\.9 stays textual\./);
 
-    const report = await read(root, '.markdown-formal/text-ref-migration.md');
+    const report = await read(root, '.math-workspace/text-ref-migration.md');
     assert.match(report, /Replacements: 2/);
     assert.match(report, /Unresolved: 1/);
     assert.match(report, /book1\/01-a\.md:10: 定理 9\.9/);
@@ -306,8 +306,8 @@ async function testMigrateTextRefsReport() {
 
 async function testCustomDictionaryTextRefs() {
     const root = await makeWorkspace('custom-dictionary');
-    await fs.mkdir(path.join(root, '.markdown-formal'), { recursive: true });
-    await fs.writeFile(path.join(root, '.markdown-formal', 'config.json'), JSON.stringify({
+    await fs.mkdir(path.join(root, '.math-workspace'), { recursive: true });
+    await fs.writeFile(path.join(root, '.math-workspace', 'config.json'), JSON.stringify({
         language: 'en',
         dictionary: {
             en: {
@@ -315,7 +315,7 @@ async function testCustomDictionaryTextRefs() {
             }
         }
     }, null, 2));
-    await fs.writeFile(path.join(root, '.markdown-formal/definitions.json'), JSON.stringify([
+    await fs.writeFile(path.join(root, '.math-workspace/definitions.json'), JSON.stringify([
         {
             term: '非标准定义',
             aliases: ['别名定义'],
@@ -351,7 +351,7 @@ async function testCustomDictionaryTextRefs() {
     const chapter = await read(root, 'book1/01-a.md');
     assert.match(chapter, /By @h-2222222222222222 we conclude\./);
 
-    const readerIndex = JSON.parse(await read(root, '.markdown-formal/reader-index.json'));
+    const readerIndex = JSON.parse(await read(root, '.math-workspace/workspace-index.json'));
     assert.equal(readerIndex.entries['h-2222222222222222'].content, 'Theorem (Base): Base statement.');
     assert.equal(readerIndex.definitions[0].title, 'Spectrum');
     assert.equal(readerIndex.definitions[0].filePath, 'book1/01-a.md');
@@ -368,7 +368,7 @@ async function testCustomDictionaryTextRefs() {
     assert.deepEqual(readerIndex.definitions[3].aliases, ['别名定义']);
     assert.equal(readerIndex.definitions[3].line, 17);
     assert.match(readerIndex.definitions[3].content, /称为“非标准定义”/);
-    await assert.rejects(read(root, '.markdown-formal/definition-index.md'), /ENOENT/);
+    await assert.rejects(read(root, '.math-workspace/definition-index.md'), /ENOENT/);
 }
 
 async function testStructuredDefinitionMarkerContent() {
@@ -394,7 +394,7 @@ async function testStructuredDefinitionMarkerContent() {
 
     const prepare = runCli(root, ['prepare']);
     assert.equal(prepare.status, 0, combinedOutput(prepare));
-    const readerIndex = JSON.parse(await read(root, '.markdown-formal/reader-index.json'));
+    const readerIndex = JSON.parse(await read(root, '.math-workspace/workspace-index.json'));
     const definition = readerIndex.definitions.find(item => item.title === '算子网络环路');
     assert.ok(definition);
     assert.match(definition.content, /\*\*\(i\)\*\* 给定有限有向图/);
@@ -433,7 +433,7 @@ async function testProjectKnowledgeAnalysis() {
     assert.equal(prepare.status, 0, combinedOutput(prepare));
     assert.match(combinedOutput(prepare), /Project knowledge: 1 concept\/glossary sources, 1 notation sources, 2 supplemental definitions/);
 
-    const analysis = JSON.parse(await read(root, '.markdown-formal/project-analysis.json'));
+    const analysis = JSON.parse(await read(root, '.math-workspace/project-analysis.json'));
     assert.deepEqual(analysis.summary, {
         conceptSources: 1,
         notationSources: 1,
@@ -441,11 +441,11 @@ async function testProjectKnowledgeAnalysis() {
         extractedDefinitions: 2
     });
     assert.deepEqual(analysis.sources.map(source => source.kind), ['notation-appendix', 'concept-appendix', 'summary-page']);
-    const report = await read(root, '.markdown-formal/project-analysis.md');
+    const report = await read(root, '.math-workspace/project-analysis.md');
     assert.match(report, /appendix-b-core-concepts\.md/);
     assert.match(report, /Supplemental definitions extracted from concept sources: 2/);
 
-    const readerIndex = JSON.parse(await read(root, '.markdown-formal/reader-index.json'));
+    const readerIndex = JSON.parse(await read(root, '.math-workspace/workspace-index.json'));
     const compactness = readerIndex.definitions.find(definition => definition.title === 'Compactness');
     assert.deepEqual(compactness && {
         filePath: compactness.filePath,
@@ -476,8 +476,8 @@ async function testProjectKnowledgeAnalysis() {
 
 async function testSymbolCache() {
     const root = await makeWorkspace('symbols');
-    await fs.mkdir(path.join(root, '.markdown-formal'), { recursive: true });
-    await fs.writeFile(path.join(root, '.markdown-formal', 'symbols.json'), JSON.stringify([
+    await fs.mkdir(path.join(root, '.math-workspace'), { recursive: true });
+    await fs.writeFile(path.join(root, '.math-workspace', 'symbols.json'), JSON.stringify([
         {
             pattern: '\\sigma(${operator})',
             meaning: 'Spectrum of the captured operator.',
@@ -500,7 +500,7 @@ async function testSymbolCache() {
 
     const prepare = runCli(root, ['prepare']);
     assert.equal(prepare.status, 0, combinedOutput(prepare));
-    const readerIndex = JSON.parse(await read(root, '.markdown-formal/reader-index.json'));
+    const readerIndex = JSON.parse(await read(root, '.math-workspace/workspace-index.json'));
     assert.equal(readerIndex.symbols.length, 2);
     assert.equal(readerIndex.symbols[0].display, '$\\sigma(T)$');
     assert.equal(readerIndex.symbols[1].display, '$\\lambda$');
@@ -512,8 +512,8 @@ async function testSymbolCache() {
 
 async function testWarnsUnbalancedSymbolPattern() {
     const root = await makeWorkspace('symbol-pattern-warning');
-    await fs.mkdir(path.join(root, '.markdown-formal'), { recursive: true });
-    await fs.writeFile(path.join(root, '.markdown-formal', 'symbols.json'), JSON.stringify([
+    await fs.mkdir(path.join(root, '.math-workspace'), { recursive: true });
+    await fs.writeFile(path.join(root, '.math-workspace', 'symbols.json'), JSON.stringify([
         {
             pattern: '\\mathcal{N}_{${index}}\\bigl(${mesh},\\,${base}',
             meaning: 'An intentionally incomplete notation pattern.',
@@ -567,7 +567,7 @@ async function testRecallBoundariesAndOptionalBlocks() {
 
     const prepare = runCli(root, ['prepare']);
     assert.equal(prepare.status, 0, combinedOutput(prepare));
-    const readerIndex = JSON.parse(await read(root, '.markdown-formal/reader-index.json'));
+    const readerIndex = JSON.parse(await read(root, '.math-workspace/workspace-index.json'));
 
     assert.equal(readerIndex.entries['h-1111111111111111'].content, undefined);
     assert.equal(readerIndex.entries['h-2222222222222222'].content, [
@@ -586,7 +586,7 @@ async function testRecallBoundariesAndOptionalBlocks() {
     assert.equal(readerIndex.entries['h-3333333333333333'].number, undefined);
     assert.equal(readerIndex.entries['h-5555555555555555'].number, 1);
 
-    const referenceMap = await read(root, '.markdown-formal/reference-map.md');
+    const referenceMap = await read(root, '.math-workspace/reference-map.md');
     assert.doesNotMatch(referenceMap, /注 1\.1/);
     assert.ok(referenceMap.includes('| 注 | `h-3333333333333333` | Important | `book1/01-a.md:11` |'));
     assert.ok(referenceMap.includes('| 注 | `h-8888888888888888` | 旁支事实 | `book1/01-a.md:14` |'));
@@ -643,7 +643,7 @@ async function testDependencyGraph() {
     const prepare = runCli(root, ['prepare']);
     assert.equal(prepare.status, 0, combinedOutput(prepare));
 
-    const graph = JSON.parse(await read(root, '.markdown-formal/dependency-graph.json'));
+    const graph = JSON.parse(await read(root, '.math-workspace/dependency-graph.json'));
     assert.equal(graph.schemaVersion, 1);
     assert.equal(graph.nodes.length, 4);
     assert.equal(graph.summary.theoremLikeNodes, 3);
@@ -667,7 +667,7 @@ async function testDependencyGraph() {
     assert.ok(graph.edges.map(edgeKey).includes('h-5555555555555555->h-3333333333333333:proof'));
     assert.deepEqual(graph.cycles[0].ids.sort(), ['h-1111111111111111', 'h-2222222222222222']);
 
-    const report = await read(root, '.markdown-formal/dependency-report.md');
+    const report = await read(root, '.math-workspace/dependency-report.md');
     assert.match(report, /Supplemental fact remarks: 1/);
     assert.match(report, /Proof edges: 3/);
     assert.match(report, /Cross-Scope Edges/);
@@ -751,7 +751,7 @@ async function testProofTerminatorsExcludeFollowingExplanatoryReferences() {
     const prepare = runCli(root, ['prepare']);
     assert.equal(prepare.status, 0, combinedOutput(prepare));
 
-    const graph = JSON.parse(await read(root, '.markdown-formal/dependency-graph.json'));
+    const graph = JSON.parse(await read(root, '.math-workspace/dependency-graph.json'));
     const edgeKey = edge => `${edge.from}->${edge.to}:${edge.where}`;
     assert.deepEqual(graph.edges.map(edgeKey), ['h-2222222222222222->h-1111111111111111:statement']);
     assert.deepEqual(graph.ambientReferences, [{
@@ -800,7 +800,7 @@ async function testEquationFigureTableNumbering() {
     const chapter = await read(root, 'book1/01-a.md');
     assert.match(chapter, /见 @h-1111111111111111、@h-2222222222222222 和 @h-3333333333333333。/);
 
-    const readerIndex = JSON.parse(await read(root, '.markdown-formal/reader-index.json'));
+    const readerIndex = JSON.parse(await read(root, '.math-workspace/workspace-index.json'));
     assert.equal(readerIndex.entries['h-1111111111111111'].type, 'equation');
     assert.equal(readerIndex.entries['h-1111111111111111'].number, 1);
     assert.equal(readerIndex.entries['h-2222222222222222'].type, 'figure');
@@ -809,7 +809,7 @@ async function testEquationFigureTableNumbering() {
     assert.equal(readerIndex.entries['h-4444444444444444'].appendix, 'A');
     assert.equal(readerIndex.entries['h-4444444444444444'].number, 1);
 
-    const referenceMap = await read(root, '.markdown-formal/reference-map.md');
+    const referenceMap = await read(root, '.math-workspace/reference-map.md');
     assert.match(referenceMap, /公式 \(1\.1\)/);
     assert.match(referenceMap, /图 1\.1/);
     assert.match(referenceMap, /表 1\.1/);
@@ -837,7 +837,7 @@ async function testStructuredMarkerValidation() {
     assert.match(combinedOutput(verify), /figure-target-missing/);
     assert.match(combinedOutput(verify), /table-target-missing/);
 
-    const report = await read(root, '.markdown-formal/report.md');
+    const report = await read(root, '.math-workspace/report.md');
     assert.match(report, /figure-caption-missing/);
 }
 
@@ -861,8 +861,8 @@ async function testCrossBookReferencesRequireDependencies() {
     assert.notEqual(blocked.status, 0, combinedOutput(blocked));
     assert.match(combinedOutput(blocked), /cross-book-ref-disallowed/);
 
-    await fs.mkdir(path.join(root, '.markdown-formal'), { recursive: true });
-    await fs.writeFile(path.join(root, '.markdown-formal', 'config.json'), JSON.stringify({
+    await fs.mkdir(path.join(root, '.math-workspace'), { recursive: true });
+    await fs.writeFile(path.join(root, '.math-workspace', 'config.json'), JSON.stringify({
         lookup: {
             bookDependencies: {
                 book2: ['book1']
@@ -911,7 +911,7 @@ async function testChapterPageReferences() {
     assert.match(chapter, /@h-bbbbbbbbbbbbbbbb\.full/);
     assert.match(chapter, /@h-aaaaaaaaaaaaaaaa\.title/);
 
-    const referenceMap = await read(root, '.markdown-formal/reference-map.md');
+    const referenceMap = await read(root, '.math-workspace/reference-map.md');
     assert.match(referenceMap, /@h-bbbbbbbbbbbbbbbb/);
     assert.match(referenceMap, /@h-aaaaaaaaaaaaaaaa/);
     assert.match(referenceMap, /@chapter:book1\/02-b\.md/);
@@ -966,7 +966,7 @@ async function testPageAnchorFinalize() {
     assert.match(chapter, /@h-[a-f0-9]{16}\.full/);
     assert.match(chapter, /@h-[a-f0-9]{16}\.title/);
 
-    const referenceMap = await read(root, '.markdown-formal/reference-map.md');
+    const referenceMap = await read(root, '.math-workspace/reference-map.md');
     assert.match(referenceMap, /\| 第 1 章 \| `@h-[a-f0-9]{16}` \| `@chapter:book1\/01-a\.md` \| Draft Chapter \|/);
 }
 
@@ -997,7 +997,7 @@ async function testMigrateTextRefsSectionsAndAudits() {
     assert.match(chapter, /链接 \[定理 1\.1\]\(old\.md#thm\) 需要人工处理。/);
     assert.match(chapter, /根据谱定义可得。/);
 
-    const report = await read(root, '.markdown-formal/text-ref-migration.md');
+    const report = await read(root, '.math-workspace/text-ref-migration.md');
     assert.match(report, /Replacements: 3/);
     assert.match(report, /Markdown links needing manual rewrite: 1/);
     assert.match(report, /Section headings needing numbered markers: 1/);
@@ -1037,7 +1037,7 @@ async function testMigrateTextRefsUpdatesIncomingByDefault() {
     assert.match(chapter2, /Link \[定理 1\.1\]\(old\.md#target\) should be reported\./);
     assert.match(chapter2, /Other link \[定理 2\.1\]\(old\.md#outside\) should not be reported\./);
 
-    const report = await read(root, '.markdown-formal/text-ref-migration.md');
+    const report = await read(root, '.math-workspace/text-ref-migration.md');
     assert.match(report, /Reference scope: target files plus incoming refs across all files/);
     assert.match(report, /Replacements: 2/);
     assert.match(report, /Unresolved: 0/);
@@ -1062,8 +1062,8 @@ async function testVerifyRejectsNonHashIds() {
 
 async function testVerifyRejectsMissingDefinitionContent() {
     const root = await makeWorkspace('definition-content');
-    await fs.mkdir(path.join(root, '.markdown-formal'), { recursive: true });
-    await fs.writeFile(path.join(root, '.markdown-formal', 'definitions.json'), JSON.stringify([
+    await fs.mkdir(path.join(root, '.math-workspace'), { recursive: true });
+    await fs.writeFile(path.join(root, '.math-workspace', 'definitions.json'), JSON.stringify([
         {
             term: 'Indexed Concept',
             source: 'book1/01-a.md:3'
@@ -1083,8 +1083,8 @@ async function testVerifyRejectsMissingDefinitionContent() {
 
 async function testScanExcludeAndZeroIntroductionPages() {
     const root = await makeWorkspace('scan-exclude');
-    await fs.mkdir(path.join(root, '.markdown-formal'), { recursive: true });
-    await fs.writeFile(path.join(root, '.markdown-formal', 'config.json'), JSON.stringify({
+    await fs.mkdir(path.join(root, '.math-workspace'), { recursive: true });
+    await fs.writeFile(path.join(root, '.math-workspace', 'config.json'), JSON.stringify({
         scan: {
             exclude: [
                 'draft/**',
@@ -1129,7 +1129,7 @@ async function testScanExcludeAndZeroIntroductionPages() {
 
     const verify = runCli(root, ['verify']);
     assert.equal(verify.status, 0, combinedOutput(verify));
-    const readerIndex = JSON.parse(await read(root, '.markdown-formal/reader-index.json'));
+    const readerIndex = JSON.parse(await read(root, '.math-workspace/workspace-index.json'));
     assert.equal(readerIndex.pages.filter(page => page.kind === 'intro').length, 2);
     assert.equal(readerIndex.pages.filter(page => page.kind === 'chapter' && page.chapter === 0).length, 0);
     assert.equal(readerIndex.pages.some(page => page.filePath.startsWith('draft/')), false);
@@ -1168,7 +1168,7 @@ async function testPageTitleUsesUniqueHighestHeading() {
 
     const prepare = runCli(root, ['prepare']);
     assert.equal(prepare.status, 0, combinedOutput(prepare));
-    const readerIndex = JSON.parse(await read(root, '.markdown-formal/reader-index.json'));
+    const readerIndex = JSON.parse(await read(root, '.math-workspace/workspace-index.json'));
     const titleFor = filePath => readerIndex.pages.find(page => page.filePath === filePath)?.title;
 
     assert.equal(titleFor('book1/01-lowered.md'), 'Lowered Chapter Title');
@@ -1177,7 +1177,7 @@ async function testPageTitleUsesUniqueHighestHeading() {
 
     const audit = runCli(root, ['audit', 'book1/01-lowered.md']);
     assert.equal(audit.status, 0, combinedOutput(audit));
-    const report = await read(root, '.markdown-formal/audit.md');
+    const report = await read(root, '.math-workspace/audit.md');
     assert.doesNotMatch(report, /Lowered Chapter Title/);
     assert.match(report, /Local Section/);
 }
@@ -1221,7 +1221,7 @@ async function testReaderServer() {
     ].join('\n'));
     const prepare = runCli(root, ['prepare']);
     assert.equal(prepare.status, 0, combinedOutput(prepare));
-    const dependencyGraph = JSON.parse(await read(root, '.markdown-formal/dependency-graph.json'));
+    const dependencyGraph = JSON.parse(await read(root, '.math-workspace/dependency-graph.json'));
     assert.ok(dependencyGraph.edges.some(edge => (
         edge.from === 'h-3333333333333333'
         && edge.to === 'h-4444444444444444'
@@ -1230,7 +1230,7 @@ async function testReaderServer() {
     )));
 
     const reader = await startReader(root, {
-        env: { MARKDOWN_FORMAL_READER_STATE: path.join(root, 'reader-projects.json') }
+        env: { MATH_WORKSPACE_STATE: path.join(root, 'reader-projects.json') }
     });
     try {
         const readerDocumentResponse = await fetch(reader.url + '/');
@@ -1324,12 +1324,12 @@ async function testReaderMcpServer() {
     const mcp = await startMcp(root);
     try {
         const tools = await mcp.request('tools/list');
-        const formalReader = tools.tools.find(tool => tool.name === 'formal_reader');
+        const formalReader = tools.tools.find(tool => tool.name === 'math_workspace');
         assert.ok(formalReader);
         assert.equal(formalReader._meta, undefined);
 
         const launch = await mcp.request('tools/call', {
-            name: 'formal_reader',
+            name: 'math_workspace',
             arguments: { pagePath: 'book1/01-foundations.md' }
         });
         assert.equal(launch.isError, undefined);
@@ -1343,15 +1343,15 @@ async function testReaderMcpServer() {
 }
 
 async function testReaderPluginMcpConfig() {
-    const pluginRoot = path.join(repoRoot, 'plugins', 'markdown-formal-reader');
+    const pluginRoot = path.join(repoRoot, 'plugins', 'math-workspace');
     const manifest = JSON.parse(await fs.readFile(path.join(pluginRoot, '.codex-plugin', 'plugin.json'), 'utf8'));
     const mcpConfig = JSON.parse(await fs.readFile(path.join(pluginRoot, '.mcp.json'), 'utf8'));
 
     assert.equal(manifest.mcpServers, './.mcp.json');
     assert.deepEqual(mcpConfig, {
         mcpServers: {
-            'markdown-formal-reader': {
-                command: 'markdown-formal',
+            'math-workspace': {
+                command: 'math-workspace',
                 args: ['mcp']
             }
         }
@@ -1388,7 +1388,7 @@ async function testReaderCodexTaskBinding() {
     const fakeCodex = path.join(root, 'fake-codex.mjs');
     await fs.writeFile(fakeCodex, `#!/usr/bin/env node
 let buffer = '';
-const cwd = process.env.MARKDOWN_FORMAL_FAKE_CODEX_CWD;
+const cwd = process.env.MATH_WORKSPACE_FAKE_CODEX_CWD;
 const write = value => process.stdout.write(JSON.stringify(value) + '\\n');
 const primaryThread = {
   id: 'task-reader-fixture', cwd, name: 'Reader fixture task', preview: 'Discuss the formal source',
@@ -1431,7 +1431,7 @@ const receive = message => {
     return write({ id: message.id, result: { thread: { ...temporaryThread, turns: temporaryTurns } } });
   }
   if (message.method === 'turn/start') {
-    const selectionContext = message.params.additionalContext?.['markdown-formal-reader-selection']?.value;
+    const selectionContext = message.params.additionalContext?.['math-workspace-selection']?.value;
     if (!selectionContext) {
       return write({ id: message.id, error: { message: 'Reader selection context was missing.' } });
     }
@@ -1444,7 +1444,7 @@ const receive = message => {
     const persistent = persistentThreads.find(item => item.id === message.params.threadId);
     if (!isTemporary && !persistent) return write({ id: message.id, error: { message: 'Unexpected Reader task turn.' } });
     const visiblePrompt = String(message.params.input?.[0]?.text || '');
-    if (!isTemporary && (!visiblePrompt.includes('Markdown Formal Reader') || !visiblePrompt.includes('book1/01-foundations.md:3–3'))) {
+    if (!isTemporary && (!visiblePrompt.includes('Math Workspace') || !visiblePrompt.includes('book1/01-foundations.md:3–3'))) {
       return write({ id: message.id, error: { message: 'Reader source card was not visible in the task history.' } });
     }
     const turn = { id: (isTemporary ? 'turn-temporary-fixture' : 'turn-reader-fixture'), status: 'completed' };
@@ -1477,10 +1477,10 @@ process.stdin.on('data', chunk => {
 `);
     await fs.chmod(fakeCodex, 0o755);
     const env = {
-        MARKDOWN_FORMAL_READER_STATE: path.join(root, 'reader-projects.json'),
-        MARKDOWN_FORMAL_READER_TASKS: path.join(root, 'reader-task-bindings.json'),
-        MARKDOWN_FORMAL_CODEX_COMMAND: fakeCodex,
-        MARKDOWN_FORMAL_FAKE_CODEX_CWD: root
+        MATH_WORKSPACE_STATE: path.join(root, 'reader-projects.json'),
+        MATH_WORKSPACE_TASKS: path.join(root, 'reader-task-bindings.json'),
+        MATH_WORKSPACE_CODEX_COMMAND: fakeCodex,
+        MATH_WORKSPACE_FAKE_CODEX_CWD: root
     };
     const reader = await startReader(root, { env });
     try {
@@ -1490,7 +1490,7 @@ process.stdin.on('data', chunk => {
 
         const blocked = await fetch(reader.url + '/api/codex/tasks');
         assert.equal(blocked.status, 403);
-        const headers = { 'x-markdown-formal-reader-token': state.requestToken, 'content-type': 'application/json' };
+        const headers = { 'x-math-workspace-token': state.requestToken, 'content-type': 'application/json' };
         const tasks = await (await fetch(reader.url + '/api/codex/tasks', { headers })).json();
         assert.equal(tasks.tasks.length, 2);
         assert.equal(tasks.tasks[0].taskId, 'task-reader-fixture');
@@ -1681,7 +1681,7 @@ async function testReaderLauncher() {
     assert.equal(prepare.status, 0, combinedOutput(prepare));
 
     const recentStatePath = path.join(root, 'reader-projects.json');
-    const env = { MARKDOWN_FORMAL_READER_STATE: recentStatePath };
+    const env = { MATH_WORKSPACE_STATE: recentStatePath };
     const boundReader = await startReader(root, { env });
     await stopReader(boundReader.child);
 
@@ -1879,10 +1879,10 @@ async function testRenderPdfUsesPandocRenderer() {
     assert.notEqual(usage.status, 0, combinedOutput(usage));
     assert.match(combinedOutput(usage), /render-pdf <compiled\.md>/);
     assert.match(combinedOutput(usage), /--variable key:value/);
-    await assert.rejects(() => fs.stat(path.join(root, '.markdown-formal', 'config.json')));
+    await assert.rejects(() => fs.stat(path.join(root, '.math-workspace', 'config.json')));
 
-    await fs.mkdir(path.join(root, '.markdown-formal'), { recursive: true });
-    await fs.writeFile(path.join(root, '.markdown-formal', 'config.json'), JSON.stringify({
+    await fs.mkdir(path.join(root, '.math-workspace'), { recursive: true });
+    await fs.writeFile(path.join(root, '.math-workspace', 'config.json'), JSON.stringify({
         language: 'zh',
         pdf: {
             title: '算子演化论',
@@ -1963,8 +1963,8 @@ async function testRenderPdfUsesPandocRenderer() {
         '3'
     ]);
     assert.equal(await read(root, 'dist/book.pdf'), 'PDF');
-    await assert.rejects(() => fs.stat(path.join(root, '.markdown-formal', 'reader-index.json')));
-    assert.ok(await read(root, '.markdown-formal/config.json'));
+    await assert.rejects(() => fs.stat(path.join(root, '.math-workspace', 'workspace-index.json')));
+    assert.ok(await read(root, '.math-workspace/config.json'));
 }
 
 async function testRenderPdfMetadataPage() {
@@ -1973,8 +1973,8 @@ async function testRenderPdfMetadataPage() {
     await fs.writeFile(path.join(root, 'compiled.md'), originalMarkdown);
     await fs.writeFile(path.join(root, 'license-note.md'), 'License note with $L$.\n');
     await fs.writeFile(path.join(root, 'ai-en.md'), 'AI assistance statement with $A$.\n');
-    await fs.mkdir(path.join(root, '.markdown-formal'), { recursive: true });
-    await fs.writeFile(path.join(root, '.markdown-formal', 'config.json'), JSON.stringify({
+    await fs.mkdir(path.join(root, '.math-workspace'), { recursive: true });
+    await fs.writeFile(path.join(root, '.math-workspace', 'config.json'), JSON.stringify({
         language: 'zh',
         pdf: {
             author: 'Zhe Li',
@@ -2099,7 +2099,7 @@ async function testAuditReport() {
     assert.equal(audit.status, 0, combinedOutput(audit));
     assert.match(combinedOutput(audit), /WARN audit:/);
 
-    const report = await read(root, '.markdown-formal/audit.md');
+    const report = await read(root, '.math-workspace/audit.md');
     assert.match(report, /Typed old references: 1/);
     assert.match(report, /Markdown links needing manual rewrite: 1/);
     assert.match(report, /Chapter references needing page refs: 1/);

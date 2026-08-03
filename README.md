@@ -1,4 +1,4 @@
-# markdown-formal
+# math-workspace
 
 [🌍 English](#en) | [🇨🇳 中文](#zh-cn)
 
@@ -8,9 +8,9 @@
 
 ## 🌍 English
 
-![markdown-formal banner](media/readme/banner.png)
+![math-workspace banner](media/readme/banner.png)
 
-`markdown-formal` is a local Reader service and CLI for long-form mathematical and technical writing. It can run beside Codex or in any browser side panel.
+`math-workspace` is a local Math Workspace service and CLI for long-form mathematical and technical writing. It can run beside Codex or in any browser side panel.
 
 It keeps stable hash IDs in source Markdown, then renders human-facing numbering, references, navigation, definition lookup, symbol tables, dependency graphs, and publication exports from generated metadata.
 
@@ -30,23 +30,23 @@ The design target is AI-assisted editing:
 - Markdown and PDF export with title page, publication metadata page, and front matter pages.
 - Reviewed AI workflow artifacts in `skills/`, plus VASMC catalog exports for lockable reuse.
 
-### Local Reader
+### Local Math Workspace
 
 ```bash
-npm run formal -- serve /path/to/writing-project
+npm run workspace -- serve /path/to/writing-project
 ```
 
-The Reader listens only on `127.0.0.1` and never writes project files. Open the printed URL in Codex's local browser side panel or a normal browser for chapter navigation, a table of contents, current-page symbols, definition search, in-text explicit dependency markers for theorem-like objects and proof-backed hash remarks, recall, and live source refresh. Multi-volume projects naturally collapse to a volume-to-chapter navigation hierarchy. Markers reflect only structural relationships formed by `@h-...`; a hash remark uses a muted supplemental marker, while a plain remark has no graph node. Citation counts do not imply mathematical strength or importance.
+The Math Workspace listens only on `127.0.0.1` and never writes project files. Open the printed URL in Codex's local browser side panel or a normal browser for chapter navigation, a table of contents, current-page symbols, definition search, in-text explicit dependency markers for theorem-like objects and proof-backed hash remarks, recall, and live source refresh. Multi-volume projects naturally collapse to a volume-to-chapter navigation hierarchy. Markers reflect only structural relationships formed by `@h-...`; a hash remark uses a muted supplemental marker, while a plain remark has no graph node. Citation counts do not imply mathematical strength or importance.
 
-If the Codex CLI is installed and signed in locally, Reader can open a read-only, ephemeral local discussion for a text or formula selection. Its first message carries the relative path, source line range, selected Markdown, project root, and tool boundary; later messages retain that context. The discussion never writes the manuscript or local task state. You can also bind a Codex task whose working directory exactly matches the Reader project, then explicitly send a chosen discussion conclusion to that task for verification and further work. Reader does not handle Codex tool approvals; continue in Codex when tools are needed.
+If the Codex CLI is installed and signed in locally, Math Workspace can open a read-only, ephemeral local discussion for a text or formula selection. Its first message carries the relative path, source line range, selected Markdown, project root, and tool boundary; later messages retain that context. The discussion never writes the manuscript or local task state. You can also bind a Codex task whose working directory exactly matches the Math Workspace project, then explicitly send a chosen discussion conclusion to that task for verification and further work. Math Workspace does not handle Codex tool approvals; continue in Codex when tools are needed.
 
-The repository also ships a Codex MCP plugin. It starts or reuses the local Reader and returns a localhost URL that Codex's built-in browser can open. It does not embed or copy the Reader frontend, indexer, or discussion layer:
+The repository also ships a Codex MCP plugin. It starts or reuses the local Math Workspace and returns a localhost URL that Codex's built-in browser can open. It does not embed or copy the Math Workspace frontend, indexer, or discussion layer:
 
 ```bash
-markdown-formal mcp
+math-workspace mcp
 ```
 
-After installation, Codex can call `formal_reader` for the current prepared project or a named chapter. With no available project, it opens the local project launcher. During development, make `markdown-formal` available on `PATH`, for example with `npm link`.
+After installation, Codex can call `math_workspace` for the current prepared project or a named chapter. With no available project, it opens the local project launcher. During development, make `math-workspace` available on `PATH`, for example with `npm link`.
 
 ![Multi-volume chapter navigation](media/readme/navigation.png)
 
@@ -66,18 +66,18 @@ npm run build
 Run the primary interface:
 
 ```bash
-npm run formal -- serve /path/to/writing-project
+npm run workspace -- serve /path/to/writing-project
 ```
 
 ### Use In A Writing Project
 
-A writing project vendors the CLI and owns its `.markdown-formal/` metadata:
+A writing project vendors the CLI and owns its `.math-workspace/` metadata:
 
 ```text
-tools/markdown-formal/
-  out/cli/formal-tools.js
+tools/math-workspace/
+  out/cli/math-workspace.js
 
-.markdown-formal/
+.math-workspace/
   config.json
   definitions.json
   symbols.json
@@ -89,7 +89,7 @@ Add a project script:
 ```json
 {
   "scripts": {
-    "formal": "node tools/markdown-formal/out/cli/formal-tools.js"
+    'workspace': "node tools/math-workspace/out/cli/math-workspace.js"
   }
 }
 ```
@@ -97,49 +97,49 @@ Add a project script:
 Prepare the project:
 
 ```bash
-npm run formal -- prepare
+npm run workspace -- prepare
 ```
 
 After editing a file or directory:
 
 ```bash
-npm run formal -- finish path/to/chapter-or-dir
+npm run workspace -- finish path/to/chapter-or-dir
 ```
 
 `finish` already runs validation. Run this separately only after direct `finalize`, a migration, or when an independent release gate is required:
 
 ```bash
-npm run formal -- verify
+npm run workspace -- verify
 ```
 
-The Reader requires `.markdown-formal/config.json`, which `prepare` creates. It scans the current project state in memory; `reader-index.json` is an inspectable structural snapshot, not a Reader runtime prerequisite.
+The Math Workspace requires `.math-workspace/config.json`, which `prepare` creates. It scans the current project state in memory; `workspace-index.json` is an inspectable structural snapshot, not a Math Workspace runtime prerequisite.
 
 Install the CLI from npm:
 
 ```bash
-npm install -D markdown-formal
+npm install -D math-workspace
 ```
 
 ```json
 {
   "scripts": {
-    "formal": "markdown-formal"
+    'workspace': "math-workspace"
   }
 }
 ```
 
 ### AI Artifacts
 
-`markdown-formal` does not provide a remote auto-installed skill. AI integrations should read the reviewed artifacts that ship with the release bundle or npm package:
+`math-workspace` does not provide a remote auto-installed skill. AI integrations should read the reviewed artifacts that ship with the release bundle or npm package:
 
 - Plain AI / ordinary projects: read `skills/editor.md` and `skills/integrator.md`, then merge the rules into the target project's native `AGENTS.md`, writing skill, or project guide.
 - VASMC projects: lock the `editor` and `integrator` exports from `vasm-catalog/vasmc-catalog.yaml`.
-- npm projects: use `node_modules/markdown-formal/skills/` and `node_modules/markdown-formal/vasm-catalog/`.
+- npm projects: use `node_modules/math-workspace/skills/` and `node_modules/math-workspace/vasm-catalog/`.
 
 The CLI can print paths for the current installation:
 
 ```bash
-npm run formal -- paths
+npm run workspace -- paths
 ```
 
 ### Minimal Syntax
@@ -164,9 +164,9 @@ Rules:
 - Prose references use `@h-...`, `@h-....title`, or `@h-....full`.
 - New declarations use `tmp-1`, `tmp-2`, and so on; `finish` replaces them.
 - Definitions do not get hash IDs. Standard `Definition (Term): ...` / `定义（术语）：...` entries and deliberately named concept/glossary appendices are scanned automatically.
-- `.markdown-formal/project-analysis.md` is generated project knowledge context, not a hand-maintained source; Reader rebuilds it in memory as content changes.
-- AI maintains `.markdown-formal/definitions.json` only for exceptions.
-- Only project-specific notation with an explicit semantic change goes into `.markdown-formal/symbols.json`.
+- `.math-workspace/project-analysis.md` is generated project knowledge context, not a hand-maintained source; Math Workspace rebuilds it in memory as content changes.
+- AI maintains `.math-workspace/definitions.json` only for exceptions.
+- Only project-specific notation with an explicit semantic change goes into `.math-workspace/symbols.json`.
 
 ### Documentation
 
@@ -215,7 +215,7 @@ dist/
   checksums.txt
 ```
 
-`cli/` contains the vendorable CLI and Reader assets; the npm package installs the `markdown-formal` CLI. Use `skills/` as reviewed AI workflow artifacts. When consuming through VASMC, prefer `vasm-catalog/vasmc-catalog.yaml` so the consumer lockfile fixes artifact hashes.
+`cli/` contains the vendorable CLI and Math Workspace assets; the npm package installs the `math-workspace` CLI. Use `skills/` as reviewed AI workflow artifacts. When consuming through VASMC, prefer `vasm-catalog/vasmc-catalog.yaml` so the consumer lockfile fixes artifact hashes.
 
 Release orchestration:
 
@@ -236,14 +236,14 @@ npm test
 ```
 
 ```bash
-npm run formal -- perf-dummy 50 200 --max-ms 2000 --max-heap-mb 256
+npm run workspace -- perf-dummy 50 200 --max-ms 2000 --max-heap-mb 256
 ```
 
 ```bash
 npm audit --registry=https://registry.npmjs.org --omit=optional
 ```
 
-The Reader and CLI outputs remain dependency-free after bundling. Development dependencies are pinned for TypeScript, Vite bundling, and Markdown/LaTeX rendering.
+The Math Workspace and CLI outputs remain dependency-free after bundling. Development dependencies are pinned for TypeScript, Vite bundling, and Markdown/LaTeX rendering.
 
 ---
 
@@ -251,9 +251,11 @@ The Reader and CLI outputs remain dependency-free after bundling. Development de
 
 ## 🇨🇳 中文
 
-![markdown-formal banner](media/readme/banner.png)
+![math-workspace banner](media/readme/banner.png)
 
-`markdown-formal` 是一个本地 Reader 服务和 CLI，用于长期维护数学或技术类 Markdown 书稿。它可与 Codex 或任意浏览器侧栏并行运行。
+Math Workspace 是一个本地数学工作区，用于长期维护数学或技术类书稿，并将写作、形式化锚点、审阅和项目导航放在同一个界面中。它可与 Codex 或任意浏览器侧栏并行运行。
+
+`math-workspace` 是 Math Workspace 当前稳定的 Markdown 引擎和 CLI：包名、命令名与 `.math-workspace/` 项目配置保持兼容。工作区的范围面向数学写作、形式化与审阅的完整工作流；当前发布实现聚焦 Markdown 与本地 Math Workspace，Lean 管理等后续后端会在此基础上扩展，而不被产品名称限制。
 
 它让源码保存稳定的 hash ID，再由工具渲染面向读者的编号、引用、导航、定义查询、符号表、依赖图和发布产物。
 
@@ -263,7 +265,7 @@ The Reader and CLI outputs remain dependency-free after bundling. Development de
 - CLI 会把临时 ID 固化为稳定的 `h-*` hash。
 - 校验工具会检查断裂引用、残留临时 ID 和迁移遗留问题。
 
-### 主要能力
+### 当前能力
 
 - 章节、页面、小节、命题类对象、公式、图、表的稳定编号。
 - `@h-...` 引用可承受插入、删除和章节重排。
@@ -273,25 +275,25 @@ The Reader and CLI outputs remain dependency-free after bundling. Development de
 - Markdown/PDF 导出，支持封面、出版元数据页和前置声明页。
 - `skills/` 提供给目标项目 AI 指令融合的规则 artifact；`vasm-catalog/` 提供可由 VASMC 锁定消费的 catalog exports。
 
-### 本地 Reader
+### Math Workspace
 
-运行 Reader：
-
-```bash
-npm run formal -- serve /path/to/writing-project
-```
-
-它只监听 `127.0.0.1`，不写入项目文件。打开命令打印的 URL 后，可获得章节导航、目录、当前页符号表、定义搜索、命题类对象和带 hash 补充注释旁的显式依赖标记、引用回溯和源文件实时刷新。多卷结构会自然折叠成卷到章的导航层级。标记只反映 `@h-...` 形成的结构关系，不把引用次数解释为数学上的强弱或重要性。
-
-若本机已安装并登录 Codex CLI，Reader 可为正文或公式选区打开只读、临时的本地讨论浮窗。首条消息携带相对路径、源码行范围、选中 Markdown、项目根和可用工具边界；后续消息保留这一上下文。临时讨论不会写入书稿或本机任务状态。也可绑定一个工作目录与当前 Reader 项目完全一致、且可直接接收输入的 Codex 任务，再将某条临时讨论结论显式发送到任务继续核验和执行。Reader 不承接 Codex 的工具审批，需要工具时应回到 Codex 继续。
-
-仓库也提供 Codex MCP plugin。它只启动或复用本地 Reader，并返回可在 Codex 内置浏览器直接打开的 localhost URL；不嵌入或复制 Reader 的前端、索引和讨论逻辑：
+运行工作区：
 
 ```bash
-markdown-formal mcp
+npm run workspace -- serve /path/to/writing-project
 ```
 
-安装 plugin 后，Codex 可以调用 `formal_reader` 打开当前 prepared project 或指定章节；没有绑定项目时则显示本机项目启动台。开发使用 `npm link` 时，确保 `markdown-formal` 在 `PATH` 中即可。
+Math Workspace 只监听 `127.0.0.1`，不写入项目文件。打开命令打印的 URL 后，可获得章节导航、目录、当前页符号表、定义搜索、命题类对象和带 hash 补充注释旁的显式依赖标记、引用回溯和源文件实时刷新。多卷结构会自然折叠成卷到章的导航层级。标记只反映 `@h-...` 形成的结构关系，不把引用次数解释为数学上的强弱或重要性。
+
+若本机已安装并登录 Codex CLI，工作区可为正文或公式选区打开只读、临时的本地讨论浮窗。首条消息携带相对路径、源码行范围、选中 Markdown、项目根和可用工具边界；后续消息保留这一上下文。临时讨论不会写入书稿或本机任务状态。也可绑定一个工作目录与当前项目完全一致、且可直接接收输入的 Codex 任务，再将某条临时讨论结论显式发送到任务继续核验和执行。Math Workspace 不承接 Codex 的工具审批，需要工具时应回到 Codex 继续。
+
+仓库也提供 Codex MCP plugin。它只启动或复用本地 Math Workspace，并返回可在 Codex 内置浏览器直接打开的 localhost URL；不嵌入或复制工作区的前端、索引和讨论逻辑：
+
+```bash
+math-workspace mcp
+```
+
+安装 plugin 后，Codex 可以调用 `math_workspace` 打开当前 prepared project 或指定章节；没有绑定项目时则显示本机项目启动台。开发使用 `npm link` 时，确保 `math-workspace` 在 `PATH` 中即可。
 
 ![多卷章节导航](media/readme/navigation.png)
 
@@ -308,21 +310,21 @@ npm install
 npm run build
 ```
 
-启动主界面：
+启动 Math Workspace：
 
 ```bash
-npm run formal -- serve /path/to/writing-project
+npm run workspace -- serve /path/to/writing-project
 ```
 
 ### 在写作项目中使用
 
-目标项目通常 vendoring CLI，并自己维护 `.markdown-formal/` 数据：
+目标项目通常 vendoring CLI，并自己维护 `.math-workspace/` 数据：
 
 ```text
-tools/markdown-formal/
-  out/cli/formal-tools.js
+tools/math-workspace/
+  out/cli/math-workspace.js
 
-.markdown-formal/
+.math-workspace/
   config.json
   definitions.json
   symbols.json
@@ -334,7 +336,7 @@ tools/markdown-formal/
 ```json
 {
   "scripts": {
-    "formal": "node tools/markdown-formal/out/cli/formal-tools.js"
+    'workspace': "node tools/math-workspace/out/cli/math-workspace.js"
   }
 }
 ```
@@ -342,49 +344,49 @@ tools/markdown-formal/
 开始前生成索引：
 
 ```bash
-npm run formal -- prepare
+npm run workspace -- prepare
 ```
 
 编辑文件或目录后固化 ID 并刷新缓存：
 
 ```bash
-npm run formal -- finish path/to/chapter-or-dir
+npm run workspace -- finish path/to/chapter-or-dir
 ```
 
 `finish` 已执行校验。只有直接使用 `finalize`、执行迁移，或需要独立 release 门禁时，再运行：
 
 ```bash
-npm run formal -- verify
+npm run workspace -- verify
 ```
 
-Reader 需要项目根目录存在 `.markdown-formal/config.json`，可由 `prepare` 创建。它每次在内存中扫描当前状态；`reader-index.json` 仅是可检查的结构化快照，不是 Reader 的运行时前提。
+Math Workspace 需要项目根目录存在 `.math-workspace/config.json`，可由 `prepare` 创建。它每次在内存中扫描当前状态；`workspace-index.json` 仅是可检查的结构化快照，不是 Math Workspace 的运行时前提。
 
 如果通过 npm 使用 CLI：
 
 ```bash
-npm install -D markdown-formal
+npm install -D math-workspace
 ```
 
 ```json
 {
   "scripts": {
-    "formal": "markdown-formal"
+    'workspace': "math-workspace"
   }
 }
 ```
 
 ### AI artifacts
 
-`markdown-formal` 不提供自动安装的远端 skill。AI 接入时只读 release 或 npm 包里的可审阅 artifact：
+`math-workspace` 不提供自动安装的远端 skill。AI 接入时只读 release 或 npm 包里的可审阅 artifact：
 
 - 裸 AI / 普通项目：读取 `skills/editor.md` 和 `skills/integrator.md`，然后把规则融合进目标项目原生 `AGENTS.md`、写作 skill 或项目指南。
 - VASMC 项目：通过 `vasm-catalog/vasmc-catalog.yaml` 锁定 `editor` 和 `integrator` exports。
-- npm 项目：对应路径是 `node_modules/markdown-formal/skills/` 和 `node_modules/markdown-formal/vasm-catalog/`。
+- npm 项目：对应路径是 `node_modules/math-workspace/skills/` 和 `node_modules/math-workspace/vasm-catalog/`。
 
 CLI 可以打印当前安装位置：
 
 ```bash
-npm run formal -- paths
+npm run workspace -- paths
 ```
 
 ### 最小语法
@@ -409,9 +411,9 @@ npm run formal -- paths
 - 正文引用使用 `@h-...`、`@h-....title` 或 `@h-....full`。
 - 新增声明使用 `tmp-1`、`tmp-2` 等；`finish` 会替换为正式 hash。
 - 定义不加 hash。标准 `定义（术语）：...` / `Definition (Term): ...`，以及明确命名的概念/术语附录，会由工具自动扫描。
-- `.markdown-formal/project-analysis.md` 是生成的知识页摘要，不是手工源；Reader 会随内容变化在内存中重建它。
-- AI 只为例外定义维护 `.markdown-formal/definitions.json`。
-- 只有发生显式语义变化的项目特有符号约定进入 `.markdown-formal/symbols.json`。
+- `.math-workspace/project-analysis.md` 是生成的知识页摘要，不是手工源；Math Workspace 会随内容变化在内存中重建它。
+- AI 只为例外定义维护 `.math-workspace/definitions.json`。
+- 只有发生显式语义变化的项目特有符号约定进入 `.math-workspace/symbols.json`。
 
 ### 文档入口
 
@@ -461,7 +463,7 @@ dist/
   checksums.txt
 ```
 
-`cli/` 包含目标项目本地 vendoring 所需的 CLI 和 Reader 静态资源，npm 包用于安装 `markdown-formal` CLI。`skills/` 包含需要审阅和融合的 AI artifact。通过 VASMC 接入时，优先使用 `vasm-catalog/vasmc-catalog.yaml` 并让 consumer lockfile 固定 hash。
+`cli/` 包含目标项目本地 vendoring 所需的 CLI 和 Math Workspace 静态资源，npm 包用于安装 `math-workspace` CLI。`skills/` 包含需要审阅和融合的 AI artifact。通过 VASMC 接入时，优先使用 `vasm-catalog/vasmc-catalog.yaml` 并让 consumer lockfile 固定 hash。
 
 发布编排：
 
@@ -482,11 +484,11 @@ npm test
 ```
 
 ```bash
-npm run formal -- perf-dummy 50 200 --max-ms 2000 --max-heap-mb 256
+npm run workspace -- perf-dummy 50 200 --max-ms 2000 --max-heap-mb 256
 ```
 
 ```bash
 npm audit --registry=https://registry.npmjs.org --omit=optional
 ```
 
-构建后的 Reader 和 CLI 运行时保持无 npm 运行时依赖。开发依赖只用于 TypeScript、Vite 打包和 Markdown/LaTeX 渲染。
+构建后的 Math Workspace 和 CLI 运行时保持无 npm 运行时依赖。开发依赖只用于 TypeScript、Vite 打包和 Markdown/LaTeX 渲染。

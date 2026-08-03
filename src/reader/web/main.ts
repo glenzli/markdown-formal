@@ -138,8 +138,8 @@ const words = {
         chooseProject: '选择项目目录',
         recentProjects: '最近打开的项目',
         noRecentProjects: '还没有最近打开的项目。',
-        projectLauncherTitle: '打开 Markdown Formal 项目',
-        projectLauncherDescription: '选择一个已包含 .markdown-formal/config.json 的项目目录。',
+        projectLauncherTitle: '打开 Math Workspace',
+        projectLauncherDescription: '选择一个已包含 .math-workspace/config.json 的项目目录。',
         projectSelectionCancelled: '尚未选择项目。',
         tasks: '任务',
         discussWithTask: '临时讨论',
@@ -160,11 +160,11 @@ const words = {
         taskWaiting: 'Codex 正在处理该选区…',
         taskUnavailable: '无法连接 Codex app-server。请确认 Codex CLI 已安装并已登录。',
         taskResponseEmpty: '该任务已完成，但没有返回文本回复。',
-        taskApprovalNote: 'Reader 不处理工具审批；需要工具操作时，请在 Codex 中继续此任务。',
+        taskApprovalNote: 'Math Workspace 不处理工具审批；需要工具操作时，请在 Codex 中继续此任务。',
         temporaryDiscussion: '临时讨论',
         temporaryDiscussionContext: '发送给 Codex 的上下文',
         temporaryDiscussionAccess: '工作区访问',
-        temporaryDiscussionTools: 'Codex 可在当前项目根目录内使用只读工具查询文件。临时讨论以只读沙盒启动，Reader 不转交工具审批。',
+        temporaryDiscussionTools: 'Codex 可在当前项目根目录内使用只读工具查询文件。临时讨论以只读沙盒启动，Math Workspace 不转交工具审批。',
         temporaryDiscussionPrompt: '就此选区提问',
         temporaryDiscussionSend: '发送',
         temporaryDiscussionEmpty: '临时讨论没有返回文本回复。',
@@ -230,8 +230,8 @@ const words = {
         chooseProject: 'Choose project folder',
         recentProjects: 'Recent projects',
         noRecentProjects: 'No recent projects yet.',
-        projectLauncherTitle: 'Open a Markdown Formal project',
-        projectLauncherDescription: 'Choose a project folder containing .markdown-formal/config.json.',
+        projectLauncherTitle: 'Open Math Workspace',
+        projectLauncherDescription: 'Choose a project folder containing .math-workspace/config.json.',
         projectSelectionCancelled: 'No project was selected.',
         tasks: 'Tasks',
         discussWithTask: 'Temporary discussion',
@@ -252,11 +252,11 @@ const words = {
         taskWaiting: 'Codex is working with this selection…',
         taskUnavailable: 'Could not reach Codex app-server. Confirm that the Codex CLI is installed and signed in.',
         taskResponseEmpty: 'The task completed without a text response.',
-        taskApprovalNote: 'Reader does not handle tool approvals; continue this task in Codex when tools are needed.',
+        taskApprovalNote: 'Math Workspace does not handle tool approvals; continue this task in Codex when tools are needed.',
         temporaryDiscussion: 'Temporary discussion',
         temporaryDiscussionContext: 'Context sent to Codex',
         temporaryDiscussionAccess: 'Workspace access',
-        temporaryDiscussionTools: 'Codex can inspect files under the current project root with read-only workspace tools. The temporary discussion starts in the read-only sandbox, and Reader does not forward tool approvals.',
+        temporaryDiscussionTools: 'Codex can inspect files under the current project root with read-only workspace tools. The temporary discussion starts in the read-only sandbox, and Math Workspace does not forward tool approvals.',
         temporaryDiscussionPrompt: 'Ask about this selection',
         temporaryDiscussionSend: 'Send',
         temporaryDiscussionEmpty: 'The temporary discussion returned no text response.',
@@ -294,8 +294,8 @@ function compactPropositionDisplay(display: string): string {
 const DEFAULT_FONT_SIZE = 14;
 const MIN_FONT_SIZE = 12;
 const MAX_FONT_SIZE = 24;
-const FONT_SIZE_STORAGE_KEY = 'markdown-formal.reader.font-size';
-const NAVIGATION_STORAGE_KEY = 'markdown-formal.reader.navigation-collapsed';
+const FONT_SIZE_STORAGE_KEY = 'math-workspace.font-size';
+const NAVIGATION_STORAGE_KEY = 'math-workspace.navigation-collapsed';
 
 function storedFontSize(): number {
     try {
@@ -473,7 +473,7 @@ class ReaderApplication {
         const response = await fetch(url, {
             cache: 'no-store',
             headers: url.startsWith('/api/codex/') && this.state?.requestToken
-                ? { 'x-markdown-formal-reader-token': this.state.requestToken }
+                ? { 'x-math-workspace-token': this.state.requestToken }
                 : undefined
         });
         if (!response.ok) throw new Error(await response.text());
@@ -483,7 +483,7 @@ class ReaderApplication {
     private async postJson<T>(url: string, value: unknown = {}): Promise<T> {
         const headers: Record<string, string> = { 'content-type': 'application/json' };
         if (url.startsWith('/api/codex/') && this.state?.requestToken) {
-            headers['x-markdown-formal-reader-token'] = this.state.requestToken;
+            headers['x-math-workspace-token'] = this.state.requestToken;
         }
         const response = await fetch(url, {
             method: 'POST',
@@ -752,7 +752,7 @@ class ReaderApplication {
         if (!this.page || !this.state) return;
         const title = this.page.page?.displayHeading || this.page.page?.title || this.page.filePath;
         this.pageTitle.innerHTML = renderFormalInline(this.markdown, title, this.renderOptions(this.page.filePath, this.page.labels));
-        document.title = title + ' — Markdown Formal';
+        document.title = title + ' — Math Workspace';
         const rendered = renderFormalDocument(this.markdown, this.page.content, {
             currentFilePath: this.page.filePath,
             labels: this.page.labels,
@@ -1435,14 +1435,14 @@ class ReaderApplication {
                 window.setTimeout(() => { this.liveStatus.textContent = ''; }, 1200);
                 const next = this.state?.pages.some(page => page.filePath === current) ? current : this.state?.pages[0]?.filePath;
                 const projectMetadataChanged = changedPaths.some(filePath => (
-                    filePath === '.markdown-formal/config.json'
-                    || filePath === '.markdown-formal/definitions.json'
-                    || filePath === '.markdown-formal/symbols.json'
+                    filePath === '.math-workspace/config.json'
+                    || filePath === '.math-workspace/definitions.json'
+                    || filePath === '.math-workspace/symbols.json'
                 ));
                 const reloadCurrent = changedPaths.length === 0 || changedPaths.includes(current) || projectMetadataChanged;
                 if (next && (next !== current || reloadCurrent)) return this.openPage(next, 'pop', '', next === current);
                 return undefined;
-            }).catch(error => console.error('[markdown-formal] Reader update failed', error));
+            }).catch(error => console.error('[math-workspace] Math Workspace update failed', error));
         });
     }
 }
@@ -1451,5 +1451,5 @@ void new ReaderApplication().start().catch(error => {
     const root = document.getElementById('reader-app');
     if (!root) return;
     const message = error instanceof Error ? error.message : String(error);
-    root.innerHTML = '<main class="reader-failure"><h1>Markdown Formal Reader</h1><pre>' + escapeHtml(message) + '</pre></main>';
+    root.innerHTML = '<main class="reader-failure"><h1>Math Workspace</h1><pre>' + escapeHtml(message) + '</pre></main>';
 });

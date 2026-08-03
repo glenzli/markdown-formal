@@ -48,7 +48,7 @@ interface DiscussionRefreshResponse {
 }
 
 /**
- * Reader-owned UI for a Codex ephemeral thread. It deliberately keeps the
+ * Math Workspace-owned UI for a Codex ephemeral thread. It deliberately keeps the
  * session handle in memory and only exposes an explicit conclusion handoff.
  */
 export class ReaderDiscussionDialog {

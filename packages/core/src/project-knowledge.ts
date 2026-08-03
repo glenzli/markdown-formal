@@ -18,7 +18,7 @@ export interface ProjectKnowledgeDefinition {
 
 export interface ProjectStructureAnalysis {
     schemaVersion: 1;
-    generatedBy: 'markdown-formal';
+    generatedBy: 'math-workspace';
     sources: ProjectKnowledgeSource[];
     summary: {
         conceptSources: number;
@@ -257,7 +257,7 @@ export function analyzeProjectKnowledge(documents: ProjectDocument[], existingDe
         extractedDefinitions: definitions.length
     };
     return {
-        project: { schemaVersion: 1, generatedBy: 'markdown-formal', sources, summary },
+        project: { schemaVersion: 1, generatedBy: 'math-workspace', sources, summary },
         definitions
     };
 }

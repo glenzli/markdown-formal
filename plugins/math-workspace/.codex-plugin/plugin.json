@@ -1,0 +1,35 @@
+{
+  "name": "math-workspace",
+  "version": "0.1.0+codex.20260803053730",
+  "description": "Open Math Workspace from Codex.",
+  "author": {
+    "name": "Glen Li",
+    "url": "https://gitlab.com/glenzli"
+  },
+  "homepage": "https://gitlab.com/glenzli/math-workspace",
+  "repository": "https://gitlab.com/glenzli/math-workspace",
+  "license": "MIT",
+  "keywords": [
+    "markdown",
+    "formal-math",
+    "mathematics",
+    "mcp",
+    "codex"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Math Workspace",
+    "shortDescription": "Open the local mathematical workspace.",
+    "longDescription": "Open the independent Math Workspace for a prepared project from Codex. The plugin launches the local workspace without duplicating its rendering, indexing, or discussion UI.",
+    "developerName": "Glen Li",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Interactive"
+    ],
+    "defaultPrompt": [
+      "Open Math Workspace for the current project."
+    ]
+  },
+  "mcpServers": "./.mcp.json"
+}

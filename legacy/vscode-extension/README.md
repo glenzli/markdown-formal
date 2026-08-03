@@ -1,7 +1,7 @@
-# Markdown Formal Legacy VS Code Extension
+# Math Workspace Legacy VS Code Extension
 
 This is a frozen source snapshot of the former VS Code-compatible preview
-integration for [`markdown-formal`](https://gitlab.com/glenzli/markdown-formal).
+integration for [`math-workspace`](https://gitlab.com/glenzli/math-workspace).
 
 It is not built, tested, packaged, or shipped by the repository release flow.
 It receives no new capabilities or compatibility fixes. The implementation is
@@ -11,7 +11,7 @@ that last supported it.
 Use the local Reader instead:
 
 ```bash
-markdown-formal serve /path/to/project
+math-workspace serve /path/to/project
 ```
 
 The Reader is the supported interface for navigation, recall, lookup, source

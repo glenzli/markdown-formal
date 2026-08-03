@@ -1,15 +1,15 @@
-# markdown-formal integrative 组件
+# math-workspace integrative 组件
 
 这是组合指南，不是应原样附加到目标项目末尾的 prompt。把 [editor.md](../skills/editor.md) 的规则拆入目标项目既有的写作、迁移、审阅和发布流程；目标项目自己的术语、证明风格、章节模板和 release 规则仍是主导。
 
 ## 整合前
 
 1. 读取目标项目的 AI 指令入口、写作样例和 `package.json` scripts。
-2. 读取 `editor.md`、已有 `.markdown-formal/config.json` 和目标项目的写作样例。已有对象要被引用时，只读取 `reference-map.md` 的相关行；`agent-guide.md` 仅作为当前索引状态的补充卡片。
+2. 读取 `editor.md`、已有 `.math-workspace/config.json` 和目标项目的写作样例。已有对象要被引用时，只读取 `reference-map.md` 的相关行；`agent-guide.md` 仅作为当前索引状态的补充卡片。
 3. 若项目尚未初始化，先接入 CLI 并运行：
 
 ```bash
-npm run formal -- prepare
+npm run workspace -- prepare
 ```
 
 不要自动下载、安装或更新远端 skill；以已审阅的 release/npm/VASMC artifact 为输入，并在目标项目中融合规则。
@@ -17,10 +17,10 @@ npm run formal -- prepare
 ## 必须融入的规则
 
 - 稳定编号：源码保存稳定 `#h-...`，新增对象先写 `#tmp-*`；正文引用只用 `@h-...`、`@h-....title` 或 `@h-....full`，读者编号由工具渲染。
-- 定义查询：定义不加 hash、不参与 ref；工具自动扫描标准 `定义（术语）：...` / `Definition (Term): ...`，并在发现概念/术语附录时利用其表格和末级条目建立补充索引。AI 只为查询缺失、非标准定义、别名、中英互查和不可靠边界维护 `.markdown-formal/definitions.json`。
-- 项目知识：`.markdown-formal/project-analysis.json` / `.markdown-formal/project-analysis.md` 是工具生成的概念附录、符号附录和 summary 页面摘要；Reader 在内存中按内容变化重建，并把同 book 来源交给任务讨论。
-- 符号表：`.markdown-formal/symbols.json` 只记录项目明确约定且发生语义变化的特殊 LaTeX 记号，不索引通用变量、完整推导公式或一次性符号。
-- 依赖图：命题/引理/定理/推论与带 hash、可证明的补充注释之间的显式依赖来自 `@h-...`，权威数据是 `.markdown-formal/dependency-graph.json`；普通 `注（...）` 不进入图。AI 或证明器推测出的边必须另存为 suggested 数据。
+- 定义查询：定义不加 hash、不参与 ref；工具自动扫描标准 `定义（术语）：...` / `Definition (Term): ...`，并在发现概念/术语附录时利用其表格和末级条目建立补充索引。AI 只为查询缺失、非标准定义、别名、中英互查和不可靠边界维护 `.math-workspace/definitions.json`。
+- 项目知识：`.math-workspace/project-analysis.json` / `.math-workspace/project-analysis.md` 是工具生成的概念附录、符号附录和 summary 页面摘要；Math Workspace 在内存中按内容变化重建，并把同 book 来源交给任务讨论。
+- 符号表：`.math-workspace/symbols.json` 只记录项目明确约定且发生语义变化的特殊 LaTeX 记号，不索引通用变量、完整推导公式或一次性符号。
+- 依赖图：命题/引理/定理/推论与带 hash、可证明的补充注释之间的显式依赖来自 `@h-...`，权威数据是 `.math-workspace/dependency-graph.json`；普通 `注（...）` 不进入图。AI 或证明器推测出的边必须另存为 suggested 数据。
 - 导出：普通 Markdown/PDF 不直接消费 formal 源；先用 `export-md` 或 `export-md-split` 降级 marker/ref，项目级后处理之后再用 `render-pdf`。
 - 工具闭环：进入任务或索引可能过期时运行 `prepare`，普通编辑后运行 `finish <file-or-dir>`（它会校验）；仅在直接 `finalize`、执行迁移或独立 release 门禁时另行运行 `verify`。
 
@@ -36,17 +36,17 @@ npm run formal -- prepare
 ## 可融合的最小片段
 
 ```text
-进入任务或索引可能过期时运行 npm run formal -- prepare，并读取目标原文。需要当前上下文外的既有对象时，再从 .markdown-formal/reference-map.md 读取匹配行。
+进入任务或索引可能过期时运行 npm run workspace -- prepare，并读取目标原文。需要当前上下文外的既有对象时，再从 .math-workspace/reference-map.md 读取匹配行。
 新小节、命题、引理、定理、推论、公式、图、表和需要锚定的旁支事实用 #tmp-* 声明；正文引用只用 @h-... / @h-....title / @h-....full，不手写显示编号。
 定义不加 hash。工具自动维护标准定义与明确命名的概念/术语附录索引；不要因普通文本编辑重写 definitions.json。只有查询缺失、别名/双语或边界不可靠时才维护 override。特殊符号只有语义明确变化时才维护 symbols.json。
-编辑后运行 npm run formal -- finish <file-or-dir>，保持 Markdown 和 LaTeX 原样；只有直接 finalize、迁移或 release 门禁才另行运行 verify。
+编辑后运行 npm run workspace -- finish <file-or-dir>，保持 Markdown 和 LaTeX 原样；只有直接 finalize、迁移或 release 门禁才另行运行 verify。
 ```
 
 ## 人工源与派生数据
 
-- 可人工维护：`.markdown-formal/config.json`、必要时的 `definitions.json` 与 `symbols.json`。
-- 工具派生：`agent-guide.md`、`reference-map.md`、`reader-index.json`、`project-analysis.*`、依赖图和报告。可读，不作为手工源。
-- Reader 是只读的本地服务；它按内容变化重建索引与项目知识。它向 Codex 讨论提供当前选区、路径、行范围、直接引用和当前 book 的知识来源，而不会主动写源文档。
+- 可人工维护：`.math-workspace/config.json`、必要时的 `definitions.json` 与 `symbols.json`。
+- 工具派生：`agent-guide.md`、`reference-map.md`、`workspace-index.json`、`project-analysis.*`、依赖图和报告。可读，不作为手工源。
+- Math Workspace 是只读的本地服务；它按内容变化重建索引与项目知识。它向 Codex 讨论提供当前选区、路径、行范围、直接引用和当前 book 的知识来源，而不会主动写源文档。
 
 ## 完成标准
 

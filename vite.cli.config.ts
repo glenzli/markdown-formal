@@ -5,7 +5,7 @@ export default defineConfig({
     resolve: {
         alias: [
             {
-                find: '@markdown-formal/core',
+                find: '@math-workspace/core',
                 replacement: path.resolve(__dirname, 'packages/core/src/formal-core.ts')
             }
         ]
@@ -18,7 +18,7 @@ export default defineConfig({
         minify: false,
         lib: {
             entry: {
-                'formal-tools': 'src/cli/formal-tools.ts',
+                'math-workspace': 'src/cli/math-workspace.ts',
                 release: 'src/cli/release.ts'
             },
             formats: ['cjs'],

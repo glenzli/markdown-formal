@@ -1,30 +1,30 @@
 ---
 vasm:
-  alias: markdown-formal-integrator-guide
+  alias: math-workspace-integrator-guide
   version: "0.1.0"
-  intent: "Guide AI agents to merge markdown-formal writing rules into a target project's native workflow."
+  intent: "Guide AI agents to merge math-workspace writing rules into a target project's native workflow."
   compile:
     format: integrative
   integration:
     appliesTo:
-      - "vasm:markdown-formal-editor-skill"
+      - "vasm:math-workspace-editor-skill"
       - "editor"
       - "skills-src/editor.vasm.md"
       - "skills/editor.md"
 ---
 
-# markdown-formal integrative 组件
+# math-workspace integrative 组件
 
 这是组合指南，不是应原样附加到目标项目末尾的 prompt。把 [editor.md](../skills/editor.md) 的规则拆入目标项目既有的写作、迁移、审阅和发布流程；目标项目自己的术语、证明风格、章节模板和 release 规则仍是主导。
 
 ## 整合前
 
 1. 读取目标项目的 AI 指令入口、写作样例和 `package.json` scripts。
-2. 读取 `editor.md`、已有 `.markdown-formal/config.json` 和目标项目的写作样例。已有对象要被引用时，只读取 `reference-map.md` 的相关行；`agent-guide.md` 仅作为当前索引状态的补充卡片。
+2. 读取 `editor.md`、已有 `.math-workspace/config.json` 和目标项目的写作样例。已有对象要被引用时，只读取 `reference-map.md` 的相关行；`agent-guide.md` 仅作为当前索引状态的补充卡片。
 3. 若项目尚未初始化，先接入 CLI 并运行：
 
 ```bash
-npm run formal -- prepare
+npm run workspace -- prepare
 ```
 
 不要自动下载、安装或更新远端 skill；以已审阅的 release/npm/VASMC artifact 为输入，并在目标项目中融合规则。
@@ -45,17 +45,17 @@ npm run formal -- prepare
 ## 可融合的最小片段
 
 ```text
-进入任务或索引可能过期时运行 npm run formal -- prepare，并读取目标原文。需要当前上下文外的既有对象时，再从 .markdown-formal/reference-map.md 读取匹配行。
+进入任务或索引可能过期时运行 npm run workspace -- prepare，并读取目标原文。需要当前上下文外的既有对象时，再从 .math-workspace/reference-map.md 读取匹配行。
 新小节、命题、引理、定理、推论、公式、图、表和需要锚定的旁支事实用 #tmp-* 声明；正文引用只用 @h-... / @h-....title / @h-....full，不手写显示编号。
 定义不加 hash。工具自动维护标准定义与明确命名的概念/术语附录索引；不要因普通文本编辑重写 definitions.json。只有查询缺失、别名/双语或边界不可靠时才维护 override。特殊符号只有语义明确变化时才维护 symbols.json。
-编辑后运行 npm run formal -- finish <file-or-dir>，保持 Markdown 和 LaTeX 原样；只有直接 finalize、迁移或 release 门禁才另行运行 verify。
+编辑后运行 npm run workspace -- finish <file-or-dir>，保持 Markdown 和 LaTeX 原样；只有直接 finalize、迁移或 release 门禁才另行运行 verify。
 ```
 
 ## 人工源与派生数据
 
-- 可人工维护：`.markdown-formal/config.json`、必要时的 `definitions.json` 与 `symbols.json`。
-- 工具派生：`agent-guide.md`、`reference-map.md`、`reader-index.json`、`project-analysis.*`、依赖图和报告。可读，不作为手工源。
-- Reader 是只读的本地服务；它按内容变化重建索引与项目知识。它向 Codex 讨论提供当前选区、路径、行范围、直接引用和当前 book 的知识来源，而不会主动写源文档。
+- 可人工维护：`.math-workspace/config.json`、必要时的 `definitions.json` 与 `symbols.json`。
+- 工具派生：`agent-guide.md`、`reference-map.md`、`workspace-index.json`、`project-analysis.*`、依赖图和报告。可读，不作为手工源。
+- Math Workspace 是只读的本地服务；它按内容变化重建索引与项目知识。它向 Codex 讨论提供当前选区、路径、行范围、直接引用和当前 book 的知识来源，而不会主动写源文档。
 
 ## 完成标准
 

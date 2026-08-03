@@ -27,10 +27,10 @@ catalog:
     editor:
       source: "skills-src/editor.vasm.md"
       targetLang: "zh-CN"
-      file: "markdown-formal-editor.zh-CN.md"
+      file: "math-workspace-editor.zh-CN.md"
     integrator:
       source: "skills-src/integrator.vasm.md"
-      file: "markdown-formal-integrator.md"
+      file: "math-workspace-integrator.md"
 
 ai:
   projectReview:

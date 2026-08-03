@@ -64,7 +64,7 @@ export class CodexAppServerClient {
     private turnStarting = false;
 
     constructor(options: CodexAppServerClientOptions = {}) {
-        this.command = options.command || process.env.MARKDOWN_FORMAL_CODEX_COMMAND || 'codex';
+        this.command = options.command || process.env.MATH_WORKSPACE_CODEX_COMMAND || 'codex';
     }
 
     async listThreads(rootPath: string): Promise<CodexThreadSummary[]> {
@@ -145,7 +145,7 @@ export class CodexAppServerClient {
     }
 
     async close(): Promise<void> {
-        this.fail(new Error('Codex Reader bridge closed.'));
+        this.fail(new Error('Codex Math Workspace bridge closed.'));
         const child = this.child;
         this.child = undefined;
         this.startPromise = undefined;
@@ -233,7 +233,7 @@ export class CodexAppServerClient {
             threadId,
             input: [{ type: 'text', text: prompt, text_elements: [] }],
             additionalContext: {
-                'markdown-formal-reader-selection': {
+                'math-workspace-selection': {
                     kind: 'untrusted',
                     value: JSON.stringify(selectionContext)
                 }
@@ -292,8 +292,8 @@ export class CodexAppServerClient {
                     id,
                     params: {
                         clientInfo: {
-                            name: 'markdown_formal_reader',
-                            title: 'Markdown Formal Reader',
+                            name: 'math_workspace',
+                            title: 'Math Workspace',
                             version: '0.1.0'
                         },
                         capabilities: {
@@ -345,7 +345,7 @@ export class CodexAppServerClient {
                 id: message.id,
                 error: {
                     code: -32000,
-                    message: 'Markdown Formal Reader does not surface Codex tool approvals. Continue this task in Codex to approve tool actions.'
+                    message: 'Math Workspace does not surface Codex tool approvals. Continue this task in Codex to approve tool actions.'
                 }
             });
             return;

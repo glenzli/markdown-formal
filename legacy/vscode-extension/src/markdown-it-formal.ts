@@ -13,8 +13,8 @@ import {
     shouldIgnorePreviewHover,
     type RuntimeDefinitionData,
     type RuntimeSymbolData
-} from '@markdown-formal/core';
-import { appendPreviewDebugLog } from '@markdown-formal/core/debug-log';
+} from '@math-workspace/core';
+import { appendPreviewDebugLog } from '@math-workspace/core/debug-log';
 
 interface LabelData {
     type: string;
@@ -175,11 +175,11 @@ function getRuntimeTooltipStats(env: any): TooltipRuntimeStats {
 }
 
 function hasFormalPreviewConfig(rootPath: string): boolean {
-    return Boolean(rootPath && fs.existsSync(path.join(rootPath, '.markdown-formal', 'config.json')));
+    return Boolean(rootPath && fs.existsSync(path.join(rootPath, '.math-workspace', 'config.json')));
 }
 
 function hasFormalPreviewCache(rootPath: string): boolean {
-    return Boolean(rootPath && fs.existsSync(path.join(rootPath, '.markdown-formal', 'preview-cache.json')));
+    return Boolean(rootPath && fs.existsSync(path.join(rootPath, '.math-workspace', 'preview-cache.json')));
 }
 
 function findFormalPreviewRoot(startPath: string): string {
@@ -784,7 +784,7 @@ function formalPlugin(md: any, options: any) {
 
         const startedAt = Date.now();
         let currentFilePath = getCurrentFilePathFromEnv(rootPath, state.env);
-        const configPath = path.join(rootPath, '.markdown-formal', 'config.json');
+        const configPath = path.join(rootPath, '.math-workspace', 'config.json');
         try {
             cachedConfig = mergeConfig(JSON.parse(fs.readFileSync(configPath, 'utf-8')));
         } catch (e: any) {
@@ -801,7 +801,7 @@ function formalPlugin(md: any, options: any) {
             env: envDebugSummary(state.env)
         });
 
-        const cachePath = path.join(rootPath, '.markdown-formal', 'preview-cache.json');
+        const cachePath = path.join(rootPath, '.math-workspace', 'preview-cache.json');
         try {
             if (hasFormalPreviewCache(rootPath)) {
                 const readStartedAt = Date.now();
@@ -844,7 +844,7 @@ function formalPlugin(md: any, options: any) {
                 });
             }
         } catch (e: any) {
-            console.error('[markdown-formal] Failed to load preview-cache.json:', e);
+            console.error('[math-workspace] Failed to load preview-cache.json:', e);
             appendPreviewDebugLog(rootPath, cachedConfig, 'render:cache-error', {
                 filePath: currentFilePath || '(unknown)',
                 cachePath,
@@ -926,7 +926,7 @@ function formalPlugin(md: any, options: any) {
                 ...tooltipStats
             });
             if (state.env.ignoreFormalTooltips) {
-                console.warn('[markdown-formal] Skipped inline ref tooltips for configured preview', {
+                console.warn('[math-workspace] Skipped inline ref tooltips for configured preview', {
                     filePath: rawCurrentFilePath || '(unknown)',
                     reason: ignoreReason,
                     ...tooltipStats

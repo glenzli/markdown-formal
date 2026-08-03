@@ -1,15 +1,15 @@
 {
-  "name": "markdown-formal",
-  "description": "Agent-native local reader and CLI for formal mathematics Markdown",
+  "name": "math-workspace",
+  "description": "Local workspace for mathematical writing, formal review, and project navigation",
   "version": "0.1.0",
   "publisher": "glenzli",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://gitlab.com/glenzli/markdown-formal.git"
+    "url": "git+https://gitlab.com/glenzli/math-workspace.git"
   },
   "bin": {
-    "markdown-formal": "out/cli/formal-tools.js"
+    "math-workspace": "out/cli/math-workspace.js"
   },
   "files": [
     ".agents/plugins/",
@@ -37,15 +37,15 @@
     "typecheck:reader": "tsc -p tsconfig.reader.json",
     "build:reader": "npm run typecheck:reader && vite build --config vite.reader.config.ts",
     "build:reader:quiet": "vite build --config vite.reader.config.ts --logLevel warn",
-    "formal": "npm run --silent build:cli:quiet && npm run --silent build:reader:quiet && node out/cli/formal-tools.js",
-    "check": "npm run build && npm run formal -- verify",
-    "test:migrations": "node tests/formal-tools.test.mjs",
+    "workspace": "npm run --silent build:cli:quiet && npm run --silent build:reader:quiet && node out/cli/math-workspace.js",
+    "check": "npm run build && npm run workspace -- verify",
+    "test:migrations": "node tests/math-workspace.test.mjs",
     "test": "npm run check && npm run test:migrations",
     "content:build": "vasmc build",
     "docs:build": "npm run content:build",
     "prepack": "npm run content:build && npm run build",
-    "release:local": "npm run content:build && npm run build && node out/cli/formal-tools.js verify && npm run test:migrations && node out/cli/release.js",
-    "release:check": "node --check scripts/publish-release.js && npm run release:local && npm_config_cache=/private/tmp/markdown-formal-npm-cache npm pack --dry-run --ignore-scripts && git diff --check",
+    "release:local": "npm run content:build && npm run build && node out/cli/math-workspace.js verify && npm run test:migrations && node out/cli/release.js",
+    "release:check": "node --check scripts/publish-release.js && npm run release:local && npm_config_cache=/private/tmp/math-workspace-npm-cache npm pack --dry-run --ignore-scripts && git diff --check",
     "release": "node scripts/publish-release.js",
     "release:github": "node scripts/publish-release.js --only github",
     "release:gitlab": "node scripts/publish-release.js --only gitlab",

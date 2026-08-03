@@ -5,10 +5,10 @@
   },
   "plugins": [
     {
-      "name": "markdown-formal-reader",
+      "name": "math-workspace",
       "source": {
         "source": "local",
-        "path": "./plugins/markdown-formal-reader"
+        "path": "./plugins/math-workspace"
       },
       "policy": {
         "installation": "AVAILABLE",

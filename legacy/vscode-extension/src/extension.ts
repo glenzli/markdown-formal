@@ -10,8 +10,8 @@ import {
     scanExcludePatterns,
     shouldExcludeScanPath,
     toPosix
-} from '@markdown-formal/core';
-import { appendPreviewDebugLog } from '@markdown-formal/core/debug-log';
+} from '@math-workspace/core';
+import { appendPreviewDebugLog } from '@math-workspace/core/debug-log';
 import formalPlugin from './markdown-it-formal';
 
 let scanInProgress = false;
@@ -24,7 +24,7 @@ function elapsedMs(startedAt: number): number {
 }
 
 function formalDirPath(rootPath: string): string {
-    return path.join(rootPath, '.markdown-formal');
+    return path.join(rootPath, '.math-workspace');
 }
 
 function findFormalRoot(startPath: string): string {
@@ -55,7 +55,7 @@ function hasFormalWorkspace(rootPath: string): boolean {
 }
 
 async function ensureConfig(rootPath: string, createIfMissing = true): Promise<any | undefined> {
-    const cacheDir = path.join(rootPath, '.markdown-formal');
+    const cacheDir = path.join(rootPath, '.math-workspace');
     if (!fs.existsSync(cacheDir)) {
         if (!createIfMissing) return undefined;
         fs.mkdirSync(cacheDir, { recursive: true });
@@ -103,7 +103,7 @@ function vscodeExcludePattern(config: any): string {
 
 async function readSymbols(rootPath: string): Promise<any | undefined> {
     try {
-        return JSON.parse(await fs.promises.readFile(path.join(rootPath, '.markdown-formal', 'symbols.json'), 'utf-8'));
+        return JSON.parse(await fs.promises.readFile(path.join(rootPath, '.math-workspace', 'symbols.json'), 'utf-8'));
     } catch (err: any) {
         if (err?.code === 'ENOENT') return undefined;
         throw err;
@@ -112,7 +112,7 @@ async function readSymbols(rootPath: string): Promise<any | undefined> {
 
 async function readDefinitions(rootPath: string): Promise<any | undefined> {
     try {
-        return JSON.parse(await fs.promises.readFile(path.join(rootPath, '.markdown-formal', 'definitions.json'), 'utf-8'));
+        return JSON.parse(await fs.promises.readFile(path.join(rootPath, '.math-workspace', 'definitions.json'), 'utf-8'));
     } catch (err: any) {
         if (err?.code === 'ENOENT') return undefined;
         throw err;
@@ -167,7 +167,7 @@ async function scanWorkspaceOnce({ createConfig = false } = {}) {
         elapsedMs: elapsedMs(formalStartedAt)
     });
 
-    const cacheDir = path.join(rootPath, '.markdown-formal');
+    const cacheDir = path.join(rootPath, '.math-workspace');
     if (!fs.existsSync(cacheDir)) {
         fs.mkdirSync(cacheDir, { recursive: true });
     }
@@ -187,9 +187,9 @@ async function scanWorkspaceOnce({ createConfig = false } = {}) {
     const errors = state.issues.filter(issue => issue.severity === 'error');
     const warnings = state.issues.filter(issue => issue.severity !== 'error');
     if (errors.length > 0 || warnings.length > 0) {
-        console.warn(`[markdown-formal] Scan completed with ${errors.length} errors and ${warnings.length} warnings.`);
+        console.warn(`[math-workspace] Scan completed with ${errors.length} errors and ${warnings.length} warnings.`);
     } else {
-        console.log('[markdown-formal] Scanned workspace and updated preview-cache.json');
+        console.log('[math-workspace] Scanned workspace and updated preview-cache.json');
     }
     appendPreviewDebugLog(rootPath, config, 'extension:scan:end', {
         errors: errors.length,
@@ -224,7 +224,7 @@ async function scanWorkspace({ createConfig = false } = {}) {
             await scanWorkspaceOnce({ createConfig });
         } while (scanAgain);
     } catch (err) {
-        console.error('[markdown-formal] Failed to scan workspace', err);
+        console.error('[math-workspace] Failed to scan workspace', err);
         const rootPath = workspaceRootPath();
         if (rootPath) {
             const config = await ensureConfig(rootPath, createConfig);
@@ -252,10 +252,10 @@ function scheduleScan(delay = 1000) {
 }
 
 function shouldTriggerScanForPath(fileName: string, languageId?: string): boolean {
-    if (/[\\\/]\.markdown-formal[\\\/]config\.json$/i.test(fileName)) return true;
-    if (/[\\\/]\.markdown-formal[\\\/]symbols\.json$/i.test(fileName)) return true;
-    if (/[\\\/]\.markdown-formal[\\\/]definitions\.json$/i.test(fileName)) return true;
-    if (/[\\\/]\.markdown-formal[\\\/]/i.test(fileName)) return false;
+    if (/[\\\/]\.math-workspace[\\\/]config\.json$/i.test(fileName)) return true;
+    if (/[\\\/]\.math-workspace[\\\/]symbols\.json$/i.test(fileName)) return true;
+    if (/[\\\/]\.math-workspace[\\\/]definitions\.json$/i.test(fileName)) return true;
+    if (/[\\\/]\.math-workspace[\\\/]/i.test(fileName)) return false;
     return languageId === 'markdown' || /\.md$/i.test(fileName);
 }
 
@@ -265,10 +265,10 @@ export function activate(context: vscode.ExtensionContext) {
         installWorkspaceWatchers(context);
     }
 
-    const refreshCmd = vscode.commands.registerCommand('markdown-formal.refreshIndex', async () => {
+    const refreshCmd = vscode.commands.registerCommand('math-workspace.refreshIndex', async () => {
         await scanWorkspace({ createConfig: true });
         if (!workspaceWatchersInstalled) installWorkspaceWatchers(context);
-        vscode.window.showInformationMessage('Markdown Formal: References refreshed successfully.');
+        vscode.window.showInformationMessage('Math Workspace: References refreshed successfully.');
     });
     context.subscriptions.push(refreshCmd);
 
@@ -294,9 +294,9 @@ function installWorkspaceWatchers(context: vscode.ExtensionContext) {
     context.subscriptions.push(watcher);
 
     const fileWatcher = vscode.workspace.createFileSystemWatcher('**/*.md');
-    const configWatcher = vscode.workspace.createFileSystemWatcher('**/.markdown-formal/config.json');
-    const symbolsWatcher = vscode.workspace.createFileSystemWatcher('**/.markdown-formal/symbols.json');
-    const definitionsWatcher = vscode.workspace.createFileSystemWatcher('**/.markdown-formal/definitions.json');
+    const configWatcher = vscode.workspace.createFileSystemWatcher('**/.math-workspace/config.json');
+    const symbolsWatcher = vscode.workspace.createFileSystemWatcher('**/.math-workspace/symbols.json');
+    const definitionsWatcher = vscode.workspace.createFileSystemWatcher('**/.math-workspace/definitions.json');
     context.subscriptions.push(
         fileWatcher,
         fileWatcher.onDidCreate((uri: any) => {

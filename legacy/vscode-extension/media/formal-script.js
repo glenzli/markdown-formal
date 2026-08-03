@@ -2,9 +2,9 @@
   "use strict";
   (function() {
     const formalWindow = window;
-    const HISTORY_KEY = "markdown-formal-history";
+    const HISTORY_KEY = "math-workspace-history";
     const NAV_HASH_PREFIX = "formal-nav-";
-    const WINDOW_NAV_PREFIX = "markdown-formal-nav:";
+    const WINDOW_NAV_PREFIX = "math-workspace-nav:";
     const RENDER_WAIT_INTERVAL_MS = 75;
     const RENDER_WAIT_TIMEOUT_MS = 5e3;
     const ROOT_BOOK_KEY = "__workspace__";
@@ -145,7 +145,7 @@
         const raw = dataDiv.getAttribute("data-labels");
         return raw ? JSON.parse(raw) : {};
       } catch (err) {
-        console.error("[markdown-formal] Failed to parse labels", err);
+        console.error("[math-workspace] Failed to parse labels", err);
         return {};
       }
     }
@@ -227,7 +227,7 @@
         const raw = dataDiv.getAttribute("data-pages");
         return raw ? JSON.parse(raw) : [];
       } catch (err) {
-        console.error("[markdown-formal] Failed to parse pages", err);
+        console.error("[math-workspace] Failed to parse pages", err);
         return [];
       }
     }
@@ -243,7 +243,7 @@
           targetId: `formal-def-${index}`
         })) : [];
       } catch (err) {
-        console.error("[markdown-formal] Failed to parse definitions", err);
+        console.error("[math-workspace] Failed to parse definitions", err);
         return [];
       }
     }
@@ -255,7 +255,7 @@
         const symbols = raw ? JSON.parse(raw) : [];
         return Array.isArray(symbols) ? symbols.map((symbol, index) => ({ ...symbol, index })) : [];
       } catch (err) {
-        console.error("[markdown-formal] Failed to parse symbols", err);
+        console.error("[math-workspace] Failed to parse symbols", err);
         return [];
       }
     }
@@ -267,7 +267,7 @@
         const indexes = raw ? JSON.parse(raw) : [];
         return Array.isArray(indexes) ? indexes.filter((index) => typeof index === "number" && Number.isFinite(index)) : [];
       } catch (err) {
-        console.error("[markdown-formal] Failed to parse current symbol indexes", err);
+        console.error("[math-workspace] Failed to parse current symbol indexes", err);
         return [];
       }
     }
@@ -294,7 +294,7 @@
         const raw = dataDiv.getAttribute("data-config");
         return mergeConfig(raw ? JSON.parse(raw) : DEFAULT_CONFIG);
       } catch (err) {
-        console.error("[markdown-formal] Failed to parse config", err);
+        console.error("[math-workspace] Failed to parse config", err);
         return mergeConfig(DEFAULT_CONFIG);
       }
     }

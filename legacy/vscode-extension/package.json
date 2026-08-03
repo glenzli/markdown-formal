@@ -1,15 +1,15 @@
 {
-  "name": "markdown-formal-vscode-extension",
-  "displayName": "Markdown Formal",
-  "description": "Legacy VS Code-compatible preview integration for markdown-formal",
+  "name": "math-workspace-vscode-extension",
+  "displayName": "Math Workspace",
+  "description": "Legacy VS Code-compatible preview integration for math-workspace",
   "private": true,
-  "deprecated": "Archived with markdown-formal 0.1.0. Use the local Reader via `markdown-formal serve` instead.",
+  "deprecated": "Archived with math-workspace 0.1.0. Use the local Reader via `math-workspace serve` instead.",
   "version": "0.1.0",
   "publisher": "glenzli",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://gitlab.com/glenzli/markdown-formal.git"
+    "url": "git+https://gitlab.com/glenzli/math-workspace.git"
   },
   "engines": {
     "vscode": "^1.80.0"
@@ -34,8 +34,8 @@
     ],
     "commands": [
       {
-        "command": "markdown-formal.refreshIndex",
-        "title": "Markdown Formal: Refresh References"
+        "command": "math-workspace.refreshIndex",
+        "title": "Math Workspace: Refresh References"
       }
     ]
   }

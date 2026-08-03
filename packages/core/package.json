@@ -1,7 +1,7 @@
 {
-  "name": "@markdown-formal/core",
+  "name": "@math-workspace/core",
   "version": "0.1.0",
   "private": true,
   "main": "./out/formal-core.js",
-  "description": "Shared parsing, numbering, reference, and dependency-analysis core for markdown-formal."
+  "description": "Shared parsing, numbering, reference, and dependency-analysis core for math-workspace."
 }

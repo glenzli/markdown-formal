@@ -200,7 +200,7 @@ export interface DependencyGraphCycle {
 
 export interface DependencyGraph {
     schemaVersion: 1;
-    generatedBy: 'markdown-formal';
+    generatedBy: 'math-workspace';
     nodes: DependencyGraphNode[];
     edges: DependencyGraphEdge[];
     ambientReferences: DependencyGraphAmbientReference[];
@@ -355,7 +355,7 @@ export const DEFAULT_CONFIG = {
     scan: {
         exclude: [
             '.git/**',
-            '.markdown-formal/**',
+            '.math-workspace/**',
             'node_modules/**',
             'out/**',
             'dist/**'
@@ -930,8 +930,8 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
         issues.push({
             severity: 'error',
             code: 'invalid-symbols-file',
-            file: '.markdown-formal/symbols.json',
-            message: '.markdown-formal/symbols.json must be an array, or an object with a symbols array.'
+            file: '.math-workspace/symbols.json',
+            message: '.math-workspace/symbols.json must be an array, or an object with a symbols array.'
         });
         return { symbols: [], issues };
     }
@@ -949,7 +949,7 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
             issues.push({
                 severity: 'error',
                 code: 'invalid-symbol-entry',
-                file: '.markdown-formal/symbols.json',
+                file: '.math-workspace/symbols.json',
                 line: index + 1,
                 message: 'Symbol entry must be an object.'
             });
@@ -963,7 +963,7 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
             issues.push({
                 severity: 'error',
                 code: 'invalid-symbol-entry',
-                file: '.markdown-formal/symbols.json',
+                file: '.math-workspace/symbols.json',
                 line: index + 1,
                 message: 'Symbol entry requires non-empty source, pattern, and meaning.'
             });
@@ -979,7 +979,7 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
             issues.push({
                 severity: 'error',
                 code: 'symbol-source-invalid',
-                file: '.markdown-formal/symbols.json',
+                file: '.math-workspace/symbols.json',
                 line: index + 1,
                 message: `Symbol source ${source} must use path.md:line format.`
             });
@@ -990,7 +990,7 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
             issues.push({
                 severity: 'error',
                 code: 'symbol-source-missing',
-                file: '.markdown-formal/symbols.json',
+                file: '.math-workspace/symbols.json',
                 line: index + 1,
                 message: `Symbol source ${source} does not point to a known Markdown file.`
             });
@@ -1002,7 +1002,7 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
             issues.push({
                 severity: 'error',
                 code: 'symbol-source-line-missing',
-                file: '.markdown-formal/symbols.json',
+                file: '.math-workspace/symbols.json',
                 line: index + 1,
                 message: `Symbol source ${source} points outside the source file.`
             });
@@ -1013,7 +1013,7 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
             issues.push({
                 severity: 'warn',
                 code: 'symbol-display-mismatch',
-                file: '.markdown-formal/symbols.json',
+                file: '.math-workspace/symbols.json',
                 line: index + 1,
                 message: `Symbol display ${display} does not match pattern ${pattern}.`
             });
@@ -1023,7 +1023,7 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
             issues.push({
                 severity: 'warn',
                 code: 'symbol-pattern-too-broad',
-                file: '.markdown-formal/symbols.json',
+                file: '.math-workspace/symbols.json',
                 line: index + 1,
                 message: `Symbol pattern ${pattern} is only a placeholder and may match unrelated formulas.`
             });
@@ -1033,7 +1033,7 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
             issues.push({
                 severity: 'warn',
                 code: 'symbol-pattern-unbalanced-delimiter',
-                file: '.markdown-formal/symbols.json',
+                file: '.math-workspace/symbols.json',
                 line: index + 1,
                 message: `Symbol pattern ${pattern} has unbalanced parentheses or brackets and may match a surrounding formula instead of the notation itself.`
             });
@@ -1045,7 +1045,7 @@ export function parseFormalSymbols(input: unknown, documents: Array<FormalDocume
             issues.push({
                 severity: 'warn',
                 code: 'duplicate-symbol-pattern',
-                file: '.markdown-formal/symbols.json',
+                file: '.math-workspace/symbols.json',
                 line: index + 1,
                 message: `Symbol pattern duplicates entry ${previousIndex + 1} in the same scope and source file.`
             });
@@ -1095,8 +1095,8 @@ export function parseFormalDefinitions(input: unknown, documents: Array<FormalDo
         issues.push({
             severity: 'error',
             code: 'invalid-definitions-file',
-            file: '.markdown-formal/definitions.json',
-            message: '.markdown-formal/definitions.json must be an array, or an object with a definitions array.'
+            file: '.math-workspace/definitions.json',
+            message: '.math-workspace/definitions.json must be an array, or an object with a definitions array.'
         });
         return { definitions: [], issues };
     }
@@ -1115,7 +1115,7 @@ export function parseFormalDefinitions(input: unknown, documents: Array<FormalDo
             issues.push({
                 severity: 'error',
                 code: 'invalid-definition-entry',
-                file: '.markdown-formal/definitions.json',
+                file: '.math-workspace/definitions.json',
                 line: index + 1,
                 message: 'Definition entry must be an object.'
             });
@@ -1133,7 +1133,7 @@ export function parseFormalDefinitions(input: unknown, documents: Array<FormalDo
             issues.push({
                 severity: 'error',
                 code: 'invalid-definition-entry',
-                file: '.markdown-formal/definitions.json',
+                file: '.math-workspace/definitions.json',
                 line: index + 1,
                 message: 'Definition entry requires non-empty term/title and source.'
             });
@@ -1145,7 +1145,7 @@ export function parseFormalDefinitions(input: unknown, documents: Array<FormalDo
             issues.push({
                 severity: 'error',
                 code: 'definition-source-invalid',
-                file: '.markdown-formal/definitions.json',
+                file: '.math-workspace/definitions.json',
                 line: index + 1,
                 message: `Definition source ${source} must use path.md:line format.`
             });
@@ -1157,7 +1157,7 @@ export function parseFormalDefinitions(input: unknown, documents: Array<FormalDo
             issues.push({
                 severity: 'error',
                 code: 'definition-source-missing',
-                file: '.markdown-formal/definitions.json',
+                file: '.math-workspace/definitions.json',
                 line: index + 1,
                 message: `Definition source ${source} does not point to a known Markdown file.`
             });
@@ -1169,7 +1169,7 @@ export function parseFormalDefinitions(input: unknown, documents: Array<FormalDo
             issues.push({
                 severity: 'error',
                 code: 'definition-source-line-missing',
-                file: '.markdown-formal/definitions.json',
+                file: '.math-workspace/definitions.json',
                 line: index + 1,
                 message: `Definition source ${source} points outside the source file.`
             });
@@ -1182,7 +1182,7 @@ export function parseFormalDefinitions(input: unknown, documents: Array<FormalDo
             issues.push({
                 severity: 'warn',
                 code: 'definition-content-missing',
-                file: '.markdown-formal/definitions.json',
+                file: '.math-workspace/definitions.json',
                 line: index + 1,
                 message: `Definition entry ${title} should include AI-maintained content; falling back to source extraction.`
             });
@@ -1190,7 +1190,7 @@ export function parseFormalDefinitions(input: unknown, documents: Array<FormalDo
             issues.push({
                 severity: 'warn',
                 code: 'definition-content-stale',
-                file: '.markdown-formal/definitions.json',
+                file: '.math-workspace/definitions.json',
                 line: index + 1,
                 message: `Definition entry ${title} content is not found in its source file near ${source}; update content after editing the source.`
             });
@@ -1202,7 +1202,7 @@ export function parseFormalDefinitions(input: unknown, documents: Array<FormalDo
             issues.push({
                 severity: 'warn',
                 code: 'duplicate-definition-entry',
-                file: '.markdown-formal/definitions.json',
+                file: '.math-workspace/definitions.json',
                 line: index + 1,
                 message: `Definition entry duplicates entry ${previousIndex + 1}.`
             });
@@ -2210,7 +2210,7 @@ function lintDefinitions(definitions: FormalDefinition[]): FormalIssue[] {
                 code: 'tmp-id-left',
                 file: def.file,
                 line: def.line,
-                message: `Temporary marker #${def.id} remains. Run npm run formal -- finish <file>.`
+                message: `Temporary marker #${def.id} remains. Run npm run workspace -- finish <file>.`
             });
         } else if (!HASH_ID_RE.test(def.id)) {
             issues.push({
@@ -2453,7 +2453,7 @@ export function renderReferenceMap(definitions: FormalDefinition[], config: any,
     const lines = [
         '# Reference Map',
         '',
-        'Generated by `npm run formal -- prepare`. Read this file to map human display numbers and unnumbered anchors to stable hash IDs.',
+        'Generated by `npm run workspace -- prepare`. Read this file to map human display numbers and unnumbered anchors to stable hash IDs.',
         ''
     ];
 
@@ -2531,7 +2531,7 @@ export function buildReaderIndex(state: any) {
 export function renderProjectAnalysis(analysis: ProjectStructureAnalysis | undefined): string {
     const project = analysis || {
         schemaVersion: 1,
-        generatedBy: 'markdown-formal' as const,
+        generatedBy: 'math-workspace' as const,
         sources: [],
         summary: { conceptSources: 0, notationSources: 0, summaryPages: 0, extractedDefinitions: 0 }
     };
@@ -2555,7 +2555,7 @@ export function renderProjectAnalysis(analysis: ProjectStructureAnalysis | undef
     lines.push('| --- | --- | --- | --- | ---: |');
     project.sources.forEach(source => lines.push(`| ${source.kind} | \`${source.filePath}\` | ${escapeTable(source.title)} | ${source.confidence} | ${source.extractedDefinitions} |`));
     lines.push('', '## Maintenance Boundary', '');
-    lines.push('- The scanner and Reader refresh this analysis when Markdown or the optional definition/symbol source tables change.', '- Do not copy ordinary definitions into `.markdown-formal/definitions.json` just to keep this index fresh.', '- Use `.markdown-formal/definitions.json` only for deliberate lookup overrides: nonstandard wording, aliases, bilingual lookup, or a boundary the deterministic extractor cannot represent.', '- Detected notation appendices are supplied as project context; symbol patterns and meanings still require an explicit reviewed source entry.', '');
+    lines.push('- The scanner and Reader refresh this analysis when Markdown or the optional definition/symbol source tables change.', '- Do not copy ordinary definitions into `.math-workspace/definitions.json` just to keep this index fresh.', '- Use `.math-workspace/definitions.json` only for deliberate lookup overrides: nonstandard wording, aliases, bilingual lookup, or a boundary the deterministic extractor cannot represent.', '- Detected notation appendices are supplied as project context; symbol patterns and meanings still require an explicit reviewed source entry.', '');
     return `${lines.join('\n')}\n`;
 }
 
@@ -2817,7 +2817,7 @@ export function buildDependencyGraph(state: any, documents: FormalDocument[]): D
 
     return {
         schemaVersion: 1,
-        generatedBy: 'markdown-formal',
+        generatedBy: 'math-workspace',
         nodes,
         edges,
         ambientReferences,
@@ -2888,7 +2888,7 @@ export function renderDependencyReport(graph: DependencyGraph): string {
     const lines = [
         '# Dependency Graph Report',
         '',
-        'Generated by `npm run formal -- prepare`. The canonical data is `.markdown-formal/dependency-graph.json`.',
+        'Generated by `npm run workspace -- prepare`. The canonical data is `.math-workspace/dependency-graph.json`.',
         '',
         '## Summary',
         '',
@@ -3365,16 +3365,16 @@ export function renderAgentGuide(state: any): string {
     const lines = [
         '# Agent Guide',
         '',
-        'Generated by `npm run formal -- prepare`. This is the compact workflow card for AI agents.',
+        'Generated by `npm run workspace -- prepare`. This is the compact workflow card for AI agents.',
         '',
         `Current index: ${Object.keys(state.labels).length} formal entries, ${state.pages.length} pages, ${(state.symbols || []).length} symbols, ${errors} errors, ${warnings} warnings.`,
         '',
         '## Working Loop',
         '',
-        '1. Read the target Markdown source. For an existing target outside current context, retrieve only its matching row from `.markdown-formal/reference-map.md`.',
+        '1. Read the target Markdown source. For an existing target outside current context, retrieve only its matching row from `.math-workspace/reference-map.md`.',
         '2. Declare new numbered objects with `#tmp-*`; reference existing objects and pages with `@h-...`, `@h-....title`, or `@h-....full`. Definitions never receive hashes or refs.',
         '3. Preserve Markdown and LaTeX. Do not write display numbers as references or hand-edit generated artifacts.',
-        '4. Run `npm run formal -- finish <file-or-dir>` after editing. It finalizes temporary IDs and verifies the workspace. Use a separate `verify` only after direct `finalize`, migration, or as an explicit release gate.',
+        '4. Run `npm run workspace -- finish <file-or-dir>` after editing. It finalizes temporary IDs and verifies the workspace. Use a separate `verify` only after direct `finalize`, migration, or as an explicit release gate.',
         '5. Read `project-analysis.md` only for terminology, concept appendices, or notation work. It is derived context, not a source to maintain.',
         '',
         '## Extended Reference',
@@ -3383,31 +3383,31 @@ export function renderAgentGuide(state: any): string {
         '- Numbered objects: `命题 #h-...（Title）：...`, `引理 #h-...`, `定理 #h-...`, `推论 #h-...` share the theorem counter per chapter or appendix.',
         '- Equations, figures, and tables: `公式 #h-...：` binds the next display formula as a numbered equation, `图 #h-...（Title）：...` captions a nearby image, and `表 #h-...（Title）：` captions the following table. They have separate counters per chapter or appendix; equations render as `(1.1)`, appendices as `(A.1)`.',
         '- Chapter/page anchors: put `#h-...` / `#tmp-*` on the file\'s unique highest-level heading when the page needs stable refs. The hash is hidden in preview and does not create a section number. Use `@h-...`, `@h-....title`, or `@h-....full` from `reference-map.md` to reference the page.',
-        '- Compatibility chapter/page refs: `@chapter:book1/02-main.md`, `@chapter:book1/02-main.md.title`, or `@chapter:book1/02-main.md.full` still work; paths are relative to the formal root that owns `.markdown-formal/`. `@page:path.md` is for intro, summary, and appendix pages. Prefer page hashes when available. `finish` normalizes `./` and `../` input sugar to root-relative paths.',
+        '- Compatibility chapter/page refs: `@chapter:book1/02-main.md`, `@chapter:book1/02-main.md.title`, or `@chapter:book1/02-main.md.full` still work; paths are relative to the formal root that owns `.math-workspace/`. `@page:path.md` is for intro, summary, and appendix pages. Prefer page hashes when available. `finish` normalizes `./` and `../` input sugar to root-relative paths.',
         '- Theorem-like recall captures the statement before `证明` / `Proof`; keep proofs after an explicit proof marker.',
-        '- Dependency graph: `.markdown-formal/dependency-graph.json` is the canonical explicit reference graph. It uses only `@h-...` references between propositions/lemmas/theorems/corollaries and proof-backed hash remarks, and marks edges as `statement`, `proof`, or `body`. Edges introduced as explanatory navigation (`见 @h-...`, `参见 @h-...`, or `see @h-...`) are preserved with relation `explanatory`; the Reader relation map excludes them, body references, and self-references from its strict dependency view. `.markdown-formal/dependency-report.md` separates mainline theorem-like and supplemental remark statistics. Use `npm run formal -- graph summary`, `graph impact <h-id>`, `graph upstream <h-id>`, `graph focus <h-id> --depth 2`, `graph bridges`, `graph isolated`, `graph cycles`, or `graph matrix chapter|volume|book` for Markdown analysis. Add `--where statement|proof|body` to filter edge placement. These are structural graph tools, not domain interpretation.',
-        '- Definitions and project knowledge: lookup is a tool-first, AI-exception workflow. The tool scans standard `定义（Term）：...` / `Definition (Term): ...` definitions and deliberately named concept/glossary appendices; `.markdown-formal/project-analysis.md` records detected concept, notation, and summary pages. Do not refresh `.markdown-formal/definitions.json` after ordinary edits. Use it only for nonstandard phrases, aliases/bilingual lookup, stable multi-paragraph previews, or a boundary the deterministic extractor cannot represent; include Markdown `content` for those entries. Reader task context carries detected sources from the current book. Full rendered lookup previews are only guaranteed for definitions in the currently previewed file; cross-file search is primarily for locating and jumping.',
+        '- Dependency graph: `.math-workspace/dependency-graph.json` is the canonical explicit reference graph. It uses only `@h-...` references between propositions/lemmas/theorems/corollaries and proof-backed hash remarks, and marks edges as `statement`, `proof`, or `body`. Edges introduced as explanatory navigation (`见 @h-...`, `参见 @h-...`, or `see @h-...`) are preserved with relation `explanatory`; the Reader relation map excludes them, body references, and self-references from its strict dependency view. `.math-workspace/dependency-report.md` separates mainline theorem-like and supplemental remark statistics. Use `npm run workspace -- graph summary`, `graph impact <h-id>`, `graph upstream <h-id>`, `graph focus <h-id> --depth 2`, `graph bridges`, `graph isolated`, `graph cycles`, or `graph matrix chapter|volume|book` for Markdown analysis. Add `--where statement|proof|body` to filter edge placement. These are structural graph tools, not domain interpretation.',
+        '- Definitions and project knowledge: lookup is a tool-first, AI-exception workflow. The tool scans standard `定义（Term）：...` / `Definition (Term): ...` definitions and deliberately named concept/glossary appendices; `.math-workspace/project-analysis.md` records detected concept, notation, and summary pages. Do not refresh `.math-workspace/definitions.json` after ordinary edits. Use it only for nonstandard phrases, aliases/bilingual lookup, stable multi-paragraph previews, or a boundary the deterministic extractor cannot represent; include Markdown `content` for those entries. Reader task context carries detected sources from the current book. Full rendered lookup previews are only guaranteed for definitions in the currently previewed file; cross-file search is primarily for locating and jumping.',
         '- Explanatory remarks stay plain: `注（Title）：...` / `Remark (Title): ...`, without hash. Non-mainline fact remarks that need a proof or later citation use `注 #tmp-*（Title）：...`; `> 注 #tmp-*（Title）：...` is also recognized inside standard blockquotes. A hash remark is an unnumbered supplemental dependency node and supports recall; a plain remark never enters the dependency graph or Reader dependency markers. Examples stay plain by default; only explicitly cited examples use `例 #tmp-*` / `Example #tmp-*` and remain numbered.',
-        '- Symbols: maintain only project-specific `source`, `pattern`, and `meaning` entries in `.markdown-formal/symbols.json` when explicit notation semantics change; patterns describe the notation itself with balanced delimiters, not whole equations or open-ended formula fragments. Detected notation appendices are context only and do not infer symbol meanings. The navigation symbol table lists symbols matched in the current preview file. Symbols are not inline formula refs and are not searched through the definition search box.',
+        '- Symbols: maintain only project-specific `source`, `pattern`, and `meaning` entries in `.math-workspace/symbols.json` when explicit notation semantics change; patterns describe the notation itself with balanced delimiters, not whole equations or open-ended formula fragments. Detected notation appendices are context only and do not infer symbol meanings. The navigation symbol table lists symbols matched in the current preview file. Symbols are not inline formula refs and are not searched through the definition search box.',
         '- Appendices use the appendix file prefix, so markers in `appendix-a-*.md` render as `A.1`, `A.2`, etc. `00-introduction.md`, `intro.md`, and `introduction.md` are intro pages, not chapter 0.',
-        '- Export: do not compile formal source Markdown directly. Use `npm run formal -- export-md <file-or-dir> --out dist/book.md` to produce one portable Markdown file, `npm run formal -- export-md-split <file-or-dir> --out dist/public` to produce compiled Markdown files while preserving the source tree, `npm run formal -- export-pdf <file-or-dir> --out dist/book.pdf` to call local pandoc after Markdown export, or `npm run formal -- render-pdf dist/book.md --out dist/book.pdf` when a project release flow has already postprocessed the compiled Markdown. PDF rendering reads `.markdown-formal/config.json` `pdf` defaults when present: A4, 2.5cm margins, TOC depth 2, language-aware TOC title, separate TOC page, optional title page metadata, optional publication metadata page, and optional front matter pages. `author` is the cover/PDF metadata author; fuller identity fields are `authorNative`, `authorAliases`, `orcid`, `repository`, `license`, `licenseUrl`, `preferredCitation`, `releaseTag`, `releaseCommit`, and `doi`. When `metadataPage` is true, the generated metadata page is unnumbered, unlisted, and placed after the title page but before the table of contents. Longer AI, license, citation, or provenance statements belong in `frontMatter`, placed after metadata and before the TOC; front matter entries use `source` or `content`, default to `toc: false`, and default to page breaks. Override with `--title`, `--subtitle`, `--author`, `--author-native`, `--author-alias`, `--orcid`, `--repository`, `--license`, `--license-url`, `--preferred-citation`, `--date`, `--release-version`, `--release-tag`, `--release-commit`, `--doi`, `--metadata-page`, `--front-matter`, `--front-matter-title`, `--front-matter-toc`, `--documentclass`, `--title-page`, `--margin`, `--no-toc`, `--toc-depth`, `--paper`, or Pandoc `-V key:value`. No PDF engine is bundled.',
+        '- Export: do not compile formal source Markdown directly. Use `npm run workspace -- export-md <file-or-dir> --out dist/book.md` to produce one portable Markdown file, `npm run workspace -- export-md-split <file-or-dir> --out dist/public` to produce compiled Markdown files while preserving the source tree, `npm run workspace -- export-pdf <file-or-dir> --out dist/book.pdf` to call local pandoc after Markdown export, or `npm run workspace -- render-pdf dist/book.md --out dist/book.pdf` when a project release flow has already postprocessed the compiled Markdown. PDF rendering reads `.math-workspace/config.json` `pdf` defaults when present: A4, 2.5cm margins, TOC depth 2, language-aware TOC title, separate TOC page, optional title page metadata, optional publication metadata page, and optional front matter pages. `author` is the cover/PDF metadata author; fuller identity fields are `authorNative`, `authorAliases`, `orcid`, `repository`, `license`, `licenseUrl`, `preferredCitation`, `releaseTag`, `releaseCommit`, and `doi`. When `metadataPage` is true, the generated metadata page is unnumbered, unlisted, and placed after the title page but before the table of contents. Longer AI, license, citation, or provenance statements belong in `frontMatter`, placed after metadata and before the TOC; front matter entries use `source` or `content`, default to `toc: false`, and default to page breaks. Override with `--title`, `--subtitle`, `--author`, `--author-native`, `--author-alias`, `--orcid`, `--repository`, `--license`, `--license-url`, `--preferred-citation`, `--date`, `--release-version`, `--release-tag`, `--release-commit`, `--doi`, `--metadata-page`, `--front-matter`, `--front-matter-title`, `--front-matter-toc`, `--documentclass`, `--title-page`, `--margin`, `--no-toc`, `--toc-depth`, `--paper`, or Pandoc `-V key:value`. No PDF engine is bundled.',
         '',
         '## Generated Files',
         '',
-        '- `.markdown-formal/reference-map.md`: compact display-number, page-anchor, and unnumbered-anchor to hash-ID table.',
-        '- `.markdown-formal/reader-index.json`: machine-readable formal entry, page, definition, and symbol snapshot for local reader tooling.',
-        '- `.markdown-formal/dependency-graph.json`: canonical graph for theorem-like objects and proof-backed hash remarks, from explicit `@h-...` references.',
-        '- `.markdown-formal/dependency-report.md`: human/AI dependency graph review report.',
-        '- `.markdown-formal/project-analysis.json` / `.markdown-formal/project-analysis.md`: generated detection of concept/glossary, notation, and summary pages, plus supplemental concept entries. This is derived context, not a hand-maintained source table.',
-        '- `.markdown-formal/report.md`: lint/verify details.',
-        '- `.markdown-formal/audit.md`: advisory AI cleanup list generated by `audit`.',
-        '- `.markdown-formal/text-ref-migration.md`: generated only after text-reference migration.',
-        '- `.markdown-formal/definitions.json` / `.markdown-formal/symbols.json`: optional reviewed source tables for definition lookup overrides and project-specific notation.',
-        '- `.markdown-formal/config.json`: explicit formal-project configuration. Use `scan.exclude` when project-root scans must ignore build, draft, context, or generated Markdown directories; use `lookup.bookDependencies` to permit intentional cross-book lookups and refs. The Reader scans project content in memory and remains opt-in through this config.',
+        '- `.math-workspace/reference-map.md`: compact display-number, page-anchor, and unnumbered-anchor to hash-ID table.',
+        '- `.math-workspace/workspace-index.json`: machine-readable formal entry, page, definition, and symbol snapshot for local reader tooling.',
+        '- `.math-workspace/dependency-graph.json`: canonical graph for theorem-like objects and proof-backed hash remarks, from explicit `@h-...` references.',
+        '- `.math-workspace/dependency-report.md`: human/AI dependency graph review report.',
+        '- `.math-workspace/project-analysis.json` / `.math-workspace/project-analysis.md`: generated detection of concept/glossary, notation, and summary pages, plus supplemental concept entries. This is derived context, not a hand-maintained source table.',
+        '- `.math-workspace/report.md`: lint/verify details.',
+        '- `.math-workspace/audit.md`: advisory AI cleanup list generated by `audit`.',
+        '- `.math-workspace/text-ref-migration.md`: generated only after text-reference migration.',
+        '- `.math-workspace/definitions.json` / `.math-workspace/symbols.json`: optional reviewed source tables for definition lookup overrides and project-specific notation.',
+        '- `.math-workspace/config.json`: explicit formal-project configuration. Use `scan.exclude` when project-root scans must ignore build, draft, context, or generated Markdown directories; use `lookup.bookDependencies` to permit intentional cross-book lookups and refs. The Reader scans project content in memory and remains opt-in through this config.',
         '',
         '## Migration',
         '',
-        '- Use `npm run formal -- migrate-text-refs <file-or-dir>` before applying old numbered prose migration; migration commands are dry-run by default.',
+        '- Use `npm run workspace -- migrate-text-refs <file-or-dir>` before applying old numbered prose migration; migration commands are dry-run by default.',
         '- `migrate-text-refs` rewrites typed old references such as `定理 2.1`, `命题2.2`, `Theorem 2.1`, `公式 (2.1)`, `Figure 2.1`, `表 2.1`, `§2.1`, or `第 2.1 节`. It intentionally does not rewrite bare `2.1`, bare `(2.1)`, or handwritten chapter refs such as `第 2 章`; decide those by reading context and convert chapter refs to page hashes `@h-...` when available, otherwise to compatibility `@chapter:path.md`. Matching is bounded so `2.1` is not replaced inside `2.12`, `2.1.3`, or `22.1`.',
         '- Scoped migrations update target files plus incoming references by default. Use `--target-only` only when intentionally restricting rewrites to the target files.',
         ''
@@ -3423,7 +3423,7 @@ export function renderReport(state: any): string {
     const errors = state.issues.filter((issue: FormalIssue) => issue.severity === 'error');
     const warnings = state.issues.filter((issue: FormalIssue) => issue.severity !== 'error');
     const lines = [
-        '# markdown-formal Report',
+        '# math-workspace Report',
         '',
         `Labels: ${Object.keys(state.labels).length}`,
         `Pages: ${state.pages.length}`,

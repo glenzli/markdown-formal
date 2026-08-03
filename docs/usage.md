@@ -8,7 +8,7 @@
 
 ## 🌍 English
 
-This guide explains the source syntax and normal command workflow for `markdown-formal`.
+This guide explains the source syntax and normal command workflow for `math-workspace`.
 
 The short version:
 
@@ -19,10 +19,10 @@ The short version:
 ### Core Model
 
 - Stable numbering: source stores stable `#h-...` markers, new objects start as `#tmp-*`, prose references use only `@h-...`, `@h-....title`, or `@h-....full`, and reader-facing numbers are rendered by the tool.
-- Definition lookup: definitions do not get hash IDs or refs; the tool scans standard `定义（术语）：...` / `Definition (Term): ...` entries and deliberately named concept/glossary appendices. AI maintains `.markdown-formal/definitions.json` only for missing lookup entries, nonstandard definitions, aliases, bilingual lookup, and unreliable boundaries.
-- Project knowledge: `.markdown-formal/project-analysis.json` / `.markdown-formal/project-analysis.md` are generated summaries of concept/glossary, notation, and summary pages. Reader rebuilds them in memory and sends current-book sources with Codex discussion context.
-- Symbol table: `.markdown-formal/symbols.json` records only project-defined special LaTeX notation with an explicit semantic change, not generic variables, complete derivations, or one-off symbols.
-- Dependency graph: explicit dependencies between theorem-like objects and proof-backed hash remarks come from `@h-...`; the canonical data is `.markdown-formal/dependency-graph.json`; plain remarks have no graph node, and AI- or prover-suggested edges must be stored separately as suggested data.
+- Definition lookup: definitions do not get hash IDs or refs; the tool scans standard `定义（术语）：...` / `Definition (Term): ...` entries and deliberately named concept/glossary appendices. AI maintains `.math-workspace/definitions.json` only for missing lookup entries, nonstandard definitions, aliases, bilingual lookup, and unreliable boundaries.
+- Project knowledge: `.math-workspace/project-analysis.json` / `.math-workspace/project-analysis.md` are generated summaries of concept/glossary, notation, and summary pages. Math Workspace rebuilds them in memory and sends current-book sources with Codex discussion context.
+- Symbol table: `.math-workspace/symbols.json` records only project-defined special LaTeX notation with an explicit semantic change, not generic variables, complete derivations, or one-off symbols.
+- Dependency graph: explicit dependencies between theorem-like objects and proof-backed hash remarks come from `@h-...`; the canonical data is `.math-workspace/dependency-graph.json`; plain remarks have no graph node, and AI- or prover-suggested edges must be stored separately as suggested data.
 - Export: ordinary Markdown/PDF does not consume formal source directly; use `export-md` or `export-md-split` to lower markers/refs first, then run project-specific postprocessing and `render-pdf`.
 - Tool loop: run `prepare` when entering a task or when the index may be stale, then run `finish <file-or-dir>` for ordinary edits; `finish` validates. Run `verify` separately only after direct `finalize`, a migration, or as an independent release gate.
 
@@ -115,11 +115,11 @@ Definition (Bounded operator): A linear map \(T:X\to Y\) is bounded if ...
 定义（有界算子）：若线性映射 \(T:X\to Y\) 满足 ...
 ```
 
-The tool also recognizes deliberately named concept or terminology appendices, such as `appendix-*-concepts.md`, glossary, terminology, or their Chinese equivalents. In those pages, `Term | Definition` / `术语 | 定义` tables and deepest concept-entry headings become supplemental lookup entries. `prepare` writes `.markdown-formal/project-analysis.json` and `.markdown-formal/project-analysis.md`; Reader rebuilds the same structure in memory and supplies current-book sources to Codex discussions.
+The tool also recognizes deliberately named concept or terminology appendices, such as `appendix-*-concepts.md`, glossary, terminology, or their Chinese equivalents. In those pages, `Term | Definition` / `术语 | 定义` tables and deepest concept-entry headings become supplemental lookup entries. `prepare` writes `.math-workspace/project-analysis.json` and `.math-workspace/project-analysis.md`; Math Workspace rebuilds the same structure in memory and supplies current-book sources to Codex discussions.
 
 These are derived reading aids, not new writing sources. The tool does not infer terms or symbol meaning from ordinary prose.
 
-Use `.markdown-formal/definitions.json` only for exceptions:
+Use `.math-workspace/definitions.json` only for exceptions:
 
 - nonstandard prose definitions;
 - aliases;
@@ -142,7 +142,7 @@ Example:
 
 ### Symbols
 
-Only project-specific notation whose semantics have explicitly changed belongs in `.markdown-formal/symbols.json`.
+Only project-specific notation whose semantics have explicitly changed belongs in `.math-workspace/symbols.json`.
 
 ```json
 [
@@ -162,38 +162,38 @@ Do not index generic variables, standard notation, or complete derivation formul
 Prepare generated context:
 
 ```bash
-npm run formal -- prepare
+npm run workspace -- prepare
 ```
 
 Edit a file or directory, then finalize temporary IDs and refresh reports:
 
 ```bash
-npm run formal -- finish path/to/chapter-or-dir
+npm run workspace -- finish path/to/chapter-or-dir
 ```
 
 `finish` already validates. Run the strict gate separately only after direct `finalize`, a migration, or when an independent release gate is required:
 
 ```bash
-npm run formal -- verify
+npm run workspace -- verify
 ```
 
-### Local Reader
+### Local Math Workspace
 
-The Reader is the primary reading interface. It scans a project with an existing formal configuration in memory and never writes source files or `.markdown-formal/` artifacts:
+The Math Workspace is the primary reading interface. It scans a project with an existing formal configuration in memory and never writes source files or `.math-workspace/` artifacts:
 
 ```bash
-npm run formal -- serve /path/to/project
+npm run workspace -- serve /path/to/project
 ```
 
 You can also omit the project path to open the local project launcher:
 
 ```bash
-npm run formal -- serve
+npm run workspace -- serve
 ```
 
-The launcher can use the native folder chooser or reopen a recent project. A selected directory must already contain `.markdown-formal/config.json`. Recent-project records stay in local user state and never write project sources or `.markdown-formal/`; the browser submits only a recent-project index, while the local Reader service retains the directory path.
+The launcher can use the native folder chooser or reopen a recent project. A selected directory must already contain `.math-workspace/config.json`. Recent-project records stay in local user state and never write project sources or `.math-workspace/`; the browser submits only a recent-project index, while the local Math Workspace service retains the directory path.
 
-The command prints a URL bound only to `127.0.0.1`. Open it in Codex's local browser side panel or a normal browser. The Reader provides:
+The command prints a URL bound only to `127.0.0.1`. Open it in Codex's local browser side panel or a normal browser. The Math Workspace provides:
 
 - multi-book, multi-volume, and chapter navigation;
 - current-page contents;
@@ -204,34 +204,34 @@ The command prints a URL bound only to `127.0.0.1`. Open it in Codex's local bro
 
 Dependency markers read only explicit `@h-...` relationships. A short line above the dot means the statement or proof explicitly references formal items such as a section, definition, theorem-like object, or proof-backed hash remark. A vertical line below means a later dependency node depends on it; a fork means multiple direct downstream nodes. Mainline theorem-like nodes use the ordinary impact colors: muted is a terminal node, blue is directly cited, and green is both explicitly grounded and cited later. Hash remarks use a muted supplemental color and label; plain `注（...）` / `Remark (...)` entries have no graph node or marker. Hover for reference and transitive-impact counts. These are structural signals, not measures of mathematical importance.
 
-If the Codex CLI is installed and signed in locally, selecting text or a formula can open Reader's temporary discussion dialog. The first message includes the relative path, source line range, selected Markdown, project root, and read-only tool boundary; subsequent messages retain that context. A temporary discussion is not persisted and never writes the manuscript or local task state. You can also bind a task whose working directory exactly matches the project, then explicitly send any temporary-discussion conclusion to that task for verification and further work. Bindings are stored only in local user state, never in the manuscript. Reader does not handle Codex tool approvals; continue the task in Codex when tools are needed.
+If the Codex CLI is installed and signed in locally, selecting text or a formula can open Math Workspace's temporary discussion dialog. The first message includes the relative path, source line range, selected Markdown, project root, and read-only tool boundary; subsequent messages retain that context. A temporary discussion is not persisted and never writes the manuscript or local task state. You can also bind a task whose working directory exactly matches the project, then explicitly send any temporary-discussion conclusion to that task for verification and further work. Bindings are stored only in local user state, never in the manuscript. Math Workspace does not handle Codex tool approvals; continue the task in Codex when tools are needed.
 
-The project needs `.markdown-formal/config.json`; run `prepare` once to create it. The Reader does not require `reader-index.json`.
+The project needs `.math-workspace/config.json`; run `prepare` once to create it. The Math Workspace does not require `workspace-index.json`.
 
-The VS Code package remains available as a legacy compatibility integration, but new features target the Reader first.
+The VS Code package remains available as a legacy compatibility integration, but new features target the Math Workspace first.
 
 ### Codex MCP Entry
 
-The Reader remains an independent local client and can also be opened through Codex MCP. MCP only starts or reuses the local Reader and returns a localhost URL that Codex's built-in browser can open; it does not embed or duplicate Reader rendering, indexing, or discussion behavior.
+The Math Workspace remains an independent local client and can also be opened through Codex MCP. MCP only starts or reuses the local Math Workspace and returns a localhost URL that Codex's built-in browser can open; it does not embed or duplicate Math Workspace rendering, indexing, or discussion behavior.
 
 ```bash
-markdown-formal mcp
+math-workspace mcp
 ```
 
 The MCP working directory is the default project. To pin a project root:
 
 ```bash
-markdown-formal mcp --root /path/to/project
+math-workspace mcp --root /path/to/project
 ```
 
-The repository contains an installable Codex plugin. First make `markdown-formal` available on `PATH` during development, for example with `npm link`, then register the repository root as a marketplace:
+The repository contains an installable Codex plugin. First make `math-workspace` available on `PATH` during development, for example with `npm link`, then register the repository root as a marketplace:
 
 ```bash
-codex plugin marketplace add /path/to/markdown-formal
-codex plugin add markdown-formal-reader@personal
+codex plugin marketplace add /path/to/math-workspace
+codex plugin add math-workspace@personal
 ```
 
-The plugin calls `formal_reader` for the current project or a project-relative Markdown page. If no prepared project is available, it opens Reader's local project launcher. MCP binds only to `127.0.0.1` and does not write manuscript or `.markdown-formal/` artifacts.
+The plugin calls `math_workspace` for the current project or a project-relative Markdown page. If no prepared project is available, it opens Math Workspace's local project launcher. MCP binds only to `127.0.0.1` and does not write manuscript or `.math-workspace/` artifacts.
 
 ### AI Workflow Integration
 
@@ -245,15 +245,15 @@ skills/integrator.md  # how to merge those rules into native project instruction
 For npm installs, the paths are:
 
 ```text
-node_modules/markdown-formal/skills/editor.md
-node_modules/markdown-formal/skills/integrator.md
+node_modules/math-workspace/skills/editor.md
+node_modules/math-workspace/skills/integrator.md
 ```
 
 If the target project uses VASMC, lock both artifacts through the catalog:
 
 ```bash
-vasmc add --catalog node_modules/markdown-formal/vasm-catalog/vasmc-catalog.yaml --export editor --alias markdown-formal-editor
-vasmc add --catalog node_modules/markdown-formal/vasm-catalog/vasmc-catalog.yaml --export integrator --alias markdown-formal-integrator
+vasmc add --catalog node_modules/math-workspace/vasm-catalog/vasmc-catalog.yaml --export editor --alias math-workspace-editor
+vasmc add --catalog node_modules/math-workspace/vasm-catalog/vasmc-catalog.yaml --export integrator --alias math-workspace-integrator
 ```
 
 For release bundles, use this catalog path instead:
@@ -265,7 +265,7 @@ dist/vasm-catalog/vasmc-catalog.yaml
 The CLI can print the key paths for the current installation:
 
 ```bash
-npm run formal -- paths
+npm run workspace -- paths
 ```
 
 Do not auto-fetch remote skills, and do not append the integrator guide verbatim to a target prompt. Review the artifacts first, then merge the rules into the target project's existing `AGENTS.md`, writing skill, style guide, or release instructions.
@@ -275,25 +275,25 @@ Do not auto-fetch remote skills, and do not append the integrator guide verbatim
 Dry-run text reference migration:
 
 ```bash
-npm run formal -- migrate-text-refs path/to/chapter-or-volume
+npm run workspace -- migrate-text-refs path/to/chapter-or-volume
 ```
 
 Apply text reference migration:
 
 ```bash
-npm run formal -- migrate-text-refs --apply path/to/chapter-or-volume
+npm run workspace -- migrate-text-refs --apply path/to/chapter-or-volume
 ```
 
 Dry-run old ID migration:
 
 ```bash
-npm run formal -- migrate-ids path/to/chapter-or-volume
+npm run workspace -- migrate-ids path/to/chapter-or-volume
 ```
 
 Apply old ID migration:
 
 ```bash
-npm run formal -- migrate-ids --apply path/to/chapter-or-volume
+npm run workspace -- migrate-ids --apply path/to/chapter-or-volume
 ```
 
 ### Dependency Graph
@@ -301,31 +301,31 @@ npm run formal -- migrate-ids --apply path/to/chapter-or-volume
 Generate the graph summary:
 
 ```bash
-npm run formal -- graph summary
+npm run workspace -- graph summary
 ```
 
 Inspect one dependency node (a theorem-like object or proof-backed hash remark):
 
 ```bash
-npm run formal -- graph focus <h-id> --depth 2
+npm run workspace -- graph focus <h-id> --depth 2
 ```
 
 Find downstream impact:
 
 ```bash
-npm run formal -- graph impact <h-id>
+npm run workspace -- graph impact <h-id>
 ```
 
 Inspect upstream dependencies:
 
 ```bash
-npm run formal -- graph upstream <h-id>
+npm run workspace -- graph upstream <h-id>
 ```
 
 Summarize chapter-level flow:
 
 ```bash
-npm run formal -- graph matrix chapter
+npm run workspace -- graph matrix chapter
 ```
 
 The graph records explicit `@h-...` references only. Its reports separate mainline theorem-like statistics from supplemental hash-remark statistics, and plain `注（...）` / `Remark (...)` entries are excluded. Suggested or inferred mathematical dependencies should be stored separately by the target project.
@@ -360,7 +360,7 @@ Appendix numbering is appendix-local, such as `A.1`, `A.2`.
 
 ### Configuration
 
-Common `.markdown-formal/config.json`:
+Common `.math-workspace/config.json`:
 
 ```json
 {
@@ -391,25 +391,25 @@ Cross-book references and lookup require explicit dependencies in `lookup.bookDe
 Export formal source to ordinary Markdown before using other publication tools:
 
 ```bash
-npm run formal -- export-md path/to/book --out dist/book.md
+npm run workspace -- export-md path/to/book --out dist/book.md
 ```
 
 Export formal source while preserving the source file tree:
 
 ```bash
-npm run formal -- export-md-split path/to/book --out dist/public
+npm run workspace -- export-md-split path/to/book --out dist/public
 ```
 
 Export formal source directly to PDF with the local Pandoc/LaTeX engine:
 
 ```bash
-npm run formal -- export-pdf path/to/book --out dist/book.pdf
+npm run workspace -- export-pdf path/to/book --out dist/book.pdf
 ```
 
 Render an already compiled Markdown file:
 
 ```bash
-npm run formal -- render-pdf dist/book.md --out dist/book.pdf
+npm run workspace -- render-pdf dist/book.md --out dist/book.pdf
 ```
 
 `render-pdf` does not scan formal source, rewrite `#h-*`, or resolve `@h-*`.
@@ -433,7 +433,7 @@ Default PDF behavior:
 - publication metadata page: optional, after the title page and before the TOC;
 - front matter pages: optional, after metadata and before the TOC.
 
-PDF settings live under the `pdf` key in `.markdown-formal/config.json`:
+PDF settings live under the `pdf` key in `.math-workspace/config.json`:
 
 ```json
 {
@@ -473,7 +473,7 @@ local engine is installed.
 
 ## 🇨🇳 中文
 
-这份文档说明 `markdown-formal` 的源码语法和常用命令流程。
+这份文档说明 `math-workspace` 的源码语法和常用命令流程。
 
 最简流程：
 
@@ -484,10 +484,10 @@ local engine is installed.
 ## 核心模型
 
 - 稳定编号：源码保存稳定 `#h-...`，新增对象先写 `#tmp-*`；正文引用只用 `@h-...`、`@h-....title` 或 `@h-....full`，读者编号由工具渲染。
-- 定义查询：定义不加 hash、不参与 ref；工具自动扫描标准 `定义（术语）：...` / `Definition (Term): ...`，并在发现概念/术语附录时利用其表格和末级条目建立补充索引。AI 只为查询缺失、非标准定义、别名、中英互查和不可靠边界维护 `.markdown-formal/definitions.json`。
-- 项目知识：`.markdown-formal/project-analysis.json` / `.markdown-formal/project-analysis.md` 是工具生成的概念附录、符号附录和 summary 页面摘要；Reader 在内存中按内容变化重建，并把同 book 来源交给任务讨论。
-- 符号表：`.markdown-formal/symbols.json` 只记录项目明确约定且发生语义变化的特殊 LaTeX 记号，不索引通用变量、完整推导公式或一次性符号。
-- 依赖图：命题/引理/定理/推论与带 hash、可证明的补充注释之间的显式依赖来自 `@h-...`，权威数据是 `.markdown-formal/dependency-graph.json`；普通 `注（...）` 不进入图。AI 或证明器推测出的边必须另存为 suggested 数据。
+- 定义查询：定义不加 hash、不参与 ref；工具自动扫描标准 `定义（术语）：...` / `Definition (Term): ...`，并在发现概念/术语附录时利用其表格和末级条目建立补充索引。AI 只为查询缺失、非标准定义、别名、中英互查和不可靠边界维护 `.math-workspace/definitions.json`。
+- 项目知识：`.math-workspace/project-analysis.json` / `.math-workspace/project-analysis.md` 是工具生成的概念附录、符号附录和 summary 页面摘要；Math Workspace 在内存中按内容变化重建，并把同 book 来源交给任务讨论。
+- 符号表：`.math-workspace/symbols.json` 只记录项目明确约定且发生语义变化的特殊 LaTeX 记号，不索引通用变量、完整推导公式或一次性符号。
+- 依赖图：命题/引理/定理/推论与带 hash、可证明的补充注释之间的显式依赖来自 `@h-...`，权威数据是 `.math-workspace/dependency-graph.json`；普通 `注（...）` 不进入图。AI 或证明器推测出的边必须另存为 suggested 数据。
 - 导出：普通 Markdown/PDF 不直接消费 formal 源；先用 `export-md` 或 `export-md-split` 降级 marker/ref，项目级后处理之后再用 `render-pdf`。
 - 工具闭环：进入任务或索引可能过期时运行 `prepare`，普通编辑后运行 `finish <file-or-dir>`（它会校验）；仅在直接 `finalize`、执行迁移或独立 release 门禁时另行运行 `verify`。
 
@@ -580,11 +580,11 @@ Table #tmp-7 (Parameter ranges):
 Definition (Bounded operator): A linear map \(T:X\to Y\) is bounded if ...
 ```
 
-工具还会识别明确命名的概念/术语附录，例如 `appendix-*-concepts.md`、glossary、terminology 或中文概念表。此类页面中，`术语 | 定义` / `Term | Definition` 表格与最末级概念条目会作为补充查询条目。`prepare` 会生成 `.markdown-formal/project-analysis.json` 和 `.markdown-formal/project-analysis.md`，列出被采用的概念、符号和 summary 页面；Reader 在内存中同步重建这份结构，并把当前 book 的来源带入 Codex 讨论上下文。
+工具还会识别明确命名的概念/术语附录，例如 `appendix-*-concepts.md`、glossary、terminology 或中文概念表。此类页面中，`术语 | 定义` / `Term | Definition` 表格与最末级概念条目会作为补充查询条目。`prepare` 会生成 `.math-workspace/project-analysis.json` 和 `.math-workspace/project-analysis.md`，列出被采用的概念、符号和 summary 页面；Math Workspace 在内存中同步重建这份结构，并把当前 book 的来源带入 Codex 讨论上下文。
 
 这些条目是派生索引，不是新的写作源，也不会由工具从普通正文猜测术语或符号含义。
 
-只有例外情况才写入 `.markdown-formal/definitions.json`：
+只有例外情况才写入 `.math-workspace/definitions.json`：
 
 - 非标准行文定义；
 - 别名；
@@ -607,7 +607,7 @@ Definition (Bounded operator): A linear map \(T:X\to Y\) is bounded if ...
 
 ## 符号表
 
-只有项目明确约定且语义发生变化的记号才写入 `.markdown-formal/symbols.json`。
+只有项目明确约定且语义发生变化的记号才写入 `.math-workspace/symbols.json`。
 
 ```json
 [
@@ -627,38 +627,38 @@ Definition (Bounded operator): A linear map \(T:X\to Y\) is bounded if ...
 生成上下文：
 
 ```bash
-npm run formal -- prepare
+npm run workspace -- prepare
 ```
 
 编辑文件或目录后，固化临时 ID 并刷新报告：
 
 ```bash
-npm run formal -- finish path/to/chapter-or-dir
+npm run workspace -- finish path/to/chapter-or-dir
 ```
 
 `finish` 已执行校验。只有直接使用 `finalize`、执行迁移，或需要独立 release 门禁时，再运行：
 
 ```bash
-npm run formal -- verify
+npm run workspace -- verify
 ```
 
-## 本地 Reader
+## Math Workspace
 
-Reader 是 `markdown-formal` 的主阅读界面。它在内存中扫描已经存在 formal 配置的项目，不写入源码或 `.markdown-formal/` 产物：
+Math Workspace 是 `math-workspace` 引擎之上的本地工作区界面。它在内存中扫描已经存在 formal 配置的项目，不写入源码或 `.math-workspace/` 产物：
 
 ```bash
-npm run formal -- serve /path/to/project
+npm run workspace -- serve /path/to/project
 ```
 
 也可以不传项目路径，打开本机项目启动台：
 
 ```bash
-npm run formal -- serve
+npm run workspace -- serve
 ```
 
-启动台可以从系统目录选择器选择项目，或重开最近项目。选择的目录必须已有 `.markdown-formal/config.json`；最近记录只保存在本机用户状态目录，不写入项目源码或 `.markdown-formal/`。网页只提交最近项目的索引，目录路径始终由本地 Reader 服务处理。
+启动台可以从系统目录选择器选择项目，或重开最近项目。选择的目录必须已有 `.math-workspace/config.json`；最近记录只保存在本机用户状态目录，不写入项目源码或 `.math-workspace/`。网页只提交最近项目的索引，目录路径始终由本地 Math Workspace 服务处理。
 
-命令会打印一个仅绑定 `127.0.0.1` 的本地 URL。可在 Codex 的本地浏览器侧栏或普通浏览器中打开。Reader 提供：
+命令会打印一个仅绑定 `127.0.0.1` 的本地 URL。可在 Codex 的本地浏览器侧栏或普通浏览器中打开。Math Workspace 提供：
 
 - 多书/多卷/章节导航；
 - 当前页目录；
@@ -669,38 +669,38 @@ npm run formal -- serve
 
 依赖标记只读取显式 `@h-...` 关系。圆点上方的短线表示该陈述或证明显式引用了 formal 对象（可为小节、定义或命题）；下方纵线表示后续依赖对象依赖它，分叉表示多个直接下游。主线命题使用常规颜色；带 hash 的、可证明的补充注释使用低强调度的注释颜色。灰色是没有下游对象的终点，蓝色表示被直接引用，绿色分叉表示既有显式前提也被后续对象引用。悬停可查看引用数与传递影响范围；这些是结构信号，不等同于数学重要性。权威依赖图包含命题/引理/定理/推论之间的边，也包含带 hash 补充注释的入边、出边；普通 `注（...）` 不进入图，也没有标记。
 
-若本机 Codex CLI 已安装并登录，可在选中正文或公式后打开 Reader 的临时讨论浮窗。首条消息会附带相对路径、源码行范围、选中 Markdown、项目根和只读工具边界；后续消息保留该上下文。临时讨论是不可持久化的，不写入书稿或本机任务状态。也可绑定一个工作目录与当前项目完全一致的任务，再将任一临时讨论结论显式发送到该任务，由任务核验并继续执行。绑定记录仅写入本机用户状态目录，不写入书稿。Reader 不承接 Codex 的工具审批，任务需要工具时应回到 Codex 继续。
+若本机 Codex CLI 已安装并登录，可在选中正文或公式后打开 Math Workspace 的临时讨论浮窗。首条消息会附带相对路径、源码行范围、选中 Markdown、项目根和只读工具边界；后续消息保留该上下文。临时讨论是不可持久化的，不写入书稿或本机任务状态。也可绑定一个工作目录与当前项目完全一致的任务，再将任一临时讨论结论显式发送到该任务，由任务核验并继续执行。绑定记录仅写入本机用户状态目录，不写入书稿。Math Workspace 不承接 Codex 的工具审批，任务需要工具时应回到 Codex 继续。
 
-项目需要先有 `.markdown-formal/config.json`；首次使用可运行 `prepare`。Reader 不要求预先生成 `reader-index.json`。
+项目需要先有 `.math-workspace/config.json`；首次使用可运行 `prepare`。Math Workspace 不要求预先生成 `workspace-index.json`。
 
-旧 VS Code 预览已归档；项目阅读与交互统一通过本地 Reader 提供。
+旧 VS Code 预览已归档；项目阅读与交互统一通过本地 Math Workspace 提供。
 
 ## Codex MCP 入口
 
-Reader 可作为独立本地客户端运行，也可通过 Codex MCP 打开。MCP 只负责启动或复用本机 Reader，并返回可由 Codex 内置浏览器直接访问的 localhost URL；它不嵌入或复制 Reader 的渲染、索引或讨论实现。
+Math Workspace 可作为独立本地客户端运行，也可通过 Codex MCP 打开。MCP 只负责启动或复用本机工作区，并返回可由 Codex 内置浏览器直接访问的 localhost URL；它不嵌入或复制工作区的渲染、索引或讨论实现。
 
 CLI 入口是：
 
 ```bash
-markdown-formal mcp
+math-workspace mcp
 ```
 
 默认项目是 MCP 进程的工作目录。若需要固定项目根，可传：
 
 ```bash
-markdown-formal mcp --root /path/to/project
+math-workspace mcp --root /path/to/project
 ```
 
-仓库包含一个可安装的 Codex plugin。开发时先确保 `markdown-formal` 在 `PATH` 中（例如 `npm link`），然后将仓库根目录注册为 marketplace：
+仓库包含一个可安装的 Codex plugin。开发时先确保 `math-workspace` 在 `PATH` 中（例如 `npm link`），然后将仓库根目录注册为 marketplace：
 
 ```bash
-codex plugin marketplace add /path/to/markdown-formal
-codex plugin add markdown-formal-reader@personal
+codex plugin marketplace add /path/to/math-workspace
+codex plugin add math-workspace@personal
 ```
 
-发布版本同样可以从安装包根目录添加 marketplace。插件调用 `formal_reader`：它可直接打开当前项目或某个项目相对 Markdown 页面；没有可用项目时会打开 Reader 的本机项目启动台。
+发布版本同样可以从安装包根目录添加 marketplace。插件调用 `math_workspace`：它可直接打开当前项目或某个项目相对 Markdown 页面；没有可用项目时会打开 Math Workspace 的本机项目启动台。
 
-MCP 与 Reader 一样只绑定 `127.0.0.1`，不写入书稿或 `.markdown-formal/` 产物。
+MCP 与 Math Workspace 一样只绑定 `127.0.0.1`，不写入书稿或 `.math-workspace/` 产物。
 
 ## AI 工作流接入
 
@@ -714,15 +714,15 @@ skills/integrator.md  # 如何融合进目标项目原生 AI 指令
 如果通过 npm 安装，对应路径是：
 
 ```text
-node_modules/markdown-formal/skills/editor.md
-node_modules/markdown-formal/skills/integrator.md
+node_modules/math-workspace/skills/editor.md
+node_modules/math-workspace/skills/integrator.md
 ```
 
 如果目标项目使用 VASMC，使用 catalog 锁定这两个 artifact：
 
 ```bash
-vasmc add --catalog node_modules/markdown-formal/vasm-catalog/vasmc-catalog.yaml --export editor --alias markdown-formal-editor
-vasmc add --catalog node_modules/markdown-formal/vasm-catalog/vasmc-catalog.yaml --export integrator --alias markdown-formal-integrator
+vasmc add --catalog node_modules/math-workspace/vasm-catalog/vasmc-catalog.yaml --export editor --alias math-workspace-editor
+vasmc add --catalog node_modules/math-workspace/vasm-catalog/vasmc-catalog.yaml --export integrator --alias math-workspace-integrator
 ```
 
 对于 release bundle，把上面的 catalog 路径替换为：
@@ -734,7 +734,7 @@ dist/vasm-catalog/vasmc-catalog.yaml
 CLI 可打印当前安装中的关键路径：
 
 ```bash
-npm run formal -- paths
+npm run workspace -- paths
 ```
 
 不要自动拉取远端 skill，也不要把 integrator 原样追加到目标 prompt 末尾。应先审阅 artifact，再把规则融合到目标项目已有的 `AGENTS.md`、写作 skill、风格指南或 release 指令中。
@@ -744,25 +744,25 @@ npm run formal -- paths
 试运行文字编号引用迁移：
 
 ```bash
-npm run formal -- migrate-text-refs path/to/chapter-or-volume
+npm run workspace -- migrate-text-refs path/to/chapter-or-volume
 ```
 
 应用文字编号引用迁移：
 
 ```bash
-npm run formal -- migrate-text-refs --apply path/to/chapter-or-volume
+npm run workspace -- migrate-text-refs --apply path/to/chapter-or-volume
 ```
 
 试运行旧 ID 迁移：
 
 ```bash
-npm run formal -- migrate-ids path/to/chapter-or-volume
+npm run workspace -- migrate-ids path/to/chapter-or-volume
 ```
 
 应用旧 ID 迁移：
 
 ```bash
-npm run formal -- migrate-ids --apply path/to/chapter-or-volume
+npm run workspace -- migrate-ids --apply path/to/chapter-or-volume
 ```
 
 ## 依赖图
@@ -770,31 +770,31 @@ npm run formal -- migrate-ids --apply path/to/chapter-or-volume
 生成依赖图摘要：
 
 ```bash
-npm run formal -- graph summary
+npm run workspace -- graph summary
 ```
 
 查看某个命题类对象或带 hash 补充注释的局部图：
 
 ```bash
-npm run formal -- graph focus <h-id> --depth 2
+npm run workspace -- graph focus <h-id> --depth 2
 ```
 
 查看下游影响范围：
 
 ```bash
-npm run formal -- graph impact <h-id>
+npm run workspace -- graph impact <h-id>
 ```
 
 查看上游依赖：
 
 ```bash
-npm run formal -- graph upstream <h-id>
+npm run workspace -- graph upstream <h-id>
 ```
 
 汇总章节层面的依赖流：
 
 ```bash
-npm run formal -- graph matrix chapter
+npm run workspace -- graph matrix chapter
 ```
 
 依赖图只记录显式 `@h-...` 引用。报告把主线 theorem-like 对象与带 hash 补充注释分别统计，避免旁支事实改变主线结论；普通 `注（...）` 不成为节点。AI 或领域工具推测出的数学依赖应由目标项目单独维护，不要混入 canonical graph。
@@ -829,7 +829,7 @@ multi-volume-book/
 
 ## 配置
 
-常见 `.markdown-formal/config.json`：
+常见 `.math-workspace/config.json`：
 
 ```json
 {
@@ -860,25 +860,25 @@ multi-volume-book/
 先把 formal 源导出为普通 Markdown，再交给其他发布流程处理：
 
 ```bash
-npm run formal -- export-md path/to/book --out dist/book.md
+npm run workspace -- export-md path/to/book --out dist/book.md
 ```
 
 导出时保留源目录结构：
 
 ```bash
-npm run formal -- export-md-split path/to/book --out dist/public
+npm run workspace -- export-md-split path/to/book --out dist/public
 ```
 
 使用本机 Pandoc/LaTeX 引擎从 formal 源直接导出 PDF：
 
 ```bash
-npm run formal -- export-pdf path/to/book --out dist/book.pdf
+npm run workspace -- export-pdf path/to/book --out dist/book.pdf
 ```
 
 渲染已经处理好的普通 Markdown：
 
 ```bash
-npm run formal -- render-pdf dist/book.md --out dist/book.pdf
+npm run workspace -- render-pdf dist/book.md --out dist/book.pdf
 ```
 
 `render-pdf` 不扫描 formal 源，不重写 `#h-*`，也不解析 `@h-*`。
@@ -902,7 +902,7 @@ export-md -> project postprocess -> render-pdf
 - 出版元数据页：可选，位于封面页之后、目录之前；
 - front matter 声明页：可选，位于 metadata 之后、目录之前。
 
-PDF 选项放在 `.markdown-formal/config.json` 的 `pdf` 字段中：
+PDF 选项放在 `.math-workspace/config.json` 的 `pdf` 字段中：
 
 ```json
 {

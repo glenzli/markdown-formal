@@ -1,14 +1,14 @@
-# markdown-formal 写作规则
+# math-workspace 写作规则
 
 用于编辑可长期维护的数学或技术 Markdown。保持正文与 LaTeX 自然可读；编号、引用和派生索引交给工具。
 
 ## 不可变规则
 
 - 稳定编号：源码保存稳定 `#h-...`，新增对象先写 `#tmp-*`；正文引用只用 `@h-...`、`@h-....title` 或 `@h-....full`，读者编号由工具渲染。
-- 定义查询：定义不加 hash、不参与 ref；工具自动扫描标准 `定义（术语）：...` / `Definition (Term): ...`，并在发现概念/术语附录时利用其表格和末级条目建立补充索引。AI 只为查询缺失、非标准定义、别名、中英互查和不可靠边界维护 `.markdown-formal/definitions.json`。
-- 项目知识：`.markdown-formal/project-analysis.json` / `.markdown-formal/project-analysis.md` 是工具生成的概念附录、符号附录和 summary 页面摘要；Reader 在内存中按内容变化重建，并把同 book 来源交给任务讨论。
-- 符号表：`.markdown-formal/symbols.json` 只记录项目明确约定且发生语义变化的特殊 LaTeX 记号，不索引通用变量、完整推导公式或一次性符号。
-- 依赖图：命题/引理/定理/推论与带 hash、可证明的补充注释之间的显式依赖来自 `@h-...`，权威数据是 `.markdown-formal/dependency-graph.json`；普通 `注（...）` 不进入图。AI 或证明器推测出的边必须另存为 suggested 数据。
+- 定义查询：定义不加 hash、不参与 ref；工具自动扫描标准 `定义（术语）：...` / `Definition (Term): ...`，并在发现概念/术语附录时利用其表格和末级条目建立补充索引。AI 只为查询缺失、非标准定义、别名、中英互查和不可靠边界维护 `.math-workspace/definitions.json`。
+- 项目知识：`.math-workspace/project-analysis.json` / `.math-workspace/project-analysis.md` 是工具生成的概念附录、符号附录和 summary 页面摘要；Math Workspace 在内存中按内容变化重建，并把同 book 来源交给任务讨论。
+- 符号表：`.math-workspace/symbols.json` 只记录项目明确约定且发生语义变化的特殊 LaTeX 记号，不索引通用变量、完整推导公式或一次性符号。
+- 依赖图：命题/引理/定理/推论与带 hash、可证明的补充注释之间的显式依赖来自 `@h-...`，权威数据是 `.math-workspace/dependency-graph.json`；普通 `注（...）` 不进入图。AI 或证明器推测出的边必须另存为 suggested 数据。
 - 导出：普通 Markdown/PDF 不直接消费 formal 源；先用 `export-md` 或 `export-md-split` 降级 marker/ref，项目级后处理之后再用 `render-pdf`。
 - 工具闭环：进入任务或索引可能过期时运行 `prepare`，普通编辑后运行 `finish <file-or-dir>`（它会校验）；仅在直接 `finalize`、执行迁移或独立 release 门禁时另行运行 `verify`。
 
@@ -22,15 +22,15 @@
 首次进入任务或索引可能过期时：
 
 ```bash
-npm run formal -- prepare
+npm run workspace -- prepare
 ```
 
-先读取目标正文。需要引用当前上下文外的既有对象、章节或页面时，再从 `.markdown-formal/reference-map.md` 读取对应行；不要为一次局部编辑加载整张表。只有本次涉及术语、概念附录或符号约定时，再读取 `.markdown-formal/project-analysis.md`。
+先读取目标正文。需要引用当前上下文外的既有对象、章节或页面时，再从 `.math-workspace/reference-map.md` 读取对应行；不要为一次局部编辑加载整张表。只有本次涉及术语、概念附录或符号约定时，再读取 `.math-workspace/project-analysis.md`。
 
 编辑后：
 
 ```bash
-npm run formal -- finish path/to/chapter-or-dir
+npm run workspace -- finish path/to/chapter-or-dir
 ```
 
 `finish` 固化目标范围内的 `tmp-*`，并已执行校验。只有本次确实新增跨文件 `@tmp-*` 引用时才加 `--all`。仅在直接运行 `finalize`、执行迁移，或作为独立 release 门禁时，再单独运行 `verify`。
@@ -58,17 +58,17 @@ $$
 
 工具会自动扫描标准 `定义（术语）：...` / `Definition (Term): ...`，并保留合理的跨公式、列表和续接段范围。它还会识别明确命名的概念/术语附录（例如 `appendix-*-concepts.md`、glossary、terminology 或中文概念表），从 `术语 | 定义` 表格与末级概念条目建立补充查询索引。
 
-`.markdown-formal/project-analysis.json` / `.markdown-formal/project-analysis.md` 是工具生成的项目结构摘要；Reader 按内容变更在内存中重建，任务讨论会收到当前 book 的相关来源。它不是写作源，不应为了“刷新索引”而手工改写。
+`.math-workspace/project-analysis.json` / `.math-workspace/project-analysis.md` 是工具生成的项目结构摘要；Math Workspace 按内容变更在内存中重建，任务讨论会收到当前 book 的相关来源。它不是写作源，不应为了“刷新索引”而手工改写。
 
-仅在下列情况维护 `.markdown-formal/definitions.json`：非标准行文定义、别名/中英互查、需要固定多段预览，或确定性边界提取不可靠。记录可验证的 `term`、可选 `aliases`、`source` 和 Markdown `content`。不确定“称为 X”“记作 X”等是否应可查询时，在 Reader/Codex 讨论中判断；不要静默修改正文或凭普通术语出现创建条目。
+仅在下列情况维护 `.math-workspace/definitions.json`：非标准行文定义、别名/中英互查、需要固定多段预览，或确定性边界提取不可靠。记录可验证的 `term`、可选 `aliases`、`source` 和 Markdown `content`。不确定“称为 X”“记作 X”等是否应可查询时，在 Math Workspace/Codex 讨论中判断；不要静默修改正文或凭普通术语出现创建条目。
 
-`.markdown-formal/symbols.json` 仅记录项目明确约定且语义发生变化的特殊 LaTeX 记号，维护 `source`、闭合的 `pattern` 和 `meaning`。不记录通用变量、整条公式或一次性推导；检测到符号附录也不自动猜测 pattern 或 meaning。
+`.math-workspace/symbols.json` 仅记录项目明确约定且语义发生变化的特殊 LaTeX 记号，维护 `source`、闭合的 `pattern` 和 `meaning`。不记录通用变量、整条公式或一次性推导；检测到符号附录也不自动猜测 pattern 或 meaning。
 
 ## 结构与审阅
 
-- 从拥有 `.markdown-formal/config.json` 的 formal root 运行命令。构建、草稿、上下文和外部工程目录写入 `scan.exclude`。
+- 从拥有 `.math-workspace/config.json` 的 formal root 运行命令。构建、草稿、上下文和外部工程目录写入 `scan.exclude`。
 - 定义查询和符号表默认限制在当前 book；跨 book 引用或查询必须先配置 `lookup.bookDependencies`。
-- 改动已有命题类对象或带 hash 补充注释前，按需要运行 `npm run formal -- graph impact <h-id>` 或 `graph focus <h-id> --depth 2`；显式依赖只来自 `@h-...`，报告会将主线对象与补充注释分开统计，AI 推测边不能写进权威依赖图。
+- 改动已有命题类对象或带 hash 补充注释前，按需要运行 `npm run workspace -- graph impact <h-id>` 或 `graph focus <h-id> --depth 2`；显式依赖只来自 `@h-...`，报告会将主线对象与补充注释分开统计，AI 推测边不能写进权威依赖图。
 - 旧编号迁移使用 `migrate-text-refs` / `migrate-ids` 的 dry-run 后再 `--apply`。工具不会自动改裸数字或手写章引用；结合上下文改为页面 `@h-...` 或临时 `@chapter:path.md`。
 
 完整命令、PDF 发布和配置字段见项目的 `docs/usage.md`；不要把这些说明复制进写作提示词。

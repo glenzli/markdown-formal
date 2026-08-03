@@ -1,7 +1,7 @@
 ---
 vasm:
-  alias: markdown-formal-usage
-  intent: "Document markdown-formal syntax, command workflow, configuration, graph, migration, and PDF export usage."
+  alias: math-workspace-usage
+  intent: "Document math-workspace syntax, command workflow, configuration, graph, migration, and PDF export usage."
   compile:
     format: informational
     targetLangs: ["en", "zh-CN"]
@@ -9,7 +9,7 @@ vasm:
 
 # Usage
 
-这份文档说明 `markdown-formal` 的源码语法和常用命令流程。
+这份文档说明 `math-workspace` 的源码语法和常用命令流程。
 
 最简流程：
 
@@ -110,11 +110,11 @@ Table #tmp-7 (Parameter ranges):
 Definition (Bounded operator): A linear map \(T:X\to Y\) is bounded if ...
 ```
 
-工具还会识别明确命名的概念/术语附录，例如 `appendix-*-concepts.md`、glossary、terminology 或中文概念表。此类页面中，`术语 | 定义` / `Term | Definition` 表格与最末级概念条目会作为补充查询条目。`prepare` 会生成 `.markdown-formal/project-analysis.json` 和 `.markdown-formal/project-analysis.md`，列出被采用的概念、符号和 summary 页面；Reader 在内存中同步重建这份结构，并把当前 book 的来源带入 Codex 讨论上下文。
+工具还会识别明确命名的概念/术语附录，例如 `appendix-*-concepts.md`、glossary、terminology 或中文概念表。此类页面中，`术语 | 定义` / `Term | Definition` 表格与最末级概念条目会作为补充查询条目。`prepare` 会生成 `.math-workspace/project-analysis.json` 和 `.math-workspace/project-analysis.md`，列出被采用的概念、符号和 summary 页面；Math Workspace 在内存中同步重建这份结构，并把当前 book 的来源带入 Codex 讨论上下文。
 
 这些条目是派生索引，不是新的写作源，也不会由工具从普通正文猜测术语或符号含义。
 
-只有例外情况才写入 `.markdown-formal/definitions.json`：
+只有例外情况才写入 `.math-workspace/definitions.json`：
 
 - 非标准行文定义；
 - 别名；
@@ -137,7 +137,7 @@ Definition (Bounded operator): A linear map \(T:X\to Y\) is bounded if ...
 
 ## 符号表
 
-只有项目明确约定且语义发生变化的记号才写入 `.markdown-formal/symbols.json`。
+只有项目明确约定且语义发生变化的记号才写入 `.math-workspace/symbols.json`。
 
 ```json
 [
@@ -157,38 +157,38 @@ Definition (Bounded operator): A linear map \(T:X\to Y\) is bounded if ...
 生成上下文：
 
 ```bash
-npm run formal -- prepare
+npm run workspace -- prepare
 ```
 
 编辑文件或目录后，固化临时 ID 并刷新报告：
 
 ```bash
-npm run formal -- finish path/to/chapter-or-dir
+npm run workspace -- finish path/to/chapter-or-dir
 ```
 
 `finish` 已执行校验。只有直接使用 `finalize`、执行迁移，或需要独立 release 门禁时，再运行：
 
 ```bash
-npm run formal -- verify
+npm run workspace -- verify
 ```
 
-## 本地 Reader
+## Math Workspace
 
-Reader 是 `markdown-formal` 的主阅读界面。它在内存中扫描已经存在 formal 配置的项目，不写入源码或 `.markdown-formal/` 产物：
+Math Workspace 是 `math-workspace` 引擎之上的本地工作区界面。它在内存中扫描已经存在 formal 配置的项目，不写入源码或 `.math-workspace/` 产物：
 
 ```bash
-npm run formal -- serve /path/to/project
+npm run workspace -- serve /path/to/project
 ```
 
 也可以不传项目路径，打开本机项目启动台：
 
 ```bash
-npm run formal -- serve
+npm run workspace -- serve
 ```
 
-启动台可以从系统目录选择器选择项目，或重开最近项目。选择的目录必须已有 `.markdown-formal/config.json`；最近记录只保存在本机用户状态目录，不写入项目源码或 `.markdown-formal/`。网页只提交最近项目的索引，目录路径始终由本地 Reader 服务处理。
+启动台可以从系统目录选择器选择项目，或重开最近项目。选择的目录必须已有 `.math-workspace/config.json`；最近记录只保存在本机用户状态目录，不写入项目源码或 `.math-workspace/`。网页只提交最近项目的索引，目录路径始终由本地 Math Workspace 服务处理。
 
-命令会打印一个仅绑定 `127.0.0.1` 的本地 URL。可在 Codex 的本地浏览器侧栏或普通浏览器中打开。Reader 提供：
+命令会打印一个仅绑定 `127.0.0.1` 的本地 URL。可在 Codex 的本地浏览器侧栏或普通浏览器中打开。Math Workspace 提供：
 
 - 多书/多卷/章节导航；
 - 当前页目录；
@@ -199,38 +199,38 @@ npm run formal -- serve
 
 依赖标记只读取显式 `@h-...` 关系。圆点上方的短线表示该陈述或证明显式引用了 formal 对象（可为小节、定义或命题）；下方纵线表示后续依赖对象依赖它，分叉表示多个直接下游。主线命题使用常规颜色；带 hash 的、可证明的补充注释使用低强调度的注释颜色。灰色是没有下游对象的终点，蓝色表示被直接引用，绿色分叉表示既有显式前提也被后续对象引用。悬停可查看引用数与传递影响范围；这些是结构信号，不等同于数学重要性。权威依赖图包含命题/引理/定理/推论之间的边，也包含带 hash 补充注释的入边、出边；普通 `注（...）` 不进入图，也没有标记。
 
-若本机 Codex CLI 已安装并登录，可在选中正文或公式后打开 Reader 的临时讨论浮窗。首条消息会附带相对路径、源码行范围、选中 Markdown、项目根和只读工具边界；后续消息保留该上下文。临时讨论是不可持久化的，不写入书稿或本机任务状态。也可绑定一个工作目录与当前项目完全一致的任务，再将任一临时讨论结论显式发送到该任务，由任务核验并继续执行。绑定记录仅写入本机用户状态目录，不写入书稿。Reader 不承接 Codex 的工具审批，任务需要工具时应回到 Codex 继续。
+若本机 Codex CLI 已安装并登录，可在选中正文或公式后打开 Math Workspace 的临时讨论浮窗。首条消息会附带相对路径、源码行范围、选中 Markdown、项目根和只读工具边界；后续消息保留该上下文。临时讨论是不可持久化的，不写入书稿或本机任务状态。也可绑定一个工作目录与当前项目完全一致的任务，再将任一临时讨论结论显式发送到该任务，由任务核验并继续执行。绑定记录仅写入本机用户状态目录，不写入书稿。Math Workspace 不承接 Codex 的工具审批，任务需要工具时应回到 Codex 继续。
 
-项目需要先有 `.markdown-formal/config.json`；首次使用可运行 `prepare`。Reader 不要求预先生成 `reader-index.json`。
+项目需要先有 `.math-workspace/config.json`；首次使用可运行 `prepare`。Math Workspace 不要求预先生成 `workspace-index.json`。
 
-旧 VS Code 预览已归档；项目阅读与交互统一通过本地 Reader 提供。
+旧 VS Code 预览已归档；项目阅读与交互统一通过本地 Math Workspace 提供。
 
 ## Codex MCP 入口
 
-Reader 可作为独立本地客户端运行，也可通过 Codex MCP 打开。MCP 只负责启动或复用本机 Reader，并返回可由 Codex 内置浏览器直接访问的 localhost URL；它不嵌入或复制 Reader 的渲染、索引或讨论实现。
+Math Workspace 可作为独立本地客户端运行，也可通过 Codex MCP 打开。MCP 只负责启动或复用本机工作区，并返回可由 Codex 内置浏览器直接访问的 localhost URL；它不嵌入或复制工作区的渲染、索引或讨论实现。
 
 CLI 入口是：
 
 ```bash
-markdown-formal mcp
+math-workspace mcp
 ```
 
 默认项目是 MCP 进程的工作目录。若需要固定项目根，可传：
 
 ```bash
-markdown-formal mcp --root /path/to/project
+math-workspace mcp --root /path/to/project
 ```
 
-仓库包含一个可安装的 Codex plugin。开发时先确保 `markdown-formal` 在 `PATH` 中（例如 `npm link`），然后将仓库根目录注册为 marketplace：
+仓库包含一个可安装的 Codex plugin。开发时先确保 `math-workspace` 在 `PATH` 中（例如 `npm link`），然后将仓库根目录注册为 marketplace：
 
 ```bash
-codex plugin marketplace add /path/to/markdown-formal
-codex plugin add markdown-formal-reader@personal
+codex plugin marketplace add /path/to/math-workspace
+codex plugin add math-workspace@personal
 ```
 
-发布版本同样可以从安装包根目录添加 marketplace。插件调用 `formal_reader`：它可直接打开当前项目或某个项目相对 Markdown 页面；没有可用项目时会打开 Reader 的本机项目启动台。
+发布版本同样可以从安装包根目录添加 marketplace。插件调用 `math_workspace`：它可直接打开当前项目或某个项目相对 Markdown 页面；没有可用项目时会打开 Math Workspace 的本机项目启动台。
 
-MCP 与 Reader 一样只绑定 `127.0.0.1`，不写入书稿或 `.markdown-formal/` 产物。
+MCP 与 Math Workspace 一样只绑定 `127.0.0.1`，不写入书稿或 `.math-workspace/` 产物。
 
 ## AI 工作流接入
 
@@ -244,15 +244,15 @@ skills/integrator.md  # 如何融合进目标项目原生 AI 指令
 如果通过 npm 安装，对应路径是：
 
 ```text
-node_modules/markdown-formal/skills/editor.md
-node_modules/markdown-formal/skills/integrator.md
+node_modules/math-workspace/skills/editor.md
+node_modules/math-workspace/skills/integrator.md
 ```
 
 如果目标项目使用 VASMC，使用 catalog 锁定这两个 artifact：
 
 ```bash
-vasmc add --catalog node_modules/markdown-formal/vasm-catalog/vasmc-catalog.yaml --export editor --alias markdown-formal-editor
-vasmc add --catalog node_modules/markdown-formal/vasm-catalog/vasmc-catalog.yaml --export integrator --alias markdown-formal-integrator
+vasmc add --catalog node_modules/math-workspace/vasm-catalog/vasmc-catalog.yaml --export editor --alias math-workspace-editor
+vasmc add --catalog node_modules/math-workspace/vasm-catalog/vasmc-catalog.yaml --export integrator --alias math-workspace-integrator
 ```
 
 对于 release bundle，把上面的 catalog 路径替换为：
@@ -264,7 +264,7 @@ dist/vasm-catalog/vasmc-catalog.yaml
 CLI 可打印当前安装中的关键路径：
 
 ```bash
-npm run formal -- paths
+npm run workspace -- paths
 ```
 
 不要自动拉取远端 skill，也不要把 integrator 原样追加到目标 prompt 末尾。应先审阅 artifact，再把规则融合到目标项目已有的 `AGENTS.md`、写作 skill、风格指南或 release 指令中。
@@ -274,25 +274,25 @@ npm run formal -- paths
 试运行文字编号引用迁移：
 
 ```bash
-npm run formal -- migrate-text-refs path/to/chapter-or-volume
+npm run workspace -- migrate-text-refs path/to/chapter-or-volume
 ```
 
 应用文字编号引用迁移：
 
 ```bash
-npm run formal -- migrate-text-refs --apply path/to/chapter-or-volume
+npm run workspace -- migrate-text-refs --apply path/to/chapter-or-volume
 ```
 
 试运行旧 ID 迁移：
 
 ```bash
-npm run formal -- migrate-ids path/to/chapter-or-volume
+npm run workspace -- migrate-ids path/to/chapter-or-volume
 ```
 
 应用旧 ID 迁移：
 
 ```bash
-npm run formal -- migrate-ids --apply path/to/chapter-or-volume
+npm run workspace -- migrate-ids --apply path/to/chapter-or-volume
 ```
 
 ## 依赖图
@@ -300,31 +300,31 @@ npm run formal -- migrate-ids --apply path/to/chapter-or-volume
 生成依赖图摘要：
 
 ```bash
-npm run formal -- graph summary
+npm run workspace -- graph summary
 ```
 
 查看某个命题类对象或带 hash 补充注释的局部图：
 
 ```bash
-npm run formal -- graph focus <h-id> --depth 2
+npm run workspace -- graph focus <h-id> --depth 2
 ```
 
 查看下游影响范围：
 
 ```bash
-npm run formal -- graph impact <h-id>
+npm run workspace -- graph impact <h-id>
 ```
 
 查看上游依赖：
 
 ```bash
-npm run formal -- graph upstream <h-id>
+npm run workspace -- graph upstream <h-id>
 ```
 
 汇总章节层面的依赖流：
 
 ```bash
-npm run formal -- graph matrix chapter
+npm run workspace -- graph matrix chapter
 ```
 
 依赖图只记录显式 `@h-...` 引用。报告把主线 theorem-like 对象与带 hash 补充注释分别统计，避免旁支事实改变主线结论；普通 `注（...）` 不成为节点。AI 或领域工具推测出的数学依赖应由目标项目单独维护，不要混入 canonical graph。
@@ -359,7 +359,7 @@ multi-volume-book/
 
 ## 配置
 
-常见 `.markdown-formal/config.json`：
+常见 `.math-workspace/config.json`：
 
 ```json
 {
@@ -390,25 +390,25 @@ multi-volume-book/
 先把 formal 源导出为普通 Markdown，再交给其他发布流程处理：
 
 ```bash
-npm run formal -- export-md path/to/book --out dist/book.md
+npm run workspace -- export-md path/to/book --out dist/book.md
 ```
 
 导出时保留源目录结构：
 
 ```bash
-npm run formal -- export-md-split path/to/book --out dist/public
+npm run workspace -- export-md-split path/to/book --out dist/public
 ```
 
 使用本机 Pandoc/LaTeX 引擎从 formal 源直接导出 PDF：
 
 ```bash
-npm run formal -- export-pdf path/to/book --out dist/book.pdf
+npm run workspace -- export-pdf path/to/book --out dist/book.pdf
 ```
 
 渲染已经处理好的普通 Markdown：
 
 ```bash
-npm run formal -- render-pdf dist/book.md --out dist/book.pdf
+npm run workspace -- render-pdf dist/book.md --out dist/book.pdf
 ```
 
 `render-pdf` 不扫描 formal 源，不重写 `#h-*`，也不解析 `@h-*`。
@@ -432,7 +432,7 @@ export-md -> project postprocess -> render-pdf
 - 出版元数据页：可选，位于封面页之后、目录之前；
 - front matter 声明页：可选，位于 metadata 之后、目录之前。
 
-PDF 选项放在 `.markdown-formal/config.json` 的 `pdf` 字段中：
+PDF 选项放在 `.math-workspace/config.json` 的 `pdf` 字段中：
 
 ```json
 {

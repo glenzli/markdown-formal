@@ -12,8 +12,8 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "@markdown-formal/core": ["packages/core/src/formal-core.ts"],
-      "@markdown-formal/core/*": ["packages/core/src/*"]
+      "@math-workspace/core": ["packages/core/src/formal-core.ts"],
+      "@math-workspace/core/*": ["packages/core/src/*"]
     }
   },
   "include": ["src/cli/**/*", "src/mcp/**/*.ts", "src/reader/*.ts", "packages/core/src/**/*", "src/node.d.ts"]

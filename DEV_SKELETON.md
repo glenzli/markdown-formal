@@ -19,7 +19,7 @@
 - `packages/core/src/**`: shared formal scanner, numbering, references, lookup, dependency analysis, and conservative project-knowledge discovery.
 - `src/cli/**`, `src/reader/**`: primary CLI and localhost Reader implementation.
 - `legacy/vscode-extension/**`: frozen historical VS Code implementation, excluded from builds, release artifacts, and product support.
-- `tests/formal-tools.test.mjs`: regression coverage for formal syntax, migration, export, graph, and audit behavior.
+- `tests/math-workspace.test.mjs`: regression coverage for formal syntax, migration, export, graph, and audit behavior.
 - `examples/**`: fixtures and sample writing projects used to exercise behavior.
 - `docs-src/**/*.vasm.md`: source for maintained public documentation.
 - `skills-src/**/*.vasm.md`: source for target-project AI skill outputs.
@@ -28,7 +28,7 @@
 - `skills/editor.md`: generated executable target-project AI writing rules.
 - `skills/integrator.md`: generated VASMC integrative composition guide artifact.
 - `package.json`, `tsconfig*.json`, `vite.*.ts`: build and packaging configuration for core, CLI, and Reader.
-- Generated outputs under `out/`, `dist/`, and `.markdown-formal/` are verification artifacts, not durable development guidance.
+- Generated outputs under `out/`, `dist/`, and `.math-workspace/` are verification artifacts, not durable development guidance.
 
 ## Stable Constraints
 
@@ -36,7 +36,7 @@
 - Formal IDs are stable implementation data; reader-facing numbers are rendered or exported from metadata.
 - Definitions and symbols are lookup aids, not theorem-numbering objects.
 - Project knowledge analysis may derive context from deliberately named concept/glossary, notation, and summary pages, but must not infer terms or symbol meanings from ordinary prose or rewrite source content.
-- The local Reader is opt-in for workspaces with `.markdown-formal/config.json`, binds only to loopback, and must remain read-only; ordinary Markdown preview should stay ordinary elsewhere.
+- The local Reader is opt-in for workspaces with `.math-workspace/config.json`, binds only to loopback, and must remain read-only; ordinary Markdown preview should stay ordinary elsewhere.
 - Release bundles and npm packages ship runtime artifacts, public docs, generated AI artifacts under `skills/`, and VASMC catalog exports for lockable reuse.
 - Built Reader and CLI runtimes should remain dependency-free after bundling.
 - Dependency changes require caution and explicit verification because supply-chain risk matters for editor tooling.
@@ -48,13 +48,13 @@
 
 - Mathematical writing changes structure often; stable references matter more than preserving handwritten numbers.
 - AI agents can read the current source for implementation facts. Durable guidance should describe boundaries and review preferences, not current control flow.
-- Target projects may already have their own writing instructions; markdown-formal rules should be merged into those native instructions instead of layered blindly.
+- Target projects may already have their own writing instructions; math-workspace rules should be merged into those native instructions instead of layered blindly.
 
 ## Entry Hints
 
 - Public usage or target-project integration: start with `docs-src/**/*.vasm.md`, `skills-src/**/*.vasm.md`, generated `README.md` / `docs/*.md`, generated `skills/*.md`, and catalog artifacts under `vasm-catalog/`.
 - Writing-rule details: start with `skills-src/editor.vasm.md` and generated `skills/editor.md`.
-- CLI or syntax behavior changes: start with `src/cli/formal-tools.ts`, `packages/core/src/formal-core.ts`, and `tests/formal-tools.test.mjs`.
+- CLI or syntax behavior changes: start with `src/cli/math-workspace.ts`, `packages/core/src/formal-core.ts`, and `tests/math-workspace.test.mjs`.
 - Reader behavior changes: start with `src/reader/server.ts`, `src/reader/web/**`, `packages/core/src/formal-core.ts`, and the relevant tests or examples.
 - Release boundary changes: start with `package.json`, `src/cli/release.ts`, `docs-src/docs/release.vasm.md`, generated `docs/release.md`, and `npm run release:local`.
 

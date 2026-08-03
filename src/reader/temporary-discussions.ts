@@ -20,8 +20,8 @@ export interface ReaderTemporaryDiscussion {
 }
 
 /**
- * Owns only the Reader process's opaque handles for ephemeral Codex threads.
- * Codex owns the threads themselves; closing the Reader clears these handles.
+ * Owns only the Math Workspace process's opaque handles for ephemeral Codex threads.
+ * Codex owns the threads themselves; closing Math Workspace clears these handles.
  */
 export class ReaderTemporaryDiscussionRegistry {
     private readonly discussions = new Map<string, ReaderTemporaryDiscussion>();

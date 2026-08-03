@@ -23,19 +23,19 @@ export interface ReaderTaskBindingRegistryOptions {
 function defaultStateFilePath(): string {
     const home = os.homedir();
     if (process.platform === 'darwin') {
-        return path.join(home, 'Library', 'Application Support', 'markdown-formal', 'reader-task-bindings.json');
+        return path.join(home, 'Library', 'Application Support', 'math-workspace', 'workspace-task-bindings.json');
     }
     if (process.platform === 'win32') {
-        return path.join(process.env.APPDATA || home, 'markdown-formal', 'reader-task-bindings.json');
+        return path.join(process.env.APPDATA || home, 'math-workspace', 'workspace-task-bindings.json');
     }
-    return path.join(process.env.XDG_STATE_HOME || path.join(home, '.local', 'state'), 'markdown-formal', 'reader-task-bindings.json');
+    return path.join(process.env.XDG_STATE_HOME || path.join(home, '.local', 'state'), 'math-workspace', 'workspace-task-bindings.json');
 }
 
 export class ReaderTaskBindingRegistry {
     private readonly stateFilePath: string;
 
     constructor(options: ReaderTaskBindingRegistryOptions = {}) {
-        this.stateFilePath = options.stateFilePath || process.env.MARKDOWN_FORMAL_READER_TASKS || defaultStateFilePath();
+        this.stateFilePath = options.stateFilePath || process.env.MATH_WORKSPACE_TASKS || defaultStateFilePath();
     }
 
     async get(rootPath: string): Promise<ReaderTaskBindings | undefined> {
@@ -94,7 +94,7 @@ export class ReaderTaskBindingRegistry {
             await fs.mkdir(path.dirname(this.stateFilePath), { recursive: true });
             await fs.writeFile(this.stateFilePath, JSON.stringify({ version: 2, bindings }, null, 2) + '\n', 'utf8');
         } catch (error) {
-            console.warn(`[markdown-formal] Could not save Reader task bindings: ${error instanceof Error ? error.message : String(error)}`);
+            console.warn(`[math-workspace] Could not save Math Workspace task bindings: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 

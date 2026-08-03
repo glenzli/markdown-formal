@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "markdown-formal-reader": {
-      "command": "markdown-formal",
-      "args": ["mcp"]
-    }
-  }
-}

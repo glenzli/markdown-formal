@@ -89,7 +89,7 @@ function isStrictDependencyEdge(edge: NonNullable<ReaderDependencyGraph['edges']
 }
 
 /**
- * Produces the small, page-local strict-dependency projection used by Reader
+ * Produces the small, page-local strict-dependency projection used by Math Workspace
  * markers. It admits only explicit strict references in a proposition's
  * statement or proof, and deliberately excludes explanatory/body references
  * and self-references. Graph direction is source formal claim -> referenced formal claim, so reverse

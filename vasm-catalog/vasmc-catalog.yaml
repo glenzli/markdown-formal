@@ -1,16 +1,16 @@
 catalogVersion: 1
 exports:
   editor:
-    name: markdown-formal-editor-skill
+    name: math-workspace-editor-skill
     version: 0.1.0
     format: executable
-    file: markdown-formal-editor.zh-CN.md
-    hash: sha256:d591e8cef82c14a091d271bb1c302ca138325726e680d21d779d9db83a8cea69
+    file: math-workspace-editor.zh-CN.md
+    hash: sha256:b79c597a5269e89cf447f057e6679698812c1639d0430387bcb2de14c85cf496
   integrator:
-    name: markdown-formal-integrator-guide
+    name: math-workspace-integrator-guide
     version: 0.1.0
     format: integrative
-    file: markdown-formal-integrator.md
-    hash: sha256:b1f4c1b13af9885911b5827e111620c176d3272cd1f7d4f4e896a859dedee299
+    file: math-workspace-integrator.md
+    hash: sha256:593c88ed6d560c916a431e27203914f7a4ec3d1591714cae11dabcf91b9ea8ee
     appliesTo:
-      - sha256:d591e8cef82c14a091d271bb1c302ca138325726e680d21d779d9db83a8cea69
+      - sha256:b79c597a5269e89cf447f057e6679698812c1639d0430387bcb2de14c85cf496

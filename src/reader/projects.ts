@@ -20,12 +20,12 @@ export interface ReaderProjectRegistryOptions {
 function defaultStateFilePath(): string {
     const home = os.homedir();
     if (process.platform === 'darwin') {
-        return path.join(home, 'Library', 'Application Support', 'markdown-formal', 'reader-projects.json');
+        return path.join(home, 'Library', 'Application Support', 'math-workspace', 'workspace-projects.json');
     }
     if (process.platform === 'win32') {
-        return path.join(process.env.APPDATA || home, 'markdown-formal', 'reader-projects.json');
+        return path.join(process.env.APPDATA || home, 'math-workspace', 'workspace-projects.json');
     }
-    return path.join(process.env.XDG_STATE_HOME || path.join(home, '.local', 'state'), 'markdown-formal', 'reader-projects.json');
+    return path.join(process.env.XDG_STATE_HOME || path.join(home, '.local', 'state'), 'math-workspace', 'workspace-projects.json');
 }
 
 function chooseWith(command: string, args: string[]): Promise<string | undefined> {
@@ -55,7 +55,7 @@ async function chooseProjectDirectory(): Promise<string | undefined> {
     if (process.platform === 'darwin') {
         return chooseWith('osascript', ['-e', [
             'try',
-            'POSIX path of (choose folder with prompt "Choose a Markdown Formal project")',
+            'POSIX path of (choose folder with prompt "Choose a Math Workspace project")',
             'on error number -128',
             'return ""',
             'end try'
@@ -65,11 +65,11 @@ async function chooseProjectDirectory(): Promise<string | undefined> {
         return chooseWith('powershell', ['-NoProfile', '-Command', [
             'Add-Type -AssemblyName System.Windows.Forms;',
             '$dialog = New-Object System.Windows.Forms.FolderBrowserDialog;',
-            '$dialog.Description = "Choose a Markdown Formal project";',
+            '$dialog.Description = "Choose a Math Workspace project";',
             'if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $dialog.SelectedPath }'
         ].join(' ')]);
     }
-    return chooseWith('zenity', ['--file-selection', '--directory', '--title=Choose a Markdown Formal project']);
+    return chooseWith('zenity', ['--file-selection', '--directory', '--title=Choose a Math Workspace project']);
 }
 
 export class ReaderProjectRegistry {
@@ -77,7 +77,7 @@ export class ReaderProjectRegistry {
     private readonly chooseDirectory: () => Promise<string | undefined>;
 
     constructor(options: ReaderProjectRegistryOptions = {}) {
-        this.stateFilePath = options.stateFilePath || process.env.MARKDOWN_FORMAL_READER_STATE || defaultStateFilePath();
+        this.stateFilePath = options.stateFilePath || process.env.MATH_WORKSPACE_STATE || defaultStateFilePath();
         this.chooseDirectory = options.chooseDirectory || chooseProjectDirectory;
     }
 
@@ -102,7 +102,7 @@ export class ReaderProjectRegistry {
     async remember(rootPath: string): Promise<ReaderProjectRecord> {
         const resolvedPath = path.resolve(rootPath);
         if (!(await this.isFormalProject(resolvedPath))) {
-            throw new Error('Selected directory needs .markdown-formal/config.json. Run `markdown-formal prepare` in the project first.');
+            throw new Error('Selected directory needs .math-workspace/config.json. Run `math-workspace prepare` in the project first.');
         }
         const record: ReaderProjectRecord = {
             rootPath: resolvedPath,
@@ -115,14 +115,14 @@ export class ReaderProjectRegistry {
             await fs.mkdir(path.dirname(this.stateFilePath), { recursive: true });
             await fs.writeFile(this.stateFilePath, JSON.stringify({ version: 1, projects }, null, 2) + '\n', 'utf8');
         } catch (error) {
-            console.warn(`[markdown-formal] Could not save Reader recent projects: ${error instanceof Error ? error.message : String(error)}`);
+            console.warn(`[math-workspace] Could not save Math Workspace recent projects: ${error instanceof Error ? error.message : String(error)}`);
         }
         return record;
     }
 
     private async isFormalProject(rootPath: string): Promise<boolean> {
         try {
-            return (await fs.stat(path.join(rootPath, '.markdown-formal', 'config.json'))).isFile();
+            return (await fs.stat(path.join(rootPath, '.math-workspace', 'config.json'))).isFile();
         } catch (_error) {
             return false;
         }

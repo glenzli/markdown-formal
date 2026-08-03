@@ -36,12 +36,12 @@ import {
     unique,
     type DependencyGraphMatrixScope,
     type DependencyGraphWhereFilter
-} from '@markdown-formal/core';
+} from '@math-workspace/core';
 import { startReaderServer } from '../reader/server';
 import { runReaderMcpServer } from '../mcp/reader-mcp-server';
 
 const ROOT = process.cwd();
-const CACHE_DIR = path.join(ROOT, '.markdown-formal');
+const CACHE_DIR = path.join(ROOT, '.math-workspace');
 const PACKAGE_ROOT = path.resolve(__dirname, '..', '..');
 const { spawnSync } = require('node:child_process');
 
@@ -151,7 +151,7 @@ async function scanWorkspace() {
 
 async function writeArtifacts(state) {
     await ensureCacheDir();
-    await fs.writeFile(path.join(CACHE_DIR, 'reader-index.json'), `${JSON.stringify(buildReaderIndex(state), null, 2)}\n`, 'utf8');
+    await fs.writeFile(path.join(CACHE_DIR, 'workspace-index.json'), `${JSON.stringify(buildReaderIndex(state), null, 2)}\n`, 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'dependency-graph.json'), `${JSON.stringify(state.dependencyGraph, null, 2)}\n`, 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'dependency-report.md'), renderDependencyReport(state.dependencyGraph), 'utf8');
     await fs.writeFile(path.join(CACHE_DIR, 'reference-map.md'), renderReferenceMap(state.definitions, state.config, state.pages), 'utf8');
@@ -185,7 +185,7 @@ function printSummary(action, state) {
         console.log(`Project knowledge: ${knowledge.conceptSources} concept/glossary sources, ${knowledge.notationSources} notation sources, ${knowledge.extractedDefinitions} supplemental definitions`);
     }
     if (errors.length > 0 || warnings.length > 0) {
-        console.log('Report: .markdown-formal/report.md');
+        console.log('Report: .math-workspace/report.md');
         [...errors, ...warnings].slice(0, 5).forEach(issue => {
             const location = issue.line ? `${issue.file}:${issue.line}` : issue.file || 'workspace';
             console.log(`${issue.severity.toUpperCase()} ${issue.code} ${location}`);
@@ -263,15 +263,15 @@ function parseGraphArgs(args) {
 
 function printGraphUsage() {
     console.log(`Usage:
-  npm run formal -- graph
-  npm run formal -- graph summary [--where all|statement|proof|body]
-  npm run formal -- graph focus <h-id> [--depth N] [--where all|statement|proof|body]
-  npm run formal -- graph impact <h-id> [--where all|statement|proof|body]
-  npm run formal -- graph upstream <h-id> [--where all|statement|proof|body]
-  npm run formal -- graph bridges [--where all|statement|proof|body]
-  npm run formal -- graph isolated [--where all|statement|proof|body]
-  npm run formal -- graph cycles [--where all|statement|proof|body]
-  npm run formal -- graph matrix chapter|volume|book [--where all|statement|proof|body]`);
+  npm run workspace -- graph
+  npm run workspace -- graph summary [--where all|statement|proof|body]
+  npm run workspace -- graph focus <h-id> [--depth N] [--where all|statement|proof|body]
+  npm run workspace -- graph impact <h-id> [--where all|statement|proof|body]
+  npm run workspace -- graph upstream <h-id> [--where all|statement|proof|body]
+  npm run workspace -- graph bridges [--where all|statement|proof|body]
+  npm run workspace -- graph isolated [--where all|statement|proof|body]
+  npm run workspace -- graph cycles [--where all|statement|proof|body]
+  npm run workspace -- graph matrix chapter|volume|book [--where all|statement|proof|body]`);
 }
 
 async function graph(args = []) {
@@ -289,9 +289,9 @@ async function graph(args = []) {
         const supplementalRemarks = dependencyGraph.summary.supplementalRemarkNodes;
         const remarkLabel = supplementalRemarks === 1 ? 'supplemental remark' : 'supplemental remarks';
         console.log(`OK graph: ${dependencyGraph.summary.theoremLikeNodes} theorem-like nodes, ${supplementalRemarks} ${remarkLabel}, ${dependencyGraph.summary.edges} explicit edges, ${dependencyGraph.summary.proofEdges} proof edges, ${dependencyGraph.summary.cycles} cycles`);
-        console.log('Graph: .markdown-formal/dependency-graph.json');
-        console.log('Report: .markdown-formal/dependency-report.md');
-        console.log('Run `npm run formal -- graph summary` for a Markdown summary.');
+        console.log('Graph: .math-workspace/dependency-graph.json');
+        console.log('Report: .math-workspace/dependency-report.md');
+        console.log('Run `npm run workspace -- graph summary` for a Markdown summary.');
         return;
     }
 
@@ -390,13 +390,13 @@ async function verify(args) {
             console.error(`${issue.code} ${location}: ${issue.message}`);
         });
         if (blockingIssues.length > 10) {
-            console.error(`... ${blockingIssues.length - 10} more blocking issues in .markdown-formal/report.md`);
+            console.error(`... ${blockingIssues.length - 10} more blocking issues in .math-workspace/report.md`);
         }
     }
 
     if (hasOpenTextMigration) {
         console.error(`VERIFY failed: text-reference migration has unresolved=${migrationCounts.unresolved}, ambiguous=${migrationCounts.ambiguous}`);
-        console.error('Resolve .markdown-formal/text-ref-migration.md before treating migration as complete.');
+        console.error('Resolve .math-workspace/text-ref-migration.md before treating migration as complete.');
     }
 
     process.exitCode = 1;
@@ -405,7 +405,7 @@ async function verify(args) {
 async function finalize(paths, commandName = 'finalize') {
     const options = parseMigrationArgs(paths);
     if (options.paths.length === 0) {
-        console.error(`Usage: npm run formal -- ${commandName} <file-or-dir> [...] [--all]`);
+        console.error(`Usage: npm run workspace -- ${commandName} <file-or-dir> [...] [--all]`);
         process.exitCode = 1;
         return;
     }
@@ -1267,9 +1267,9 @@ function parseExportArgs(args, defaultOutput, configInput = DEFAULT_CONFIG) {
 }
 
 async function exportMarkdown(args = []) {
-    const options = parseExportArgs(args, '.markdown-formal/export.md');
+    const options = parseExportArgs(args, '.math-workspace/export.md');
     if (options.paths.length === 0) {
-        console.error('Usage: npm run formal -- export-md <file-or-dir> [...] --out <compiled.md>');
+        console.error('Usage: npm run workspace -- export-md <file-or-dir> [...] --out <compiled.md>');
         process.exitCode = 1;
         return '';
     }
@@ -1299,9 +1299,9 @@ async function exportMarkdown(args = []) {
 }
 
 async function exportMarkdownSplit(args = []) {
-    const options = parseExportArgs(args, '.markdown-formal/export-md-split');
+    const options = parseExportArgs(args, '.math-workspace/export-md-split');
     if (options.paths.length === 0) {
-        console.error('Usage: npm run formal -- export-md-split <file-or-dir> [...] --out <dir>');
+        console.error('Usage: npm run workspace -- export-md-split <file-or-dir> [...] --out <dir>');
         process.exitCode = 1;
         return '';
     }
@@ -1428,9 +1428,9 @@ async function renderPdfFile(inputMarkdownPath, outputPdfPath, options) {
 
 async function exportPdf(args = []) {
     const config = await readConfigIfExists();
-    const options = parseExportArgs(args, '.markdown-formal/export.pdf', config);
+    const options = parseExportArgs(args, '.math-workspace/export.pdf', config);
     if (options.paths.length === 0) {
-        console.error('Usage: npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title-page] [--release-version rc.1] [--release-tag v1] [--release-commit abc123] [--doi DOI] [--metadata-page] [--front-matter page.md] [--front-matter-title Title] [--front-matter-toc] [--author-native Name] [--author-alias Alias] [--orcid URL] [--repository URL] [--license Name] [--license-url URL] [--preferred-citation Text] [--show-version-on-cover] [--cover-style simple] [--title-size 32pt] [-V key:value] [--variable key:value] [--keep-md]');
+        console.error('Usage: npm run workspace -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title-page] [--release-version rc.1] [--release-tag v1] [--release-commit abc123] [--doi DOI] [--metadata-page] [--front-matter page.md] [--front-matter-title Title] [--front-matter-toc] [--author-native Name] [--author-alias Alias] [--orcid URL] [--repository URL] [--license Name] [--license-url URL] [--preferred-citation Text] [--show-version-on-cover] [--cover-style simple] [--title-size 32pt] [-V key:value] [--variable key:value] [--keep-md]');
         process.exitCode = 1;
         return;
     }
@@ -1452,9 +1452,9 @@ async function exportPdf(args = []) {
 
 async function renderPdf(args = []) {
     const config = await readConfigIfExists();
-    const options = parseExportArgs(args, '.markdown-formal/render.pdf', config);
+    const options = parseExportArgs(args, '.math-workspace/render.pdf', config);
     if (options.paths.length !== 1) {
-        console.error('Usage: npm run formal -- render-pdf <compiled.md> --out <book.pdf> [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title-page] [--release-version rc.1] [--release-tag v1] [--release-commit abc123] [--doi DOI] [--metadata-page] [--front-matter page.md] [--front-matter-title Title] [--front-matter-toc] [--author-native Name] [--author-alias Alias] [--orcid URL] [--repository URL] [--license Name] [--license-url URL] [--preferred-citation Text] [--show-version-on-cover] [--cover-style simple] [--title-size 32pt] [-V key:value] [--variable key:value]');
+        console.error('Usage: npm run workspace -- render-pdf <compiled.md> --out <book.pdf> [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title-page] [--release-version rc.1] [--release-tag v1] [--release-commit abc123] [--doi DOI] [--metadata-page] [--front-matter page.md] [--front-matter-title Title] [--front-matter-toc] [--author-native Name] [--author-alias Alias] [--orcid URL] [--repository URL] [--license Name] [--license-url URL] [--preferred-citation Text] [--show-version-on-cover] [--cover-style simple] [--title-size 32pt] [-V key:value] [--variable key:value]');
         process.exitCode = 1;
         return;
     }
@@ -1488,8 +1488,8 @@ async function migrateIds(args) {
     const apply = options.apply;
     const dryRun = options.dryRun;
     if (!options.all && options.paths.length === 0) {
-        console.error('Usage: npm run formal -- migrate-ids <file-or-dir> [...] [--apply] [--target-only]');
-        console.error('       npm run formal -- migrate-ids --all [--apply]');
+        console.error('Usage: npm run workspace -- migrate-ids <file-or-dir> [...] [--apply] [--target-only]');
+        console.error('       npm run workspace -- migrate-ids --all [--apply]');
         process.exitCode = 1;
         return;
     }
@@ -2311,9 +2311,9 @@ function escapeAuditText(value) {
 
 function renderAuditReport(result) {
     const lines = [
-        '# markdown-formal Audit',
+        '# math-workspace Audit',
         '',
-        'Generated by `npm run formal -- audit`. This report is advisory and does not affect `verify`.',
+        'Generated by `npm run workspace -- audit`. This report is advisory and does not affect `verify`.',
         '',
         `Scope: ${result.scope}`,
         `Files scanned: ${result.files}`,
@@ -2480,14 +2480,14 @@ async function audit(args) {
         + result.missingProofBoundaries.length;
     const status = findingCount > 0 ? 'WARN' : 'OK';
     console.log(`${status} audit: ${findingCount} findings across ${targetFiles.length} files`);
-    console.log('Report: .markdown-formal/audit.md');
+    console.log('Report: .math-workspace/audit.md');
 }
 
 async function migrateTextRefs(args) {
     const options = parseMigrationArgs(args);
     if (!options.all && options.paths.length === 0) {
-        console.error('Usage: npm run formal -- migrate-text-refs <file-or-dir> [...] [--apply] [--target-only]');
-        console.error('       npm run formal -- migrate-text-refs --all [--apply]');
+        console.error('Usage: npm run workspace -- migrate-text-refs <file-or-dir> [...] [--apply] [--target-only]');
+        console.error('       npm run workspace -- migrate-text-refs --all [--apply]');
         process.exitCode = 1;
         return;
     }
@@ -2555,7 +2555,7 @@ async function migrateTextRefs(args) {
     console.log(`${mode} migrate-text-refs: ${result.replacements.length} replacements, ${result.unresolved.length} unresolved, ${result.ambiguous.length} ambiguous`);
     console.log(`Scope: ${result.referenceScope}.`);
     console.log(`Manual review: ${result.linkedReferences.length} markdown links, ${result.sectionHeadings.length} section headings`);
-    console.log('Report: .markdown-formal/text-ref-migration.md');
+    console.log('Report: .math-workspace/text-ref-migration.md');
 
     if (options.apply) {
         console.log(`Updated ${changedFiles} files.`);
@@ -2567,7 +2567,7 @@ async function printReport() {
     try {
         process.stdout.write(await fs.readFile(path.join(CACHE_DIR, 'report.md'), 'utf8'));
     } catch (_err) {
-        console.log('No report found. Run: npm run formal -- prepare');
+        console.log('No report found. Run: npm run workspace -- prepare');
     }
 }
 
@@ -2644,73 +2644,73 @@ function parsePerfArgs(args) {
 function printHelp({ all = false } = {}) {
     if (!all) {
         console.log(`Usage:
-  npm run formal -- prepare
-  npm run formal -- finish <file-or-dir> [...] [--all]
-  npm run formal -- migrate-text-refs <file-or-dir> [...] [--apply] [--target-only] [--all]
-  npm run formal -- migrate-ids <file-or-dir> [...] [--apply] [--target-only] [--all]
-  npm run formal -- audit [file-or-dir] [...]
-  npm run formal -- graph
-  npm run formal -- graph impact <h-id>
-  npm run formal -- graph focus <h-id> [--depth N]
-  npm run formal -- graph matrix chapter|volume|book
-  npm run formal -- serve [project-dir] [--port 0]  # no project-dir opens the local launcher
-  npm run formal -- mcp [--root project-dir] [--port 0]
-  npm run formal -- export-md <file-or-dir> [...] --out <compiled.md>
-  npm run formal -- export-md-split <file-or-dir> [...] --out <dir>
-  npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--no-toc] [--toc-depth N] [--margin 2.5cm]
-  npm run formal -- render-pdf <compiled.md> --out <book.pdf> [--title "Title"] [--toc-title 目录]
-  npm run formal -- paths
-  npm run formal -- verify [--strict-chapters]
+  npm run workspace -- prepare
+  npm run workspace -- finish <file-or-dir> [...] [--all]
+  npm run workspace -- migrate-text-refs <file-or-dir> [...] [--apply] [--target-only] [--all]
+  npm run workspace -- migrate-ids <file-or-dir> [...] [--apply] [--target-only] [--all]
+  npm run workspace -- audit [file-or-dir] [...]
+  npm run workspace -- graph
+  npm run workspace -- graph impact <h-id>
+  npm run workspace -- graph focus <h-id> [--depth N]
+  npm run workspace -- graph matrix chapter|volume|book
+  npm run workspace -- serve [project-dir] [--port 0]  # no project-dir opens the local launcher
+  npm run workspace -- mcp [--root project-dir] [--port 0]
+  npm run workspace -- export-md <file-or-dir> [...] --out <compiled.md>
+  npm run workspace -- export-md-split <file-or-dir> [...] --out <dir>
+  npm run workspace -- export-pdf <file-or-dir> [...] --out <book.pdf> [--no-toc] [--toc-depth N] [--margin 2.5cm]
+  npm run workspace -- render-pdf <compiled.md> --out <book.pdf> [--title "Title"] [--toc-title 目录]
+  npm run workspace -- paths
+  npm run workspace -- verify [--strict-chapters]
 
 Migrations are dry-run by default. Pass --apply to edit files.
 
 Agent workflow:
   1. Run prepare when starting or resuming a task, or when the index may be stale.
-  2. Read the target source; retrieve only matching rows from .markdown-formal/reference-map.md for external existing refs.
+  2. Read the target source; retrieve only matching rows from .math-workspace/reference-map.md for external existing refs.
   3. Use tmp-* for new objects and page anchors, then run finish on the edited file or directory (it verifies).
   4. For old numbered prose, migrate-text-refs <scope> updates target files plus incoming references by default.
   5. If you use finalize directly, run verify before treating generated or migrated content as complete.
 
 Advanced commands:
-  npm run formal -- help --all`);
+  npm run workspace -- help --all`);
         return;
     }
 
     console.log(`Usage:
-  npm run formal -- prepare
-  npm run formal -- finish <file-or-dir> [...] [--all]
-  npm run formal -- migrate-text-refs <file-or-dir> [...] [--apply] [--target-only] [--all]
-  npm run formal -- migrate-ids <file-or-dir> [...] [--apply] [--target-only] [--all]
-  npm run formal -- audit [file-or-dir] [...]
-  npm run formal -- graph
-  npm run formal -- graph summary [--where all|statement|proof|body]
-  npm run formal -- graph focus <h-id> [--depth N] [--where all|statement|proof|body]
-  npm run formal -- graph impact <h-id> [--where all|statement|proof|body]
-  npm run formal -- graph upstream <h-id> [--where all|statement|proof|body]
-  npm run formal -- graph bridges|isolated|cycles [--where all|statement|proof|body]
-  npm run formal -- graph matrix chapter|volume|book [--where all|statement|proof|body]
-  npm run formal -- serve [project-dir] [--port 0]  # no project-dir opens the local launcher
-  npm run formal -- mcp [--root project-dir] [--port 0]
-  npm run formal -- export-md <file-or-dir> [...] --out <compiled.md>
-  npm run formal -- export-md-split <file-or-dir> [...] --out <dir>
-  npm run formal -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title "Title"] [--subtitle "Subtitle"] [--author Name] [--author-native Name] [--author-alias Alias] [--orcid URL] [--repository URL] [--license Name] [--license-url URL] [--preferred-citation Text] [--date "Revised 2026-06-26"] [--release-version rc.1] [--release-tag v1] [--release-commit abc123] [--doi DOI] [--metadata-page] [--front-matter page.md] [--front-matter-title "AI Statement"] [--front-matter-toc] [--show-version-on-cover] [--documentclass ctexbook] [--title-page] [--no-title-page] [--cover-style simple] [--title-size 32pt] [--subtitle-size 18pt] [--toc-page-break] [--no-toc-page-break] [-V key:value] [--variable key:value] [--keep-md]
-  npm run formal -- render-pdf <compiled.md> --out <book.pdf> [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title "Title"] [--subtitle "Subtitle"] [--author Name] [--author-native Name] [--author-alias Alias] [--orcid URL] [--repository URL] [--license Name] [--license-url URL] [--preferred-citation Text] [--date "Revised 2026-06-26"] [--release-version rc.1] [--release-tag v1] [--release-commit abc123] [--doi DOI] [--metadata-page] [--front-matter page.md] [--front-matter-title "AI Statement"] [--front-matter-toc] [--show-version-on-cover] [--documentclass ctexbook] [--title-page] [--no-title-page] [--cover-style simple] [--title-size 32pt] [--subtitle-size 18pt] [--toc-page-break] [--no-toc-page-break] [-V key:value] [--variable key:value]
-  npm run formal -- paths
-  npm run formal -- help-ai
-  npm run formal -- verify [--strict-chapters]
+  npm run workspace -- prepare
+  npm run workspace -- finish <file-or-dir> [...] [--all]
+  npm run workspace -- migrate-text-refs <file-or-dir> [...] [--apply] [--target-only] [--all]
+  npm run workspace -- migrate-ids <file-or-dir> [...] [--apply] [--target-only] [--all]
+  npm run workspace -- audit [file-or-dir] [...]
+  npm run workspace -- graph
+  npm run workspace -- graph summary [--where all|statement|proof|body]
+  npm run workspace -- graph focus <h-id> [--depth N] [--where all|statement|proof|body]
+  npm run workspace -- graph impact <h-id> [--where all|statement|proof|body]
+  npm run workspace -- graph upstream <h-id> [--where all|statement|proof|body]
+  npm run workspace -- graph bridges|isolated|cycles [--where all|statement|proof|body]
+  npm run workspace -- graph matrix chapter|volume|book [--where all|statement|proof|body]
+  npm run workspace -- serve [project-dir] [--port 0]  # no project-dir opens the local launcher
+  npm run workspace -- mcp [--root project-dir] [--port 0]
+  npm run workspace -- export-md <file-or-dir> [...] --out <compiled.md>
+  npm run workspace -- export-md-split <file-or-dir> [...] --out <dir>
+  npm run workspace -- export-pdf <file-or-dir> [...] --out <book.pdf> [--md-out compiled.md] [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title "Title"] [--subtitle "Subtitle"] [--author Name] [--author-native Name] [--author-alias Alias] [--orcid URL] [--repository URL] [--license Name] [--license-url URL] [--preferred-citation Text] [--date "Revised 2026-06-26"] [--release-version rc.1] [--release-tag v1] [--release-commit abc123] [--doi DOI] [--metadata-page] [--front-matter page.md] [--front-matter-title "AI Statement"] [--front-matter-toc] [--show-version-on-cover] [--documentclass ctexbook] [--title-page] [--no-title-page] [--cover-style simple] [--title-size 32pt] [--subtitle-size 18pt] [--toc-page-break] [--no-toc-page-break] [-V key:value] [--variable key:value] [--keep-md]
+  npm run workspace -- render-pdf <compiled.md> --out <book.pdf> [--pdf-engine xelatex] [--no-toc] [--toc-depth N] [--margin 2.5cm] [--paper a4] [--lang zh-CN] [--toc-title 目录] [--title "Title"] [--subtitle "Subtitle"] [--author Name] [--author-native Name] [--author-alias Alias] [--orcid URL] [--repository URL] [--license Name] [--license-url URL] [--preferred-citation Text] [--date "Revised 2026-06-26"] [--release-version rc.1] [--release-tag v1] [--release-commit abc123] [--doi DOI] [--metadata-page] [--front-matter page.md] [--front-matter-title "AI Statement"] [--front-matter-toc] [--show-version-on-cover] [--documentclass ctexbook] [--title-page] [--no-title-page] [--cover-style simple] [--title-size 32pt] [--subtitle-size 18pt] [--toc-page-break] [--no-toc-page-break] [-V key:value] [--variable key:value]
+  npm run workspace -- paths
+  npm run workspace -- help-ai
+  npm run workspace -- verify [--strict-chapters]
 
 Advanced:
-  npm run formal -- finalize <file-or-dir> [...] [--all]
-  npm run formal -- lint
-  npm run formal -- audit [file-or-dir] [...]
-  npm run formal -- perf-dummy [chapters] [blocks-per-chapter] [--max-ms N] [--max-heap-mb N]
-  npm run formal -- report
+  npm run workspace -- finalize <file-or-dir> [...] [--all]
+  npm run workspace -- lint
+  npm run workspace -- audit [file-or-dir] [...]
+  npm run workspace -- perf-dummy [chapters] [blocks-per-chapter] [--max-ms N] [--max-heap-mb N]
+  npm run workspace -- report
 
 Migrations are dry-run by default. Pass --apply to edit files.
 
 Agent workflow:
   1. Run prepare when starting or resuming a task, or when the index may be stale.
-  2. Read the target source; retrieve only matching rows from .markdown-formal/reference-map.md for external existing refs.
+  2. Read the target source; retrieve only matching rows from .math-workspace/reference-map.md for external existing refs.
   3. Use tmp-* for new objects and page anchors, then run finish on the edited file or directory (it verifies).
   4. For old numbered prose, migrate-text-refs <scope> updates target files plus incoming references by default.
   5. If you use finalize directly, run verify before treating generated or migrated content as complete.`);
@@ -2719,15 +2719,15 @@ Agent workflow:
 async function printArtifactPaths() {
     const rows = [
         ['package root', PACKAGE_ROOT],
-        ['CLI', path.join(__dirname, 'formal-tools.js')],
-        ['reader UI', path.join(PACKAGE_ROOT, 'out', 'reader', 'index.html')],
+        ['CLI', path.join(__dirname, 'math-workspace.js')],
+        ['workspace UI', path.join(PACKAGE_ROOT, 'out', 'reader', 'index.html')],
         ['editor skill', path.join(PACKAGE_ROOT, 'skills', 'editor.md')],
         ['integrator guide', path.join(PACKAGE_ROOT, 'skills', 'integrator.md')],
         ['VASMC catalog', path.join(PACKAGE_ROOT, 'vasm-catalog', 'vasmc-catalog.yaml')],
         ['usage doc', path.join(PACKAGE_ROOT, 'docs', 'usage.md')],
         ['release doc', path.join(PACKAGE_ROOT, 'docs', 'release.md')]
     ];
-    console.log('markdown-formal paths');
+    console.log('math-workspace paths');
     for (const [label, filePath] of rows) {
         const exists = await pathExists(filePath);
         console.log(`${label}: ${toPosix(filePath)}${exists ? '' : ' (missing)'}`);
@@ -2753,19 +2753,19 @@ function parseReaderArgs(args: string[]): { rootPath?: string; port: number; hel
             continue;
         }
         if (arg === '--help' || arg === 'help') {
-            console.log('Usage: npm run formal -- serve [project-dir] [--port 0]\nOmit project-dir to choose a local project in the Reader.');
+            console.log('Usage: npm run workspace -- serve [project-dir] [--port 0]\nOmit project-dir to choose a local project in Math Workspace.');
             process.exitCode = 0;
             return { port: 0, help: true };
         }
         if (arg.startsWith('-') || hasPath) {
-            throw new Error(`Unknown reader option: ${arg}`);
+            throw new Error(`Unknown workspace option: ${arg}`);
         }
         inputPath = arg;
         hasPath = true;
     }
 
     if (!Number.isInteger(port) || port < 0 || port > 65535) {
-        throw new Error(`Invalid reader port: ${port}`);
+        throw new Error(`Invalid workspace port: ${port}`);
     }
     return { rootPath: inputPath ? path.resolve(ROOT, inputPath) : undefined, port };
 }
@@ -2774,13 +2774,13 @@ async function serveReader(args: string[]): Promise<void> {
     const options = parseReaderArgs(args);
     if (options.help) return;
     const reader = await startReaderServer(options);
-    console.log(`Markdown Formal Reader: ${reader.url}`);
+    console.log(`Math Workspace: ${reader.url}`);
     if (reader.rootPath) {
         console.log(`Bound project: ${reader.rootPath}`);
     } else {
-        console.log('No project is bound. Choose a recent project or select a project directory in the Reader.');
+        console.log('No project is bound. Choose a recent project or select a project directory in Math Workspace.');
     }
-    console.log('The reader is local-only and read-only. Source changes refresh the current view automatically.');
+    console.log('Math Workspace is local-only and read-only. Source changes refresh the current view automatically.');
 
     let closing = false;
     const close = async () => {
@@ -2815,13 +2815,13 @@ function parseReaderMcpArgs(args: string[]): { rootPath?: string; port: number; 
             continue;
         }
         if (arg === '--help' || arg === 'help') {
-            console.log('Usage: markdown-formal mcp [--root project-dir] [--port 0]');
+            console.log('Usage: math-workspace mcp [--root project-dir] [--port 0]');
             return { port: 0, help: true };
         }
         throw new Error(`Unknown MCP option: ${arg}`);
     }
     if (!Number.isInteger(port) || port < 0 || port > 65535) {
-        throw new Error(`Invalid reader port: ${port}`);
+        throw new Error(`Invalid workspace port: ${port}`);
     }
     return { rootPath: rootPath ? path.resolve(ROOT, rootPath) : undefined, port };
 }
@@ -2843,7 +2843,7 @@ async function main() {
         await lint();
     } else if (command === 'graph') {
         await graph(args);
-    } else if (command === 'serve' || command === 'reader') {
+    } else if (command === 'serve') {
         await serveReader(args);
     } else if (command === 'mcp') {
         await serveReaderMcp(args);

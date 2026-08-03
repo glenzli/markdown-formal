@@ -5,9 +5,9 @@ dist/
 legacy/vscode-extension/*.vsix
 .vasmc/
 vasmc-build-state.yaml
-.markdown-formal/*
-!.markdown-formal/
-!.markdown-formal/config.json
-!.markdown-formal/definitions.json
-!.markdown-formal/symbols.json
+.math-workspace/*
+!.math-workspace/
+!.math-workspace/config.json
+!.math-workspace/definitions.json
+!.math-workspace/symbols.json
 .DS_Store

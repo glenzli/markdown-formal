@@ -18,7 +18,7 @@ interface ReaderLaunch extends Record<string, unknown> {
 
 async function isFormalProject(rootPath: string): Promise<boolean> {
     try {
-        return (await fs.stat(path.join(rootPath, '.markdown-formal', 'config.json'))).isFile();
+        return (await fs.stat(path.join(rootPath, '.math-workspace', 'config.json'))).isFile();
     } catch (_error) {
         return false;
     }
@@ -45,7 +45,7 @@ class ReaderServerRegistry {
 
         if (!(await isFormalProject(rootPath))) {
             if (projectRoot || this.options.rootPath) {
-                throw new Error('The Reader project needs .markdown-formal/config.json. Run `markdown-formal prepare` first.');
+                throw new Error('The Math Workspace project needs .math-workspace/config.json. Run `math-workspace prepare` first.');
             }
             return this.openLauncher();
         }
@@ -80,17 +80,17 @@ class ReaderServerRegistry {
 export async function runReaderMcpServer(options: ReaderMcpServerOptions = {}): Promise<void> {
     const registry = new ReaderServerRegistry(options);
     const server = new McpServer({
-        name: 'markdown-formal-reader',
+        name: 'math-workspace',
         version: '0.1.0'
     }, {
-        instructions: 'Use formal_reader to launch Markdown Formal Reader for a prepared formal Markdown project. The Reader is local-only and read-only; it needs .markdown-formal/config.json.'
+        instructions: 'Use math_workspace to launch Math Workspace for a prepared formal Markdown project. Math Workspace is local-only and read-only; it needs .math-workspace/config.json.'
     });
 
-    server.registerTool('formal_reader', {
-        title: 'Open Markdown Formal Reader',
-        description: 'Start or reuse the local Markdown Formal Reader for a prepared project, optionally opening one Markdown page.',
+    server.registerTool('math_workspace', {
+        title: 'Open Math Workspace',
+        description: 'Start or reuse the local Math Workspace for a prepared project, optionally opening one Markdown page.',
         inputSchema: {
-            projectRoot: z.string().optional().describe('Absolute or relative root of a project containing .markdown-formal/config.json. Defaults to the MCP working directory.'),
+            projectRoot: z.string().optional().describe('Absolute or relative root of a project containing .math-workspace/config.json. Defaults to the MCP working directory.'),
             pagePath: z.string().optional().describe('Project-relative Markdown path to open, such as book/01-foundations.md.')
         },
         outputSchema: {
@@ -110,7 +110,7 @@ export async function runReaderMcpServer(options: ReaderMcpServerOptions = {}): 
             return {
                 content: [{
                     type: 'text',
-                    text: `Markdown Formal Reader is ready${target}. Open it in Codex's local browser or any browser: ${launch.url}`
+                    text: `Math Workspace is ready${target}. Open it in Codex's local browser or any browser: ${launch.url}`
                 }],
                 structuredContent: launch
             };
