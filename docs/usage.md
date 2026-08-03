@@ -205,7 +205,7 @@ The command prints a URL bound only to `127.0.0.1`. Open it in Codex's local bro
 
 Dependency markers read only explicit `@h-...` relationships. A short line above the dot means the statement or proof explicitly references formal items such as a section, definition, theorem-like object, or proof-backed hash remark. A vertical line below means a later dependency node depends on it; a fork means multiple direct downstream nodes. Mainline theorem-like nodes use the ordinary impact colors: muted is a terminal node, blue is directly cited, and green is both explicitly grounded and cited later. Hash remarks use a muted supplemental color and label; plain `注（...）` / `Remark (...)` entries have no graph node or marker. Hover for reference and transitive-impact counts. These are structural signals, not measures of mathematical importance.
 
-If the Codex CLI is installed and signed in locally, selecting text or a formula can open Math Workspace's temporary discussion dialog. The first message includes the relative path, source line range, selected Markdown, project root, and read-only tool boundary; subsequent messages retain that context. A temporary discussion is not persisted and never writes the manuscript or local task state. Each assistant conclusion provides a **Copy citation** action that copies a Markdown block with the source, selection, question, and conclusion; paste it into whichever native Codex task you choose. Math Workspace does not bind to or send messages directly into Codex tasks, and it does not handle Codex tool approvals; continue in Codex when tools are needed.
+Selecting text or a formula and choosing **Hand off to Codex** creates a short-lived `mwsel_...` reference and copies a ready-to-paste task prompt. In the native Codex task you choose, `math_workspace_selection_get` retrieves the selection after checking its project root and source hash. All later discussion, tool use, edits, and approvals stay in that native task. The local handoff record expires after two hours and is not a conversation, task, or manuscript store.
 
 The project needs `.math-workspace/config.json`; run `prepare` once to create it. The Math Workspace does not require `workspace-index.json`.
 
@@ -213,7 +213,7 @@ The VS Code package remains available as a legacy compatibility integration, but
 
 ### Codex MCP Entry
 
-The Math Workspace remains an independent local client and can also be opened through Codex MCP. MCP only starts or reuses the local Math Workspace and returns a localhost URL that Codex's built-in browser can open; it does not embed or duplicate Math Workspace rendering, indexing, or discussion behavior.
+The Math Workspace remains an independent local client and can also be opened through Codex MCP. MCP starts or reuses the local workspace and provides narrow selection, formal-object, strict-dependency, Lean-alignment, and read-only validation queries; it does not embed or duplicate Math Workspace rendering or a Codex discussion surface.
 
 ```bash
 math-workspace mcp
@@ -232,7 +232,7 @@ codex plugin marketplace add /path/to/math-workspace
 codex plugin add math-workspace@personal
 ```
 
-The plugin calls `math_workspace` for the current project or a project-relative Markdown page. If no prepared project is available, it opens Math Workspace's local project launcher. MCP binds only to `127.0.0.1` and does not write manuscript or `.math-workspace/` artifacts.
+The plugin calls `math_workspace` for the current project or a project-relative Markdown page; `math_workspace_selection_get` resolves a pasted `mwsel_...` selection, while `math_workspace_formal_lookup`, `math_workspace_dependency_slice`, `math_workspace_lean_alignment`, and `math_workspace_verify` provide focused context. If no prepared project is available, it opens Math Workspace's local project launcher. MCP binds only to `127.0.0.1` and does not write manuscript or `.math-workspace/` artifacts.
 
 ### AI Workflow Integration
 
@@ -531,7 +531,7 @@ local engine is installed.
 
 - 稳定编号：源码保存稳定 `#h-...`，新增对象先写 `#tmp-*`；正文引用只用 `@h-...`、`@h-....title` 或 `@h-....full`，读者编号由工具渲染。
 - 定义查询：定义不加 hash、不参与 ref；工具自动扫描标准 `定义（术语）：...` / `Definition (Term): ...`，并在发现概念/术语附录时利用其表格和末级条目建立补充索引。AI 只为查询缺失、非标准定义、别名、中英互查和不可靠边界维护 `.math-workspace/definitions.json`。
-- 项目知识：`.math-workspace/project-analysis.json` / `.math-workspace/project-analysis.md` 是工具生成的概念附录、符号附录和 summary 页面摘要；Math Workspace 在内存中按内容变化重建，并把同 book 来源交给任务讨论。
+- 项目知识：`.math-workspace/project-analysis.json` / `.math-workspace/project-analysis.md` 是工具生成的概念附录、符号附录和 summary 页面摘要；Math Workspace 在内存中按内容变化重建，供 Codex 通过窄范围 MCP 查询核对。
 - 符号表：`.math-workspace/symbols.json` 只记录项目明确约定且发生语义变化的特殊 LaTeX 记号，不索引通用变量、完整推导公式或一次性符号。
 - 依赖图：命题/引理/定理/推论与带 hash、可证明的补充注释之间的显式依赖来自 `@h-...`，权威数据是 `.math-workspace/dependency-graph.json`；普通 `注（...）` 不进入图。AI 或证明器推测出的边必须另存为 suggested 数据。
 - 导出：普通 Markdown/PDF 不直接消费 formal 源；先用 `export-md` 或 `export-md-split` 降级 marker/ref，项目级后处理之后再用 `render-pdf`。
@@ -626,7 +626,7 @@ Table #tmp-7 (Parameter ranges):
 Definition (Bounded operator): A linear map \(T:X\to Y\) is bounded if ...
 ```
 
-工具还会识别明确命名的概念/术语附录，例如 `appendix-*-concepts.md`、glossary、terminology 或中文概念表。此类页面中，`术语 | 定义` / `Term | Definition` 表格与最末级概念条目会作为补充查询条目。`prepare` 会生成 `.math-workspace/project-analysis.json` 和 `.math-workspace/project-analysis.md`，列出被采用的概念、符号和 summary 页面；Math Workspace 在内存中同步重建这份结构，并把当前 book 的来源带入 Codex 讨论上下文。
+工具还会识别明确命名的概念/术语附录，例如 `appendix-*-concepts.md`、glossary、terminology 或中文概念表。此类页面中，`术语 | 定义` / `Term | Definition` 表格与最末级概念条目会作为补充查询条目。`prepare` 会生成 `.math-workspace/project-analysis.json` 和 `.math-workspace/project-analysis.md`，列出被采用的概念、符号和 summary 页面；Math Workspace 在内存中同步重建这份结构，供 Codex 通过窄范围 MCP 查询核对。
 
 这些条目是派生索引，不是新的写作源，也不会由工具从普通正文猜测术语或符号含义。
 
@@ -715,7 +715,7 @@ npm run workspace -- serve
 
 依赖标记只读取显式 `@h-...` 关系。圆点上方的短线表示该陈述或证明显式引用了 formal 对象（可为小节、定义或命题）；下方纵线表示后续依赖对象依赖它，分叉表示多个直接下游。主线命题使用常规颜色；带 hash 的、可证明的补充注释使用低强调度的注释颜色。灰色是没有下游对象的终点，蓝色表示被直接引用，绿色分叉表示既有显式前提也被后续对象引用。悬停可查看引用数与传递影响范围；这些是结构信号，不等同于数学重要性。权威依赖图包含命题/引理/定理/推论之间的边，也包含带 hash 补充注释的入边、出边；普通 `注（...）` 不进入图，也没有标记。
 
-若本机 Codex CLI 已安装并登录，可在选中正文或公式后打开 Math Workspace 的临时讨论浮窗。首条消息会附带相对路径、源码行范围、选中 Markdown、项目根和只读工具边界；后续消息保留该上下文。临时讨论是不可持久化的，不写入书稿或本机任务状态。每条助手结论旁的“复制引用”会生成一段包含来源、选区、问题和结论的 Markdown，可粘贴到你选择的任一原生 Codex 任务；Math Workspace 不绑定或直接向任务发送消息。Math Workspace 不承接 Codex 的工具审批，需要工具时应回到 Codex 继续。
+选中正文或公式后，可点击“交给 Codex”。Math Workspace 会创建短期 `mwsel_...` 交接引用并复制一条可直接粘贴的任务提示。把提示粘贴到目标原生 Codex 任务后，Codex 会调用 `math_workspace_selection_get` 读取按项目根和源码 hash 校验的选区；后续讨论、工具调用、修改和审批都在原生任务中发生。交接记录只保存在本机，两小时后自动失效，不构成对话、任务或书稿状态。
 
 项目需要先有 `.math-workspace/config.json`；首次使用可运行 `prepare`。Math Workspace 不要求预先生成 `workspace-index.json`。
 
@@ -723,7 +723,7 @@ npm run workspace -- serve
 
 ## Codex MCP 入口
 
-Math Workspace 可作为独立本地客户端运行，也可通过 Codex MCP 打开。MCP 只负责启动或复用本机工作区，并返回可由 Codex 内置浏览器直接访问的 localhost URL；它不嵌入或复制工作区的渲染、索引或讨论实现。
+Math Workspace 可作为独立本地客户端运行，也可通过 Codex MCP 打开。MCP 可启动或复用本机工作区，也提供短期选区、命题、严格依赖、Lean 对齐与只读校验查询；它不嵌入或复制工作区渲染，更不维护第二套 Codex 对话实现。
 
 CLI 入口是：
 
@@ -744,7 +744,7 @@ codex plugin marketplace add /path/to/math-workspace
 codex plugin add math-workspace@personal
 ```
 
-发布版本同样可以从安装包根目录添加 marketplace。插件调用 `math_workspace`：它可直接打开当前项目或某个项目相对 Markdown 页面；没有可用项目时会打开 Math Workspace 的本机项目启动台。
+发布版本同样可以从安装包根目录添加 marketplace。插件调用 `math_workspace` 打开当前项目或某个项目相对 Markdown 页面；`math_workspace_selection_get` 解析已粘贴的 `mwsel_...` 选区，`math_workspace_formal_lookup`、`math_workspace_dependency_slice`、`math_workspace_lean_alignment` 与 `math_workspace_verify` 提供对应的窄范围上下文。没有可用项目时会打开 Math Workspace 的本机项目启动台。
 
 MCP 与 Math Workspace 一样只绑定 `127.0.0.1`，不写入书稿或 `.math-workspace/` 产物。
 

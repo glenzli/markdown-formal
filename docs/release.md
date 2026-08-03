@@ -11,7 +11,7 @@
 `math-workspace` releases include five primary surfaces:
 
 - a vendorable CLI and local Math Workspace runtime;
-- a Codex MCP plugin that launches the Math Workspace in a local browser;
+- a Codex MCP plugin that opens the local Math Workspace and provides focused formal context queries;
 - human-facing public documentation;
 - reviewed AI workflow artifacts that should be merged into target projects;
 - VASMC catalog exports for lockable reuse.
@@ -143,7 +143,7 @@ codex plugin marketplace add /path/to/math-workspace-release
 codex plugin add math-workspace@personal
 ```
 
-The plugin calls `math-workspace mcp`, which starts or reuses the local Math Workspace and returns its localhost URL for Codex's built-in browser. It does not embed or replace the Math Workspace UI.
+The plugin calls `math-workspace mcp`, which can start or reuse the local Math Workspace for Codex's built-in browser and resolve `mwsel_...` selection handoffs alongside focused formal, dependency, Lean, and read-only validation context. It does not embed or replace the Math Workspace UI or duplicate a Codex conversation surface.
 
 ### Vendor CLI
 
@@ -440,7 +440,7 @@ codex plugin marketplace add /path/to/math-workspace-release
 codex plugin add math-workspace@personal
 ```
 
-plugin 调用 `math-workspace mcp`，返回可在 Codex 内置浏览器直接访问的 localhost URL；它不嵌入或替代 Math Workspace UI，只会启动或复用绑定 `127.0.0.1` 的本地工作区。
+plugin 调用 `math-workspace mcp`，可返回在 Codex 内置浏览器直接访问的 localhost URL，也可查询短期 `mwsel_...` 选区、命题、严格依赖、Lean 对齐与只读校验；它不嵌入或替代 Math Workspace UI，更不维护第二套 Codex 对话。
 
 ## Vendoring CLI
 

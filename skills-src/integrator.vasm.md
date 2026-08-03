@@ -55,7 +55,7 @@ npm run workspace -- prepare
 
 - 可人工维护：`.math-workspace/config.json`、必要时的 `definitions.json` 与 `symbols.json`。
 - 工具派生：`agent-guide.md`、`reference-map.md`、`workspace-index.json`、`project-analysis.*`、依赖图和报告。可读，不作为手工源。
-- Math Workspace 是只读的本地服务；它按内容变化重建索引与项目知识。它向 Codex 讨论提供当前选区、路径、行范围、直接引用和当前 book 的知识来源，而不会主动写源文档。
+- Math Workspace 是只读的本地服务；它按内容变化重建索引与项目知识。Reader 选区生成短期 `mwsel_...` 交接引用，原生 Codex 任务通过 MCP 读取经过项目根与源码 hash 校验的选区、路径、行范围、直接引用和相关知识来源；它不会主动写源文档，也不维护第二套对话。
 
 ## 完成标准
 

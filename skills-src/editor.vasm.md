@@ -62,9 +62,9 @@ $$
 
 工具会自动扫描标准 `定义（术语）：...` / `Definition (Term): ...`，并保留合理的跨公式、列表和续接段范围。它还会识别明确命名的概念/术语附录（例如 `appendix-*-concepts.md`、glossary、terminology 或中文概念表），从 `术语 | 定义` 表格与末级概念条目建立补充查询索引。
 
-`.math-workspace/project-analysis.json` / `.math-workspace/project-analysis.md` 是工具生成的项目结构摘要；Math Workspace 按内容变更在内存中重建，任务讨论会收到当前 book 的相关来源。它不是写作源，不应为了“刷新索引”而手工改写。
+`.math-workspace/project-analysis.json` / `.math-workspace/project-analysis.md` 是工具生成的项目结构摘要；Math Workspace 按内容变更在内存中重建，供 Codex 通过窄范围 MCP 查询核对。它不是写作源，不应为了“刷新索引”而手工改写。
 
-仅在下列情况维护 `.math-workspace/definitions.json`：非标准行文定义、别名/中英互查、需要固定多段预览，或确定性边界提取不可靠。记录可验证的 `term`、可选 `aliases`、`source` 和 Markdown `content`。不确定“称为 X”“记作 X”等是否应可查询时，在 Math Workspace/Codex 讨论中判断；不要静默修改正文或凭普通术语出现创建条目。
+仅在下列情况维护 `.math-workspace/definitions.json`：非标准行文定义、别名/中英互查、需要固定多段预览，或确定性边界提取不可靠。记录可验证的 `term`、可选 `aliases`、`source` 和 Markdown `content`。不确定“称为 X”“记作 X”等是否应可查询时，在原生 Codex 任务中结合 Math Workspace 查询判断；不要静默修改正文或凭普通术语出现创建条目。
 
 `.math-workspace/symbols.json` 仅记录项目明确约定且语义发生变化的特殊 LaTeX 记号，维护 `source`、闭合的 `pattern` 和 `meaning`。不记录通用变量、整条公式或一次性推导；检测到符号附录也不自动猜测 pattern 或 meaning。
 

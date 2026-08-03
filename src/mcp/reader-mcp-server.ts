@@ -4,6 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { startReaderServer, type FormalReaderServer } from '../reader/server';
+import { WorkspaceQueries } from './workspace-queries';
 
 export interface ReaderMcpServerOptions {
     rootPath?: string;
@@ -79,12 +80,77 @@ class ReaderServerRegistry {
 
 export async function runReaderMcpServer(options: ReaderMcpServerOptions = {}): Promise<void> {
     const registry = new ReaderServerRegistry(options);
+    const queries = new WorkspaceQueries({ rootPath: options.rootPath });
     const server = new McpServer({
         name: 'math-workspace',
         version: '0.1.0'
     }, {
-        instructions: 'Use math_workspace to launch Math Workspace for a prepared formal Markdown project. Math Workspace is local-only and read-only; it needs .math-workspace/config.json.'
+        instructions: 'Use Math Workspace for local, read-only formal Markdown and Lean context. When a user supplies an mwsel_ selection handoff, call math_workspace_selection_get first. Use the narrow lookup, dependency, Lean, and validation tools instead of asking the user to paste project context.'
     });
+
+    const projectRoot = z.string().optional().describe('Absolute or relative root of a project containing .math-workspace/config.json. Defaults to the MCP working directory.');
+    const query = async (work: () => Promise<Record<string, unknown>>, success: string) => {
+        try {
+            const result = await work();
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: `${success}\n\n${JSON.stringify(result, null, 2)}`
+                }],
+                structuredContent: { result }
+            };
+        } catch (error) {
+            return { content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }], isError: true };
+        }
+    };
+
+    server.registerTool('math_workspace_selection_get', {
+        title: 'Read a Math Workspace selection handoff',
+        description: 'Resolve a short-lived mwsel_ selection created in Math Workspace. It validates that the source has not changed and returns only the selected source context.',
+        inputSchema: {
+            selectionId: z.string().describe('The mwsel_ selection id pasted from Math Workspace.'),
+            projectRoot
+        },
+        outputSchema: { result: z.object({}).passthrough() },
+        annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+    }, ({ selectionId, projectRoot: root }) => query(() => queries.selectionGet(selectionId, root), `Math Workspace selection ${selectionId} is current.`));
+
+    server.registerTool('math_workspace_formal_lookup', {
+        title: 'Look up a formal Markdown object',
+        description: 'Return one formal object’s stable location, source excerpt, and Lean-anchor summary by h- id.',
+        inputSchema: { id: z.string().describe('An h- id, with or without @ or #.'), projectRoot },
+        outputSchema: { result: z.object({}).passthrough() },
+        annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+    }, ({ id, projectRoot: root }) => query(() => queries.formalLookup(id, root), `Math Workspace formal object ${id} loaded.`));
+
+    server.registerTool('math_workspace_dependency_slice', {
+        title: 'Inspect strict formal dependencies',
+        description: 'Return a bounded, strict-only upstream and/or downstream dependency slice for one formal object.',
+        inputSchema: {
+            id: z.string().describe('An h- id, with or without @ or #.'),
+            direction: z.enum(['upstream', 'downstream', 'both']).optional().describe('Defaults to both.'),
+            depth: z.number().int().min(1).max(4).optional().describe('Graph hops, from 1 to 4. Defaults to 1.'),
+            projectRoot
+        },
+        outputSchema: { result: z.object({}).passthrough() },
+        annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+    }, ({ id, direction, depth, projectRoot: root }) => query(() => queries.dependencySlice(id, direction, depth, root), `Math Workspace dependency slice for ${id} loaded.`));
+
+    server.registerTool('math_workspace_lean_alignment', {
+        title: 'Inspect Lean alignment',
+        description: 'Return observed Lean anchors, declaration status, build evidence, and dependency comparison for one formal object.',
+        inputSchema: { id: z.string().describe('An h- id, with or without @ or #.'), projectRoot },
+        outputSchema: { result: z.object({}).passthrough() },
+        annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+    }, ({ id, projectRoot: root }) => query(() => queries.leanAlignment(id, root), `Math Workspace Lean alignment for ${id} loaded.`));
+
+    server.registerTool('math_workspace_verify', {
+        title: 'Run a read-only Math Workspace validation scan',
+        description: 'Scan formal Markdown and Lean alignment in memory. It does not generate artifacts, run Lean builds, or modify source files.',
+        inputSchema: { strictChapters: z.boolean().optional().describe('Treat chapter-gap warnings as blocking.'), projectRoot },
+        outputSchema: { result: z.object({}).passthrough() },
+        annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+    }, ({ strictChapters, projectRoot: root }) => query(() => queries.verify(strictChapters, root), 'Math Workspace read-only validation completed.'));
 
     server.registerTool('math_workspace', {
         title: 'Open Math Workspace',

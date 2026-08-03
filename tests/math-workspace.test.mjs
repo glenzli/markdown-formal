@@ -109,10 +109,10 @@ async function stopReader(child) {
     if (child.exitCode === null) child.kill('SIGKILL');
 }
 
-async function startMcp(root) {
+async function startMcp(root, options = {}) {
     const child = spawn('node', [cliPath, 'mcp'], {
         cwd: root,
-        env: { ...process.env },
+        env: { ...process.env, ...(options.env || {}) },
         stdio: ['pipe', 'pipe', 'pipe']
     });
     const pending = new Map();
@@ -1721,6 +1721,98 @@ process.stdin.on('data', chunk => {
     }
 }
 
+async function testReaderSelectionHandoff() {
+    const root = await makeWorkspace('reader-handoff');
+    const chapterPath = path.join(root, 'book1', '01-foundations.md');
+    await fs.writeFile(chapterPath, [
+        '# #h-1111111111111111 Foundations',
+        '',
+        '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
+        '',
+        '推论 #h-4444444444444444（Consequence）：Apply @h-3333333333333333.',
+        ''
+    ].join('\n'));
+    assert.equal(runCli(root, ['prepare']).status, 0);
+    const env = {
+        MATH_WORKSPACE_STATE: path.join(root, 'reader-projects.json'),
+        MATH_WORKSPACE_HANDOFFS: path.join(root, 'reader-handoffs.json')
+    };
+    const reader = await startReader(root, { env });
+    try {
+        const state = await (await fetch(reader.url + '/api/state')).json();
+        const handoffResponse = await fetch(reader.url + '/api/handoffs', {
+            method: 'POST',
+            headers: {
+                'content-type': 'application/json',
+                'x-math-workspace-token': state.requestToken
+            },
+            body: JSON.stringify({
+                prompt: 'Explain the selected theorem without editing source.',
+                selection: {
+                    filePath: 'book1/01-foundations.md',
+                    startLine: 3,
+                    endLine: 3,
+                    markdown: '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
+                    text: 'Finite cover'
+                }
+            })
+        });
+        assert.equal(handoffResponse.status, 200);
+        const handoff = await handoffResponse.json();
+        assert.match(handoff.selectionId, /^mwsel_[a-f0-9]{24}$/);
+        assert.match(handoff.taskPrompt, /math_workspace_selection_get/);
+        assert.match(handoff.taskPrompt, /Explain the selected theorem/);
+        const storedHandoffs = JSON.parse(await fs.readFile(env.MATH_WORKSPACE_HANDOFFS, 'utf8'));
+        assert.equal(storedHandoffs.handoffs[0].id, handoff.selectionId, JSON.stringify(storedHandoffs));
+        assert.equal(storedHandoffs.handoffs[0].rootPath, await fs.realpath(root), JSON.stringify(storedHandoffs));
+
+        const mcp = await startMcp(root, { env });
+        try {
+            const tools = await mcp.request('tools/list');
+            ['math_workspace_selection_get', 'math_workspace_formal_lookup', 'math_workspace_dependency_slice', 'math_workspace_lean_alignment', 'math_workspace_verify'].forEach(name => {
+                assert.ok(tools.tools.some(tool => tool.name === name), `${name} should be available`);
+            });
+            const selected = await mcp.request('tools/call', {
+                name: 'math_workspace_selection_get',
+                arguments: { selectionId: handoff.selectionId }
+            });
+            assert.equal(selected.isError, undefined, JSON.stringify(selected));
+            assert.ok(selected.structuredContent, JSON.stringify(selected));
+            assert.equal(selected.structuredContent.result.selectionId, handoff.selectionId);
+            assert.equal(selected.structuredContent.result.source.filePath, 'book1/01-foundations.md');
+            assert.match(selected.structuredContent.result.source.sourceLines, /Finite cover/);
+
+            const formal = await mcp.request('tools/call', {
+                name: 'math_workspace_formal_lookup',
+                arguments: { id: 'h-3333333333333333' }
+            });
+            assert.match(formal.structuredContent.result.content, /Finite cover/);
+            const dependencies = await mcp.request('tools/call', {
+                name: 'math_workspace_dependency_slice',
+                arguments: { id: 'h-3333333333333333', direction: 'downstream' }
+            });
+            assert.equal(dependencies.structuredContent.result.strictOnly, true);
+            assert.ok(dependencies.structuredContent.result.nodes.some(node => node.id === 'h-4444444444444444'));
+            const verification = await mcp.request('tools/call', {
+                name: 'math_workspace_verify', arguments: {}
+            });
+            assert.equal(verification.structuredContent.result.readOnly, true);
+
+            await fs.writeFile(chapterPath, (await fs.readFile(chapterPath, 'utf8')).replace('finite subcover.', 'finite extracted subcover.'));
+            const stale = await mcp.request('tools/call', {
+                name: 'math_workspace_selection_get',
+                arguments: { selectionId: handoff.selectionId }
+            });
+            assert.equal(stale.isError, true);
+            assert.match(stale.content[0].text, /changed after it was handed off/);
+        } finally {
+            await stopReader(mcp.child);
+        }
+    } finally {
+        await stopReader(reader.child);
+    }
+}
+
 async function testReaderLauncher() {
     const root = await makeWorkspace('reader-launcher');
     await fs.writeFile(path.join(root, 'book1', '01-foundations.md'), [
@@ -2196,7 +2288,7 @@ const tests = [
     ['local Reader server', testReaderServer],
     ['local Reader MCP server', testReaderMcpServer],
     ['Reader plugin MCP configuration', testReaderPluginMcpConfig],
-    ['local Reader temporary discussion', testReaderTemporaryDiscussion],
+    ['local Reader selection handoff', testReaderSelectionHandoff],
     ['local Reader launcher', testReaderLauncher],
     ['page heading formatting', testPageHeadingFormatting],
     ['export-md compiles formal syntax', testExportMarkdownCompilesFormalSyntax],

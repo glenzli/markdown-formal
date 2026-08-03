@@ -5,15 +5,15 @@ exports:
     version: 0.1.0
     format: executable
     file: math-workspace-editor.zh-CN.md
-    hash: sha256:b79c597a5269e89cf447f057e6679698812c1639d0430387bcb2de14c85cf496
+    hash: sha256:53800e49c65a7d7ac824dda6434d57a5f70b0952698aff6e0b8a77e804f7861d
   integrator:
     name: math-workspace-integrator-guide
     version: 0.1.0
     format: integrative
     file: math-workspace-integrator.md
-    hash: sha256:593c88ed6d560c916a431e27203914f7a4ec3d1591714cae11dabcf91b9ea8ee
+    hash: sha256:45160d859559e02e150fbd372ef54f5863ec0e1998932a2c39ec72dc8634bb02
     appliesTo:
-      - sha256:b79c597a5269e89cf447f057e6679698812c1639d0430387bcb2de14c85cf496
+      - sha256:53800e49c65a7d7ac824dda6434d57a5f70b0952698aff6e0b8a77e804f7861d
   lean-formalization:
     name: math-workspace-lean-formalization-skill
     version: 0.1.0

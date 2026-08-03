@@ -546,7 +546,7 @@ export class ReaderPropositionReview {
             audit.className = 'reader-proposition-review-batch-audit';
             audit.dataset.tooltip = labels.assistantReviewHint;
             audit.setAttribute('aria-label', labels.assistantReview + ' · ' + labels.terminalPropositionSummary(terminal.length));
-            audit.append(readerIcon('discuss'), document.createTextNode(labels.assistantReview));
+            audit.append(readerIcon('handoff'), document.createTextNode(labels.assistantReview));
             audit.addEventListener('click', () => this.host.assistTerminalPropositions(terminal));
             section.append(audit);
         }

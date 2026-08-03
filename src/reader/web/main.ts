@@ -12,13 +12,13 @@ import {
 import {
     ReaderSourceActions,
     type ReaderDefinitionMatch,
-    type ReaderDiscussionSelection
+    type ReaderSelectionHandoff
 } from './source-actions';
 import { ReaderRecallPopover } from './recall-popover';
 import { ReaderDependencyPopover } from './reader-dependency-popover';
 import { ReaderLeanPopover, type ReaderLeanAnchorPayload } from './reader-lean-popover';
 import { readerIcon, replaceReaderButtonIcon, type ReaderIconName } from './reader-icons';
-import { ReaderDiscussionDialog } from './reader-discussion';
+import { copyReaderText } from './reader-clipboard';
 import { ReaderToolbarPanel } from './reader-toolbar-panel';
 import { ReaderPropositionReview, type ReaderPropositionReviewItem } from './reader-proposition-review';
 
@@ -63,6 +63,12 @@ interface ReaderPagePayload {
     }>;
 }
 
+interface ReaderHandoffResponse {
+    selectionId: string;
+    expiresAt: string;
+    taskPrompt: string;
+}
+
 const words = {
     zh: {
         contents: '目录',
@@ -91,7 +97,7 @@ const words = {
         propositionReviewTerminalPropositionSummary: (count: number) => `终端命题 ${count} 项`,
         propositionReviewTerminalPropositionHint: '这些命题当前在严格依赖图中没有下游引用；其章节作用与形式化锚点可按需审阅。',
         propositionReviewAssistantReview: '辅助快审',
-        propositionReviewAssistantReviewHint: '在临时讨论中对本章终端命题进行一次只读必要性快审；不会自动删改正文。',
+        propositionReviewAssistantReviewHint: '生成一条可粘贴到 Codex 的交接提示，对本章终端命题做一次必要性快审；不会自动删改正文。',
         propositionReviewNodeLabel: (display: string, upstream: number, downstream: number, ambientReferences: number, leanDeclarations: number, status: string) => `${display}；严格上游 ${upstream} 项，严格下游 ${downstream} 项，正文补充提及 ${ambientReferences} 处${leanDeclarations > 0 ? `，Lean 锚点 ${leanDeclarations} 个声明` : ''}；${status}`,
         source: '来源',
         jump: '定位',
@@ -121,24 +127,9 @@ const words = {
         projectLauncherTitle: '打开 Math Workspace',
         projectLauncherDescription: '选择一个已包含 .math-workspace/config.json 的项目目录。',
         projectSelectionCancelled: '尚未选择项目。',
-        discussWithTask: '临时讨论',
-        temporaryDiscussion: '临时讨论',
-        temporaryDiscussionContext: '发送给 Codex 的上下文',
-        temporaryDiscussionAccess: '工作区访问',
-        temporaryDiscussionTools: 'Codex 可在当前项目根目录内使用只读工具查询文件。临时讨论以只读沙盒启动，Math Workspace 不转交工具审批。',
-        temporaryDiscussionPrompt: '就此选区提问',
-        temporaryDiscussionSend: '发送',
-        temporaryDiscussionEmpty: '临时讨论没有返回文本回复。',
-        temporaryDiscussionReadOnly: '这是一段不落盘的只读临时讨论。首条消息会携带下方源码、位置和项目根；后续消息保留该上下文。',
-        temporaryDiscussionRefresh: '刷新讨论',
-        temporaryDiscussionQuote: '复制引用',
-        temporaryDiscussionQuoted: '已复制引用',
-        temporaryDiscussionQuoteFailed: '无法复制引用，请重试。',
-        temporaryDiscussionQuoteHeader: '来自 Math Workspace 临时讨论',
-        temporaryDiscussionQuoteSource: '来源',
-        temporaryDiscussionQuoteSelection: '选区',
-        temporaryDiscussionQuoteQuestion: '问题',
-        temporaryDiscussionQuoteConclusion: '临时讨论结论',
+        handOffToCodex: '交给 Codex',
+        handoffCopied: '已复制交接提示',
+        handoffFailed: '无法创建交接提示，请重试。',
         leanAlignment: 'Lean 对齐',
         leanLoading: '正在读取 Lean 对齐信息…',
         leanUnavailable: '暂时无法读取 Lean 对齐信息。',
@@ -177,7 +168,7 @@ const words = {
         propositionReviewTerminalPropositionSummary: (count: number) => `${count} terminal proposition${count === 1 ? '' : 's'}`,
         propositionReviewTerminalPropositionHint: 'These propositions currently have no downstream reference in the strict dependency graph; their chapter role and formalization anchors can be reviewed when useful.',
         propositionReviewAssistantReview: 'Assisted quick review',
-        propositionReviewAssistantReviewHint: 'Open a temporary discussion for one read-only necessity review of this chapter’s terminal propositions; no source changes are made automatically.',
+        propositionReviewAssistantReviewHint: 'Copy a handoff prompt for one necessity review of this chapter’s terminal propositions in a native Codex task; no source changes are made automatically.',
         propositionReviewNodeLabel: (display: string, upstream: number, downstream: number, ambientReferences: number, leanDeclarations: number, status: string) => `${display}; ${upstream} strict upstream, ${downstream} strict downstream, ${ambientReferences} supplemental text mention${ambientReferences === 1 ? '' : 's'}${leanDeclarations > 0 ? `, Lean anchor with ${leanDeclarations} declaration${leanDeclarations === 1 ? '' : 's'}` : ''}; ${status}`,
         source: 'Source',
         jump: 'Locate',
@@ -207,24 +198,9 @@ const words = {
         projectLauncherTitle: 'Open Math Workspace',
         projectLauncherDescription: 'Choose a project folder containing .math-workspace/config.json.',
         projectSelectionCancelled: 'No project was selected.',
-        discussWithTask: 'Temporary discussion',
-        temporaryDiscussion: 'Temporary discussion',
-        temporaryDiscussionContext: 'Context sent to Codex',
-        temporaryDiscussionAccess: 'Workspace access',
-        temporaryDiscussionTools: 'Codex can inspect files under the current project root with read-only workspace tools. The temporary discussion starts in the read-only sandbox, and Math Workspace does not forward tool approvals.',
-        temporaryDiscussionPrompt: 'Ask about this selection',
-        temporaryDiscussionSend: 'Send',
-        temporaryDiscussionEmpty: 'The temporary discussion returned no text response.',
-        temporaryDiscussionReadOnly: 'This is an ephemeral, read-only discussion. Its first message includes the source, location, and project root below; later messages retain that context.',
-        temporaryDiscussionRefresh: 'Refresh discussion',
-        temporaryDiscussionQuote: 'Copy citation',
-        temporaryDiscussionQuoted: 'Citation copied',
-        temporaryDiscussionQuoteFailed: 'Could not copy the citation. Try again.',
-        temporaryDiscussionQuoteHeader: 'From a Math Workspace temporary discussion',
-        temporaryDiscussionQuoteSource: 'Source',
-        temporaryDiscussionQuoteSelection: 'Selection',
-        temporaryDiscussionQuoteQuestion: 'Question',
-        temporaryDiscussionQuoteConclusion: 'Temporary discussion conclusion',
+        handOffToCodex: 'Hand off to Codex',
+        handoffCopied: 'Handoff prompt copied',
+        handoffFailed: 'Could not create a handoff prompt. Try again.',
         leanAlignment: 'Lean alignment',
         leanLoading: 'Loading Lean alignment…',
         leanUnavailable: 'Lean alignment details are unavailable.',
@@ -323,7 +299,6 @@ class ReaderApplication {
     private recallPopover!: ReaderRecallPopover;
     private dependencyPopover!: ReaderDependencyPopover;
     private leanPopover!: ReaderLeanPopover;
-    private discussionDialog!: ReaderDiscussionDialog;
     private toolbarPanel!: ReaderToolbarPanel;
     private propositionReview!: ReaderPropositionReview;
     private realtimeEvents: EventSource | undefined;
@@ -381,7 +356,7 @@ class ReaderApplication {
             fetchDefinition: index => this.fetchJson<any>('/api/definition?index=' + index),
             renderDefinition: definition => this.renderDefinitionContent(definition),
             locateDefinition: definition => this.locateDefinition(definition),
-            discussSelection: selection => this.openTemporaryDiscussion(selection),
+            handOffSelection: selection => this.handOffSelection(selection),
             labels: () => {
                 const dictionary = this.dictionary();
                 return {
@@ -393,7 +368,7 @@ class ReaderApplication {
                     copied: dictionary.copied,
                     noDefinitions: dictionary.noDefinitions,
                     refineDefinitionQuery: dictionary.refineDefinitionQuery,
-                    discussWithTask: dictionary.discussWithTask
+                    handOffToCodex: dictionary.handOffToCodex
                 };
             }
         });
@@ -459,11 +434,6 @@ class ReaderApplication {
             openProposition: id => this.openCurrentProposition(id),
             assistTerminalPropositions: items => this.assistTerminalPropositions(items)
         });
-        this.discussionDialog = new ReaderDiscussionDialog({
-            postJson: (url, value) => this.postJson(url, value),
-            renderMarkdown: (markdown, filePath) => renderFormalMarkdown(this.markdown, markdown, this.renderOptions(filePath)),
-            labels: () => this.dictionary()
-        });
     }
 
     private dictionary() {
@@ -473,7 +443,7 @@ class ReaderApplication {
     private async fetchJson<T>(url: string): Promise<T> {
         const response = await fetch(url, {
             cache: 'no-store',
-            headers: url.startsWith('/api/codex/') && this.state?.requestToken
+            headers: url === '/api/handoffs' && this.state?.requestToken
                 ? { 'x-math-workspace-token': this.state.requestToken }
                 : undefined
         });
@@ -483,7 +453,7 @@ class ReaderApplication {
 
     private async postJson<T>(url: string, value: unknown = {}): Promise<T> {
         const headers: Record<string, string> = { 'content-type': 'application/json' };
-        if (url.startsWith('/api/codex/') && this.state?.requestToken) {
+        if (url === '/api/handoffs' && this.state?.requestToken) {
             headers['x-math-workspace-token'] = this.state.requestToken;
         }
         const response = await fetch(url, {
@@ -795,8 +765,22 @@ class ReaderApplication {
         });
     }
 
-    private openTemporaryDiscussion(selection: ReaderDiscussionSelection, initialPrompt?: string): void {
-        this.discussionDialog.open(selection, initialPrompt);
+    private async handOffSelection(selection: ReaderSelectionHandoff, prompt?: string): Promise<boolean> {
+        try {
+            const handoff = await this.postJson<ReaderHandoffResponse>('/api/handoffs', { selection, prompt });
+            if (!(await copyReaderText(handoff.taskPrompt))) {
+                this.liveStatus.textContent = this.dictionary().handoffFailed;
+                window.setTimeout(() => { this.liveStatus.textContent = ''; }, 2200);
+                return false;
+            }
+            this.liveStatus.textContent = this.dictionary().handoffCopied;
+            window.setTimeout(() => { this.liveStatus.textContent = ''; }, 2200);
+            return true;
+        } catch (_error) {
+            this.liveStatus.textContent = this.dictionary().handoffFailed;
+            window.setTimeout(() => { this.liveStatus.textContent = ''; }, 2200);
+            return false;
+        }
     }
 
     private currentPropositionReviewItems(): ReaderPropositionReviewItem[] {
@@ -873,7 +857,7 @@ class ReaderApplication {
             markdown,
             sourceLines: markdown
         };
-        this.openTemporaryDiscussion(selection, prompt);
+        void this.handOffSelection(selection, prompt);
     }
 
     private renderContents(container: HTMLElement): void {

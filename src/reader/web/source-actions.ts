@@ -20,10 +20,10 @@ export interface ReaderSourceActionLabels {
     copied: string;
     noDefinitions: string;
     refineDefinitionQuery: string;
-    discussWithTask: string;
+    handOffToCodex: string;
 }
 
-export interface ReaderDiscussionSelection {
+export interface ReaderSelectionHandoff {
     filePath: string;
     startLine: number;
     endLine: number;
@@ -37,7 +37,7 @@ export interface ReaderSourceActionsHost {
     fetchDefinition(index: number): Promise<any>;
     renderDefinition(definition: any): string;
     locateDefinition(definition: ReaderDefinitionMatch): void;
-    discussSelection(selection: ReaderDiscussionSelection): void;
+    handOffSelection(selection: ReaderSelectionHandoff): Promise<boolean>;
     labels(): ReaderSourceActionLabels;
 }
 
@@ -279,7 +279,7 @@ export class ReaderSourceActions {
             actions.append(this.iconButton('copy-line', labels.copySourceLines, async button => {
                 await this.copyAndMark(button, selected.sourceLines);
             }));
-            const discussionSelection = {
+            const handoffSelection = {
                 filePath: this.sourceDocument?.filePath || '',
                 startLine: selected.startLine,
                 endLine: selected.endLine,
@@ -287,8 +287,8 @@ export class ReaderSourceActions {
                 markdown: selected.markdown || selected.text,
                 sourceLines: selected.sourceLines
             };
-            actions.append(this.iconButton('discuss', labels.discussWithTask, () => {
-                this.host.discussSelection(discussionSelection);
+            actions.append(this.iconButton('handoff', labels.handOffToCodex, async button => {
+                if (await this.host.handOffSelection(handoffSelection)) this.markCopied(button);
                 this.dismiss();
             }));
             if (definitions.length > 0) {
@@ -327,7 +327,7 @@ export class ReaderSourceActions {
                 ? { startLine: formula.sourceStartLine, endLine: formula.sourceEndLine, sourceLines: formula.source }
                 : undefined);
             if (range) {
-                const discussionSelection = {
+                const handoffSelection = {
                     filePath: this.sourceDocument?.filePath || '',
                     startLine: range.startLine,
                     endLine: range.endLine,
@@ -335,8 +335,8 @@ export class ReaderSourceActions {
                     markdown: formula.source,
                     sourceLines: range.sourceLines
                 };
-                actions.append(this.iconButton('discuss', labels.discussWithTask, () => {
-                    this.host.discussSelection(discussionSelection);
+                actions.append(this.iconButton('handoff', labels.handOffToCodex, async button => {
+                    if (await this.host.handOffSelection(handoffSelection)) this.markCopied(button);
                     this.dismiss();
                 }));
             }
@@ -441,6 +441,10 @@ export class ReaderSourceActions {
     private async copyAndMark(button: HTMLButtonElement, value: string): Promise<void> {
         const copied = await copyReaderText(value);
         if (!copied) return;
+        this.markCopied(button);
+    }
+
+    private markCopied(button: HTMLButtonElement): void {
         const label = button.dataset.tooltip || button.getAttribute('aria-label') || '';
         button.classList.add('is-copied');
         button.dataset.tooltip = this.host.labels().copied;

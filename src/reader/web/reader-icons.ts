@@ -28,7 +28,7 @@ export type ReaderIconName =
     | 'chevron-right'
     | 'copy-source'
     | 'copy-line'
-    | 'discuss'
+    | 'handoff'
     | 'propositions'
     | 'contents'
     | 'navigation-close'
@@ -48,7 +48,7 @@ const ICONS: Record<ReaderIconName, IconNode> = {
     'chevron-right': ChevronRight,
     'copy-source': Copy,
     'copy-line': Copy,
-    discuss: MessageSquarePlus,
+    handoff: MessageSquarePlus,
     propositions: GitBranch,
     contents: ListTree,
     'navigation-close': PanelLeftClose,

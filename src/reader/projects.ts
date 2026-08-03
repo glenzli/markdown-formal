@@ -1,5 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { defaultProjectStateFilePath } from './local-state';
 
 const os = require('node:os');
 const { spawn } = require('node:child_process');
@@ -15,17 +16,6 @@ export interface ReaderProjectRecord {
 export interface ReaderProjectRegistryOptions {
     stateFilePath?: string;
     chooseDirectory?: () => Promise<string | undefined>;
-}
-
-function defaultStateFilePath(): string {
-    const home = os.homedir();
-    if (process.platform === 'darwin') {
-        return path.join(home, 'Library', 'Application Support', 'math-workspace', 'workspace-projects.json');
-    }
-    if (process.platform === 'win32') {
-        return path.join(process.env.APPDATA || home, 'math-workspace', 'workspace-projects.json');
-    }
-    return path.join(process.env.XDG_STATE_HOME || path.join(home, '.local', 'state'), 'math-workspace', 'workspace-projects.json');
 }
 
 function chooseWith(command: string, args: string[]): Promise<string | undefined> {
@@ -77,7 +67,7 @@ export class ReaderProjectRegistry {
     private readonly chooseDirectory: () => Promise<string | undefined>;
 
     constructor(options: ReaderProjectRegistryOptions = {}) {
-        this.stateFilePath = options.stateFilePath || process.env.MATH_WORKSPACE_STATE || defaultStateFilePath();
+        this.stateFilePath = options.stateFilePath || process.env.MATH_WORKSPACE_STATE || defaultProjectStateFilePath();
         this.chooseDirectory = options.chooseDirectory || chooseProjectDirectory;
     }
 

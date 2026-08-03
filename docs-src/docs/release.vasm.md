@@ -142,7 +142,7 @@ codex plugin marketplace add /path/to/math-workspace-release
 codex plugin add math-workspace@personal
 ```
 
-plugin 调用 `math-workspace mcp`，返回可在 Codex 内置浏览器直接访问的 localhost URL；它不嵌入或替代 Math Workspace UI，只会启动或复用绑定 `127.0.0.1` 的本地工作区。
+plugin 调用 `math-workspace mcp`，可返回在 Codex 内置浏览器直接访问的 localhost URL，也可查询短期 `mwsel_...` 选区、命题、严格依赖、Lean 对齐与只读校验；它不嵌入或替代 Math Workspace UI，更不维护第二套 Codex 对话。
 
 ## Vendoring CLI
 

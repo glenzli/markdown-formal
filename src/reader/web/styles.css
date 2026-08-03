@@ -565,156 +565,6 @@ button { cursor: pointer; }
 .reader-definition-choices button:hover { background: #edf3f7; color: #145b90; }
 .reader-definition-title { min-width: 0; flex: 1; overflow: hidden; margin: 0; color: #2f3941; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .reader-inline-definition { max-height: 300px; overflow: auto; }
-.reader-discussion-dialog {
-    position: fixed;
-    z-index: 45;
-    top: 72px;
-    right: 20px;
-    display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
-    width: min(560px, calc(100vw - 24px));
-    max-height: min(680px, calc(100vh - 88px));
-    overflow: hidden;
-    border: 1px solid #dbe2e6;
-    border-radius: 8px;
-    background: rgba(253, 254, 255, .985);
-    box-shadow: 0 22px 52px rgba(25, 35, 45, .2);
-    color: #293138;
-    font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: 13px;
-    line-height: 1.45;
-}
-.reader-discussion-dialog > header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    border-bottom: 1px solid #e6eaed;
-    padding: 11px 12px 9px;
-}
-.reader-discussion-dialog h2 { margin: 0; color: #303840; font-size: 14px; font-weight: 700; }
-.reader-discussion-header-actions, .reader-discussion-message-actions { display: flex; align-items: center; gap: 3px; }
-.reader-discussion-icon-button {
-    display: grid;
-    place-items: center;
-    width: 28px;
-    height: 28px;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    background: transparent;
-    color: #56636d;
-    padding: 0;
-}
-.reader-discussion-icon-button .reader-icon { width: 17px; height: 17px; }
-.reader-discussion-icon-button:hover:not(:disabled) { border-color: #cbd9e4; background: #edf5fa; color: #176195; }
-.reader-discussion-icon-button:disabled, .reader-discussion-icon-button.is-muted { opacity: .48; }
-.reader-discussion-icon-button.is-copied { border-color: #9fcfbb; background: #edf8f1; color: #16734c; }
-.reader-discussion-context {
-    border-bottom: 1px solid #e7ecef;
-    background: #f7f9fa;
-    color: #52606a;
-    padding: 0 12px;
-}
-.reader-discussion-context summary {
-    cursor: pointer;
-    overflow: hidden;
-    padding: 8px 0;
-    color: #4d5a64;
-    font-size: 11px;
-    font-weight: 650;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.reader-discussion-context pre {
-    max-height: 112px;
-    overflow: auto;
-    margin: 0 0 8px;
-    border: 1px solid #e0e7eb;
-    border-radius: 5px;
-    background: rgba(255, 255, 255, .86);
-    color: #3d474e;
-    padding: 7px 8px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 11px;
-    line-height: 1.45;
-    white-space: pre-wrap;
-}
-.reader-discussion-access { margin: 0 0 10px; }
-.reader-discussion-access strong { display: block; color: #43515b; font-size: 11px; font-weight: 700; }
-.reader-discussion-access p { margin: 3px 0 0; color: #66737d; font-size: 11px; line-height: 1.45; }
-.reader-discussion-thread {
-    display: grid;
-    align-content: start;
-    gap: 9px;
-    min-height: 120px;
-    overflow: auto;
-    padding: 12px;
-}
-.reader-discussion-empty { margin: 2px 0; color: #6c7881; font-size: 12px; line-height: 1.55; }
-.reader-discussion-message { min-width: 0; }
-.reader-discussion-message.is-user {
-    justify-self: end;
-    max-width: 88%;
-    border-radius: 6px;
-    background: #eaf3fa;
-    color: #31566f;
-    padding: 7px 9px;
-    white-space: pre-wrap;
-}
-.reader-discussion-message.is-assistant {
-    display: grid;
-    gap: 4px;
-    border: 1px solid #e0e7eb;
-    border-radius: 6px;
-    background: #fff;
-    padding: 10px 11px 7px;
-}
-.reader-discussion-message.is-notice { color: #61717c; font-size: 12px; line-height: 1.5; }
-.reader-discussion-response {
-    color: #30363b;
-    font-family: "Iowan Old Style", "Noto Serif CJK SC", "Songti SC", Georgia, serif;
-    font-size: 14px;
-    line-height: 1.65;
-}
-.reader-discussion-response > :first-child { margin-top: 0; }
-.reader-discussion-response > :last-child { margin-bottom: 0; }
-.reader-discussion-response p { margin: .55em 0; }
-.reader-discussion-response .katex-display { max-width: 100%; overflow-x: auto; }
-.reader-discussion-message-actions { justify-content: flex-end; min-height: 25px; }
-.reader-discussion-composer {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: end;
-    gap: 8px;
-    border-top: 1px solid #e6eaed;
-    background: #fbfcfd;
-    padding: 10px 12px;
-}
-.reader-discussion-composer textarea {
-    min-height: 48px;
-    max-height: 140px;
-    resize: vertical;
-    border: 1px solid #d8e1e6;
-    border-radius: 5px;
-    background: #fff;
-    color: inherit;
-    padding: 7px 8px;
-    font: inherit;
-    line-height: 1.45;
-    outline: none;
-}
-.reader-discussion-composer textarea:focus { border-color: #4c83b4; box-shadow: 0 0 0 3px rgba(76, 131, 180, .13); }
-.reader-discussion-send {
-    border: 1px solid #1f6eaa;
-    border-radius: 5px;
-    background: #176da9;
-    color: #fff;
-    padding: 8px 11px;
-    font-size: 12px;
-    font-weight: 650;
-}
-.reader-discussion-send:hover:not(:disabled) { background: #115c91; }
-.reader-discussion-send:disabled { cursor: default; opacity: .55; }
 .reader-failure { max-width: 720px; margin: 12vh auto; padding: 24px; }
 
 [data-tooltip] { position: relative; }
@@ -770,7 +620,6 @@ button { cursor: pointer; }
     .reader-page-title { display: none; }
     .reader-shell.is-project-launcher .reader-article { padding: 32px 22px; }
     .reader-recent-projects button { align-items: start; grid-template-columns: minmax(0, 1fr); gap: 3px; }
-    .reader-discussion-dialog { top: 64px; right: 12px; max-height: calc(100vh - 76px); }
 }
 @media (prefers-color-scheme: dark) {
     :root { background: #1d1e20; color: #e5e6e7; }
@@ -788,7 +637,7 @@ button { cursor: pointer; }
     .reader-article blockquote { color: #c8cccf; }
     .reader-article pre, .reader-article th { background: #292c2f; border-color: #44484c; }
     .reader-article th, .reader-article td { border-color: #45494d; }
-    .reader-toolbar-panel, .reader-recall-popover, .reader-discussion-dialog { border-color: #4a4f54; background: #26292c; color: #e5e6e7; box-shadow: 0 18px 46px rgba(0, 0, 0, .45); }
+    .reader-toolbar-panel, .reader-recall-popover { border-color: #4a4f54; background: #26292c; color: #e5e6e7; box-shadow: 0 18px 46px rgba(0, 0, 0, .45); }
     .reader-source-popover { border-color: #4a4f54; background: #26292c; color: #e5e6e7; box-shadow: 0 18px 42px rgba(0, 0, 0, .45); }
     .reader-formula:hover { background: rgba(158, 198, 232, .09); }
     .reader-formula.is-highlighted { background: rgba(94, 163, 217, .2); box-shadow: 0 0 0 4px rgba(94, 163, 217, .16); }
@@ -828,14 +677,4 @@ button { cursor: pointer; }
     .reader-proposition-review-batch-audit { border-color: #93733f; background: #3c3324; color: #f1d8a8; }
     .reader-proposition-review-batch-audit:hover { background: #4a3d2a; }
     .reader-page-title, .type-size-button, .reader-type-control output { color: #d5d9dd; }
-    .reader-discussion-dialog > header, .reader-discussion-composer { border-color: #40454a; background: #26292c; }
-    .reader-discussion-dialog h2, .reader-discussion-response { color: #e1e5e8; }
-    .reader-discussion-context { border-color: #40454a; background: #2a2e32; color: #c1c8ce; }
-    .reader-discussion-context summary, .reader-discussion-access strong { color: #d4d9dd; }
-    .reader-discussion-context pre, .reader-discussion-composer textarea, .reader-discussion-message.is-assistant { border-color: #464d53; background: #2a2e32; color: #e1e5e8; }
-    .reader-discussion-access p, .reader-discussion-empty, .reader-discussion-message.is-notice { color: #b7c0c7; }
-    .reader-discussion-message.is-user { background: #1e4969; color: #d7efff; }
-    .reader-discussion-icon-button { color: #c5cdd3; }
-    .reader-discussion-icon-button:hover:not(:disabled) { border-color: #4d6576; background: #333b41; color: #c0e4ff; }
-    .reader-discussion-icon-button.is-copied { border-color: #35755d; background: #243a31; color: #a4ddbf; }
 }
