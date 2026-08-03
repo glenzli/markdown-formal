@@ -76,8 +76,8 @@ button { cursor: pointer; }
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.reader-nav-page:hover { background: #e8edf0; }
-.reader-nav-page.is-active { background: #dcebf7; color: #175889; font-weight: 650; }
+.reader-nav-page:hover { background: #eceff1; }
+.reader-nav-page.is-active { background: #e2e7ea; color: #35414a; font-weight: 650; }
 
 .reader-main { min-width: 0; overflow: auto; background: #fcfcfb; }
 .reader-toolbar {
@@ -194,7 +194,7 @@ button { cursor: pointer; }
 .reader-article .formal-anchor.is-proposition-highlighted { border-radius: 3px; background: rgba(57, 129, 191, .14); box-shadow: 0 0 0 4px rgba(57, 129, 191, .12); transition: box-shadow 180ms ease, background-color 180ms ease; }
 .reader-dependency-marker {
     position: absolute;
-    top: .1em;
+    top: .95em;
     left: -25px;
     display: inline-flex;
     width: 16px;
@@ -205,6 +205,7 @@ button { cursor: pointer; }
     color: #7f8b93;
     cursor: pointer;
     padding: 0;
+    transform: translateY(-50%);
 }
 .reader-dependency-marker svg { width: 16px; height: 20px; overflow: visible; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.55; }
 .reader-dependency-marker:focus-visible { outline: 2px solid rgba(38, 127, 174, .55); outline-offset: 3px; border-radius: 3px; }
@@ -837,7 +838,7 @@ button { cursor: pointer; }
     .reader-recent-projects, .reader-recent-projects button { border-color: #3e4347; }
     .reader-article h1, .reader-article h2, .reader-article h3, .reader-article h4 { color: #f1f2f3; }
     .reader-nav-page:hover, .icon-button:hover:not(:disabled), .tool-button:hover, .tool-button.is-active, .type-size-button:hover:not(:disabled), .reader-outline:hover, .reader-definition-entry:hover { background: #31353a; }
-    .reader-nav-page.is-active { background: #1e4969; color: #c0e4ff; }
+    .reader-nav-page.is-active { background: #3a4045; color: #e1e6e9; }
     .reader-filter input, .reader-panel-search, .reader-definition-scope, .reader-symbol-chip, .reader-source-action, .reader-panel-action, .reader-panel-close, .reader-history, .reader-type-control { border-color: #4a4f54; background: #292c2f; color: inherit; }
     .reader-article blockquote { color: #c8cccf; }
     .reader-article pre, .reader-article th { background: #292c2f; border-color: #44484c; }

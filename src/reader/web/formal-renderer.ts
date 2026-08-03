@@ -91,14 +91,13 @@ function dependencyMarkerText(marker: ReaderDependencyMarker, language: 'zh' | '
 function renderDependencyMarker(id: string, marker: ReaderDependencyMarker, language: 'zh' | 'en'): string {
     const hasInput = marker.directDependencies > 0;
     const hasOutput = marker.directDependents > 0;
-    const centerY = hasInput || hasOutput ? 8 : 10;
     const outputPath = !hasOutput ? '' : marker.directDependents > 1
-        ? '<path d="M8 10.35v4.05m0 0L4.4 18m3.6-3.6 3.6 3.6" />'
-        : '<path d="M8 10.35v7.7" />';
+        ? '<path d="M8 12.35v2.15m0 0L4.4 18m3.6-3.5 3.6 3.5" />'
+        : '<path d="M8 12.35v6.15" />';
     const svg = [
         '<svg viewBox="0 0 16 20" aria-hidden="true" focusable="false">',
-        hasInput ? '<path d="M8 1.5v4.15" />' : '',
-        `<circle cx="8" cy="${centerY}" r="2.35" />`,
+        hasInput ? '<path d="M8 1.5v6.15" />' : '',
+        '<circle cx="8" cy="10" r="2.35" />',
         outputPath,
         '</svg>'
     ].join('');
