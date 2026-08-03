@@ -3,7 +3,6 @@ import {
     createFormalRenderer,
     renderFormalDocument,
     renderFormalInline,
-    renderReaderFormula,
     renderFormalMarkdown,
     type ReaderDependencyMarker,
     type ReaderFormula,
@@ -17,10 +16,10 @@ import {
 } from './source-actions';
 import { ReaderRecallPopover } from './recall-popover';
 import { ReaderDependencyPopover } from './reader-dependency-popover';
-import { copyReaderText } from './reader-clipboard';
 import { readerIcon, replaceReaderButtonIcon, type ReaderIconName } from './reader-icons';
 import { ReaderDiscussionDialog } from './reader-discussion';
 import { ReaderToolbarPanel } from './reader-toolbar-panel';
+import { ReaderPropositionReview, type ReaderPropositionReviewItem } from './reader-proposition-review';
 
 type Language = 'zh' | 'en';
 
@@ -41,7 +40,7 @@ interface ReaderState {
     definitions: DefinitionSummary[];
     issues: Array<{ severity: string; code: string; message: string }>;
     requestToken?: string;
-    codex?: { binding?: ReaderTaskBinding };
+    codex?: { bindings?: ReaderTaskBindings };
     recentProjects?: Array<{ index: number; rootName: string; openedAt: string }>;
 }
 
@@ -51,10 +50,19 @@ interface ReaderTaskBinding {
     boundAt: string;
 }
 
+interface ReaderTaskBindings {
+    primaryTaskId: string;
+    tasks: ReaderTaskBinding[];
+}
+
 interface ReaderTaskSummary {
     taskId: string;
     taskName: string;
-    preview: string;
+}
+
+interface PendingPrimaryTaskRequest {
+    selection: ReaderDiscussionSelection;
+    prompt: string;
 }
 
 interface ReaderPagePayload {
@@ -80,7 +88,7 @@ const words = {
         contents: '目录',
         definitions: '定义',
         symbols: '符号',
-        formulas: '公式',
+        propositions: '命题审阅',
         back: '返回',
         forward: '前进',
         showNavigation: '展开书籍导航',
@@ -89,13 +97,22 @@ const words = {
         searchDefinitions: '搜索定义',
         searchAllDefinitions: '全书检索',
         showChapterDefinitions: '返回本章定义',
-        searchFormulas: '搜索当前页公式',
         noDefinitions: '没有匹配的定义',
         noChapterDefinitions: '本章没有提及可检索定义',
         noSymbols: '当前页没有已索引的项目符号',
-        noFormulas: '当前页没有可搜索的公式',
-        previousPage: '上一页',
-        nextPage: '下一页',
+        propositionReviewGraphTitle: '本章关系图',
+        propositionReviewGraphHint: '实线为严格依赖；数字虚线为图外严格关系；节点上的数字徽章表示正文补充提及数量。颜色与快审只看严格下游。',
+        propositionReviewEmpty: '当前章没有命题、引理、定理或推论。',
+        propositionReviewHub: '支撑枢纽',
+        propositionReviewLinked: '一般关联',
+        propositionReviewTerminal: '终端命题',
+        propositionReviewIsolated: '孤立命题',
+        propositionReviewTerminalPropositions: '终端命题',
+        propositionReviewTerminalPropositionSummary: (count: number) => `终端命题 ${count} 项`,
+        propositionReviewTerminalPropositionHint: '这些命题当前在严格依赖图中没有下游引用；其章节作用与形式化锚点可按需审阅。',
+        propositionReviewAssistantReview: '辅助快审',
+        propositionReviewAssistantReviewHint: '将本章终端命题送至主任务，进行一次只读必要性快审；不会自动删改正文。',
+        propositionReviewNodeLabel: (display: string, upstream: number, downstream: number, ambientReferences: number, status: string) => `${display}；严格上游 ${upstream} 项，严格下游 ${downstream} 项，正文补充提及 ${ambientReferences} 处；${status}`,
         source: '来源',
         jump: '定位',
         recall: '引用回溯',
@@ -124,16 +141,20 @@ const words = {
         projectLauncherTitle: '打开 Markdown Formal 项目',
         projectLauncherDescription: '选择一个已包含 .markdown-formal/config.json 的项目目录。',
         projectSelectionCancelled: '尚未选择项目。',
-        tasks: '任务讨论',
+        tasks: '任务',
         discussWithTask: '临时讨论',
-        bindTask: '绑定 Codex 任务',
-        changeTask: '更换任务',
-        unbindTask: '解绑任务',
+        primaryTask: '默认任务',
+        bindTask: '绑定任务',
+        boundTask: '已绑定',
+        bindAdditionalTask: '绑定其他任务',
+        changeTask: '设为默认任务',
+        unbindTask: '解除绑定',
         reloadTasks: '刷新任务',
         noTasks: '当前项目没有可绑定的 Codex 任务。',
         taskSelectionRequired: '先在正文中选中一段内容，再发送到任务。',
         selectedContext: '将附带当前选区',
-        taskPrompt: '输入要在此任务中讨论的问题',
+        sendTarget: '发送至',
+        taskPrompt: '输入要发送给所选任务的问题',
         sendToTask: '发送',
         loadingTasks: '正在读取当前项目的 Codex 任务…',
         taskWaiting: 'Codex 正在处理该选区…',
@@ -148,18 +169,18 @@ const words = {
         temporaryDiscussionSend: '发送',
         temporaryDiscussionEmpty: '临时讨论没有返回文本回复。',
         temporaryDiscussionReadOnly: '这是一段不落盘的只读临时讨论。首条消息会携带下方源码、位置和项目根；后续消息保留该上下文。',
-        temporaryDiscussionBoundTask: '打开绑定任务',
-        temporaryDiscussionNoTask: '先在任务面板中绑定 Codex 任务',
-        temporaryDiscussionInject: '将此结论发送到绑定任务',
-        temporaryDiscussionInjecting: '正在将该结论发送到绑定任务…',
-        temporaryDiscussionInjected: '结论已发送到绑定任务。',
+        temporaryDiscussionBoundTask: '打开默认任务',
+        temporaryDiscussionNoTask: '请先在任务面板中绑定默认任务',
+        temporaryDiscussionInject: '将此结论发送到默认任务',
+        temporaryDiscussionInjecting: '正在将该结论发送到默认任务…',
+        temporaryDiscussionInjected: '结论已发送到默认任务。',
         temporaryDiscussionRefresh: '刷新讨论'
     },
     en: {
         contents: 'Contents',
         definitions: 'Definitions',
         symbols: 'Symbols',
-        formulas: 'Formulas',
+        propositions: 'Proposition review',
         back: 'Back',
         forward: 'Forward',
         showNavigation: 'Show book navigation',
@@ -168,13 +189,22 @@ const words = {
         searchDefinitions: 'Search definitions',
         searchAllDefinitions: 'Search all definitions',
         showChapterDefinitions: 'Back to chapter definitions',
-        searchFormulas: 'Search formulas on this page',
         noDefinitions: 'No matching definitions',
         noChapterDefinitions: 'No indexed definitions are mentioned in this chapter',
         noSymbols: 'No indexed project notation occurs on this page',
-        noFormulas: 'No searchable formulas occur on this page',
-        previousPage: 'Previous page',
-        nextPage: 'Next page',
+        propositionReviewGraphTitle: 'Chapter relation map',
+        propositionReviewGraphHint: 'Solid lines are strict dependencies; numbered dashed lines are outside-map strict relations; numbered node badges count supplemental text mentions. Color and review use strict downstream only.',
+        propositionReviewEmpty: 'No proposition, lemma, theorem, or corollary occurs in this chapter.',
+        propositionReviewHub: 'Support hub',
+        propositionReviewLinked: 'Linked',
+        propositionReviewTerminal: 'Terminal proposition',
+        propositionReviewIsolated: 'Isolated proposition',
+        propositionReviewTerminalPropositions: 'Terminal propositions',
+        propositionReviewTerminalPropositionSummary: (count: number) => `${count} terminal proposition${count === 1 ? '' : 's'}`,
+        propositionReviewTerminalPropositionHint: 'These propositions currently have no downstream reference in the strict dependency graph; their chapter role and formalization anchors can be reviewed when useful.',
+        propositionReviewAssistantReview: 'Assisted quick review',
+        propositionReviewAssistantReviewHint: 'Send this chapter’s terminal propositions to the primary task for one read-only necessity review; no source changes are made automatically.',
+        propositionReviewNodeLabel: (display: string, upstream: number, downstream: number, ambientReferences: number, status: string) => `${display}; ${upstream} strict upstream, ${downstream} strict downstream, ${ambientReferences} supplemental text mention${ambientReferences === 1 ? '' : 's'}; ${status}`,
         source: 'Source',
         jump: 'Locate',
         recall: 'Recall',
@@ -203,16 +233,20 @@ const words = {
         projectLauncherTitle: 'Open a Markdown Formal project',
         projectLauncherDescription: 'Choose a project folder containing .markdown-formal/config.json.',
         projectSelectionCancelled: 'No project was selected.',
-        tasks: 'Task discussion',
+        tasks: 'Tasks',
         discussWithTask: 'Temporary discussion',
-        bindTask: 'Bind Codex task',
-        changeTask: 'Change task',
+        primaryTask: 'Default task',
+        bindTask: 'Bind task',
+        boundTask: 'Bound',
+        bindAdditionalTask: 'Bind another task',
+        changeTask: 'Make default task',
         unbindTask: 'Unbind task',
         reloadTasks: 'Refresh tasks',
         noTasks: 'No Codex task can be bound to this project.',
         taskSelectionRequired: 'Select a passage in the document before sending it to a task.',
         selectedContext: 'The current selection will be attached',
-        taskPrompt: 'Ask this task about the selection',
+        sendTarget: 'Send to',
+        taskPrompt: 'Ask the selected task about the selection',
         sendToTask: 'Send',
         loadingTasks: 'Loading Codex tasks for this project…',
         taskWaiting: 'Codex is working with this selection…',
@@ -227,11 +261,11 @@ const words = {
         temporaryDiscussionSend: 'Send',
         temporaryDiscussionEmpty: 'The temporary discussion returned no text response.',
         temporaryDiscussionReadOnly: 'This is an ephemeral, read-only discussion. Its first message includes the source, location, and project root below; later messages retain that context.',
-        temporaryDiscussionBoundTask: 'Open bound task',
-        temporaryDiscussionNoTask: 'Bind a Codex task in the task panel first',
-        temporaryDiscussionInject: 'Send this conclusion to the bound task',
-        temporaryDiscussionInjecting: 'Sending this conclusion to the bound task…',
-        temporaryDiscussionInjected: 'The conclusion was sent to the bound task.',
+        temporaryDiscussionBoundTask: 'Open default task',
+        temporaryDiscussionNoTask: 'Bind a default task in the task panel first',
+        temporaryDiscussionInject: 'Send this conclusion to the default task',
+        temporaryDiscussionInjecting: 'Sending this conclusion to the default task…',
+        temporaryDiscussionInjected: 'The conclusion was sent to the default task.',
         temporaryDiscussionRefresh: 'Refresh discussion'
     }
 } as const;
@@ -251,6 +285,10 @@ function queryPath(): string {
 
 function normalizeQuery(value: string): string {
     return value.normalize('NFKC').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
+}
+
+function compactPropositionDisplay(display: string): string {
+    return display.match(/\d+(?:\.\d+)+/)?.[0] || display;
 }
 
 const DEFAULT_FONT_SIZE = 14;
@@ -296,9 +334,13 @@ class ReaderApplication {
     private dependencyPopover!: ReaderDependencyPopover;
     private discussionDialog!: ReaderDiscussionDialog;
     private toolbarPanel!: ReaderToolbarPanel;
+    private propositionReview!: ReaderPropositionReview;
     private realtimeEvents: EventSource | undefined;
-    private taskBinding: ReaderTaskBinding | undefined;
+    private taskBindings: ReaderTaskBindings | undefined;
+    private taskListCache: ReaderTaskSummary[] | undefined;
+    private taskTargetId: string | undefined;
     private pendingTaskSelection: ReaderDiscussionSelection | undefined;
+    private pendingPrimaryTaskRequest: PendingPrimaryTaskRequest | undefined;
 
     async start(): Promise<void> {
         this.buildShell();
@@ -325,7 +367,6 @@ class ReaderApplication {
         this.root.innerHTML = [
             '<div class="reader-shell' + (this.navigationCollapsed ? ' is-navigation-collapsed' : '') + '">',
             '<aside id="reader-sidebar" class="reader-sidebar" aria-label="Project navigation">',
-            '<div class="reader-brand"><span class="reader-brand-mark">MF</span><div><strong>Markdown Formal</strong><span id="reader-project-name"></span></div></div>',
             '<label class="reader-filter"><span class="sr-only">Filter pages</span><input id="reader-page-filter" type="search" autocomplete="off" /></label>',
             '<nav id="reader-page-nav" class="reader-page-nav"></nav>',
             '</aside>',
@@ -334,7 +375,7 @@ class ReaderApplication {
             '<button id="reader-navigation-toggle" class="icon-button reader-navigation-toggle" type="button"></button>',
             '<div class="reader-history"><button id="reader-back" class="icon-button" aria-label="Back"></button><button id="reader-forward" class="icon-button" aria-label="Forward"></button></div>',
             '<div id="reader-page-title" class="reader-page-title"></div>',
-            '<div class="reader-tools"><button class="tool-button" data-panel="contents" aria-label="Contents"></button><button class="tool-button" data-panel="definitions" aria-label="Definitions"></button><button class="tool-button" data-panel="symbols" aria-label="Symbols"></button><button class="tool-button" data-panel="formulas" aria-label="Formulas"></button><button class="tool-button" data-panel="tasks" aria-label="Task discussion"></button></div>',
+            '<div class="reader-tools"><button class="tool-button" data-panel="contents" aria-label="Contents"></button><button class="tool-button" data-panel="definitions" aria-label="Definitions"></button><button class="tool-button" data-panel="symbols" aria-label="Symbols"></button><button class="tool-button" data-panel="propositions" aria-label="Proposition review"></button><button class="tool-button" data-panel="tasks" aria-label="Task discussion"></button></div>',
             '<div class="reader-type-control"><button type="button" class="type-size-button" data-font-size="-1" aria-label="Decrease text size">A−</button><output id="reader-font-size" aria-live="polite">' + this.fontSize + 'px</output><button type="button" class="type-size-button" data-font-size="1" aria-label="Increase text size">A+</button></div>',
             '<span id="reader-live" class="reader-live" aria-live="polite"></span>',
             '</header><article id="reader-article" class="reader-article"></article></main>',
@@ -393,11 +434,33 @@ class ReaderApplication {
             }
         });
         this.toolbarPanel = new ReaderToolbarPanel(() => ({ close: this.dictionary().close }));
+        this.propositionReview = new ReaderPropositionReview({
+            labels: () => {
+                const dictionary = this.dictionary();
+                return {
+                    graphTitle: dictionary.propositionReviewGraphTitle,
+                    graphHint: dictionary.propositionReviewGraphHint,
+                    empty: dictionary.propositionReviewEmpty,
+                    hub: dictionary.propositionReviewHub,
+                    linked: dictionary.propositionReviewLinked,
+                    terminal: dictionary.propositionReviewTerminal,
+                    isolated: dictionary.propositionReviewIsolated,
+                    terminalPropositions: dictionary.propositionReviewTerminalPropositions,
+                    terminalPropositionSummary: dictionary.propositionReviewTerminalPropositionSummary,
+                    terminalPropositionHint: dictionary.propositionReviewTerminalPropositionHint,
+                    assistantReview: dictionary.propositionReviewAssistantReview,
+                    assistantReviewHint: dictionary.propositionReviewAssistantReviewHint,
+                    nodeLabel: dictionary.propositionReviewNodeLabel
+                };
+            },
+            openProposition: id => this.openCurrentProposition(id),
+            assistTerminalPropositions: items => this.assistTerminalPropositions(items)
+        });
         this.discussionDialog = new ReaderDiscussionDialog({
             postJson: (url, value) => this.postJson(url, value),
             renderMarkdown: (markdown, filePath) => renderFormalMarkdown(this.markdown, markdown, this.renderOptions(filePath)),
             labels: () => this.dictionary(),
-            hasBoundTask: () => !!this.taskBinding,
+            hasBoundTask: () => !!this.primaryTask(),
             openTaskPanel: () => this.openTaskPanel()
         });
     }
@@ -438,12 +501,27 @@ class ReaderApplication {
 
     private applyState(state: ReaderState): void {
         this.state = state;
-        this.taskBinding = state.codex?.binding;
+        this.setTaskBindings(state.codex?.bindings);
         const dictionary = this.dictionary();
-        (this.root.querySelector('#reader-project-name') as HTMLElement).textContent = this.state.rootName;
         (this.root.querySelector('#reader-page-filter') as HTMLInputElement).placeholder = dictionary.search;
         this.renderNavigation((this.root.querySelector('#reader-page-filter') as HTMLInputElement).value);
         this.updateToolbarLabels();
+    }
+
+    private setTaskBindings(bindings: ReaderTaskBindings | undefined): void {
+        this.taskBindings = bindings?.tasks.length ? bindings : undefined;
+        if (!this.taskBindings) {
+            this.taskTargetId = undefined;
+            return;
+        }
+        if (!this.taskBindings.tasks.some(task => task.taskId === this.taskTargetId)) {
+            this.taskTargetId = this.taskBindings.primaryTaskId;
+        }
+    }
+
+    private primaryTask(): ReaderTaskBinding | undefined {
+        const bindings = this.taskBindings;
+        return bindings?.tasks.find(task => task.taskId === bindings.primaryTaskId);
     }
 
     private renderProjectLauncher(message = ''): void {
@@ -583,7 +661,7 @@ class ReaderApplication {
             ['[data-panel="contents"]', 'contents'],
             ['[data-panel="definitions"]', 'definition'],
             ['[data-panel="symbols"]', 'sigma'],
-            ['[data-panel="formulas"]', 'formulas'],
+            ['[data-panel="propositions"]', 'propositions'],
             ['[data-panel="tasks"]', 'task']
         ];
         icons.forEach(([selector, icon]) => {
@@ -729,18 +807,99 @@ class ReaderApplication {
             if (view === 'contents') this.renderContents(content);
             if (view === 'definitions') this.renderDefinitions(content);
             if (view === 'symbols') this.renderSymbols(content);
-            if (view === 'formulas') this.renderFormulas(content);
+            if (view === 'propositions') this.propositionReview.render(content, this.currentPropositionReviewItems());
             if (view === 'tasks') this.renderTasks(content);
         });
     }
 
-    private openTemporaryDiscussion(selection: ReaderDiscussionSelection): void {
+    private openTemporaryDiscussion(selection: ReaderDiscussionSelection, initialPrompt?: string): void {
         this.pendingTaskSelection = selection;
-        this.discussionDialog.open(selection);
+        this.pendingPrimaryTaskRequest = undefined;
+        this.discussionDialog.open(selection, initialPrompt);
+    }
+
+    private currentPropositionReviewItems(): ReaderPropositionReviewItem[] {
+        if (!this.page) return [];
+        return Object.entries(this.page.dependencyMarkers || {})
+            .filter(([, marker]) => marker.kind === 'theorem-like')
+            .map(([id, marker]) => {
+                const label = this.page?.labels[id];
+                return {
+                    id,
+                    display: label?.display || id,
+                    compactDisplay: compactPropositionDisplay(label?.display || id),
+                    title: label?.title || '',
+                    marker
+                };
+            });
+    }
+
+    private openCurrentProposition(id: string): void {
+        const target = this.article.querySelector<HTMLElement>('#formal-' + id);
+        if (!target) return;
+        this.toolbarPanel.close();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        target.classList.add('is-proposition-highlighted');
+        window.setTimeout(() => target.classList.remove('is-proposition-highlighted'), 1800);
+    }
+
+    private propositionSourceRange(id: string): { startLine: number; endLine: number; sourceLines: string } | undefined {
+        if (!this.page) return undefined;
+        const target = this.article.querySelector<HTMLElement>('#formal-' + id);
+        if (!target) return undefined;
+        const startLine = Number(target.dataset.sourceStartLine);
+        const endLine = Number(target.dataset.sourceEndLine);
+        if (!Number.isInteger(startLine) || !Number.isInteger(endLine) || startLine < 1 || endLine < startLine) return undefined;
+        return {
+            startLine,
+            endLine,
+            sourceLines: this.page.content.split(/\r?\n/).slice(startLine - 1, endLine).join('\n')
+        };
+    }
+
+    private assistTerminalPropositions(items: ReaderPropositionReviewItem[]): void {
+        if (!this.page) return;
+        const excerpts: Array<{ item: ReaderPropositionReviewItem; startLine: number; endLine: number; sourceLines: string }> = [];
+        items.filter(item => item.marker.directDependents === 0).forEach(item => {
+            const range = this.propositionSourceRange(item.id);
+            if (range) excerpts.push({ item, ...range });
+        });
+        if (excerpts.length === 0) return;
+        const markdown = excerpts.map(({ item, sourceLines }) => [
+            '## ' + item.display + (item.title ? '（' + item.title + '）' : ''),
+            `图谱摘要：直接上游 ${item.marker.directDependencies} 项；显式 formal 引用 ${item.marker.sourceReferenceCount} 项。`,
+            sourceLines
+        ].join('\n')).join('\n\n');
+        const prompt = this.state?.language === 'en'
+            ? [
+                `Perform one read-only necessity review for all ${excerpts.length} terminal propositions collected from this chapter.`,
+                'A terminal proposition has no explicit downstream proposition reference in the current graph. Do not equate that with lack of value, and do not propose automatic deletion or source edits.',
+                'Review the candidates together as well as individually: they may form a closing group, an interface, technical lemmas, explanatory bridges, factual notes, or Lean/formalization anchors. Inspect related project sources read-only when useful.',
+                'Return: (1) a compact item-by-item table of observed role and evidence, (2) any collective role or redundancy among the candidates, (3) missing downstream linkage or documentation worth considering, and (4) cautious recommendations: retain / retain and clarify / consider restructuring / needs more evidence.'
+            ].join('\n\n')
+            : [
+                `请对本章收集到的 ${excerpts.length} 项终端命题做一次整体的只读必要性快审。`,
+                '终端命题只表示它们在当前显式依赖图中没有下游命题引用；不要把它等同于无价值，也不要提出自动删除或自动改写正文。',
+                '请同时逐项和整体判断：它们是否共同承担章节收束、接口、技术引理、解释性桥梁、事实注记或 Lean／形式化锚点等职责；必要时只读检查项目内相关源文件。',
+                '请输出：(1) 逐项的角色与证据短表；(2) 这些命题之间是否存在共同作用或冗余；(3) 值得补充的下游链接或文档说明；(4) 谨慎建议：保留／保留并澄清／考虑重构／需要更多证据。'
+        ].join('\n\n');
+        this.toolbarPanel.close();
+        const selection = {
+            filePath: this.page.filePath,
+            startLine: Math.min(...excerpts.map(excerpt => excerpt.startLine)),
+            endLine: Math.max(...excerpts.map(excerpt => excerpt.endLine)),
+            text: markdown,
+            markdown,
+            sourceLines: markdown
+        };
+        this.pendingTaskSelection = selection;
+        this.pendingPrimaryTaskRequest = { selection, prompt };
+        this.openTaskPanel();
     }
 
     private openTaskDiscussion(selection: ReaderDiscussionSelection): void {
         this.pendingTaskSelection = selection;
+        this.pendingPrimaryTaskRequest = undefined;
         this.openTaskPanel();
     }
 
@@ -751,34 +910,77 @@ class ReaderApplication {
 
     private renderTasks(container: HTMLElement): void {
         container.replaceChildren();
-        if (!this.taskBinding) {
+        const bindings = this.taskBindings;
+        const primary = this.primaryTask();
+        if (!bindings || !primary) {
             this.renderTaskPicker(container);
             return;
         }
 
-        const binding = document.createElement('section');
-        binding.className = 'reader-task-binding';
-        const name = document.createElement('strong');
-        name.textContent = this.taskBinding.taskName || this.taskBinding.taskId;
-        const controls = document.createElement('div');
-        controls.className = 'reader-detail-actions';
-        controls.append(
-            this.panelIconButton('reload', this.dictionary().changeTask, () => {
-                void this.postJson('/api/codex/unbind').then(() => {
-                    this.taskBinding = undefined;
-                    this.renderTasks(container);
+        const bindingHeader = document.createElement('div');
+        bindingHeader.className = 'reader-task-picker-header';
+        const bindingHeading = document.createElement('p');
+        bindingHeading.className = 'reader-panel-summary';
+        bindingHeading.textContent = this.dictionary().bindTask;
+        const bindingControls = document.createElement('div');
+        bindingControls.className = 'reader-detail-actions';
+        bindingControls.append(this.panelIconButton('plus', this.dictionary().bindAdditionalTask, () => this.renderTaskPicker(container, true)));
+        bindingHeader.append(bindingHeading, bindingControls);
+        const bindingList = document.createElement('section');
+        bindingList.className = 'reader-task-bindings';
+        bindings.tasks.forEach(task => {
+            const row = document.createElement('div');
+            row.className = 'reader-task-binding';
+            const label = document.createElement('span');
+            label.className = 'reader-task-binding-label';
+            const isPrimary = task.taskId === primary.taskId;
+            label.textContent = isPrimary ? this.dictionary().primaryTask : this.dictionary().boundTask;
+            const name = document.createElement('button');
+            name.type = 'button';
+            name.className = 'reader-task-bound-name';
+            name.textContent = task.taskName || task.taskId;
+            name.disabled = isPrimary;
+            name.dataset.tooltip = isPrimary ? this.dictionary().primaryTask : this.dictionary().changeTask;
+            name.setAttribute('aria-label', isPrimary
+                ? this.dictionary().primaryTask + '：' + (task.taskName || task.taskId)
+                : this.dictionary().changeTask + '：' + (task.taskName || task.taskId));
+            name.addEventListener('click', () => {
+                void this.postJson<{ bindings?: ReaderTaskBindings }>('/api/codex/binding', { taskId: task.taskId, primary: true }).then(result => {
+                    this.setTaskBindings(result.bindings);
+                    if (container.isConnected) this.renderTasks(container);
                 }, error => this.renderTaskError(container, error));
-            }),
-            this.panelIconButton('x', this.dictionary().unbindTask, () => {
-                void this.postJson('/api/codex/unbind').then(() => {
-                    this.taskBinding = undefined;
-                    this.pendingTaskSelection = undefined;
-                    this.renderTasks(container);
+            });
+            const rowControls = document.createElement('div');
+            rowControls.className = 'reader-detail-actions';
+            if (isPrimary) {
+                rowControls.append(this.panelIconButton('reload', this.dictionary().reloadTasks, () => {
+                    this.taskListCache = undefined;
+                    this.renderTaskPicker(container, true, true);
+                }));
+            }
+            if (!isPrimary) {
+                rowControls.append(this.panelIconButton('star', this.dictionary().changeTask + '：' + (task.taskName || task.taskId), () => {
+                    void this.postJson<{ bindings?: ReaderTaskBindings }>('/api/codex/binding', { taskId: task.taskId, primary: true }).then(result => {
+                        this.setTaskBindings(result.bindings);
+                        if (container.isConnected) this.renderTasks(container);
+                    }, error => this.renderTaskError(container, error));
+                }));
+            }
+            const remove = this.panelIconButton('x', this.dictionary().unbindTask + '：' + (task.taskName || task.taskId), () => {
+                void this.postJson<{ bindings?: ReaderTaskBindings }>('/api/codex/unbind', { taskId: task.taskId }).then(result => {
+                    this.setTaskBindings(result.bindings);
+                    if (!this.taskBindings) {
+                        this.pendingTaskSelection = undefined;
+                        this.pendingPrimaryTaskRequest = undefined;
+                    }
+                    if (container.isConnected) this.renderTasks(container);
                 }, error => this.renderTaskError(container, error));
-            })
-        );
-        binding.append(name, controls);
-        container.append(binding);
+            });
+            rowControls.append(remove);
+            row.append(label, name, rowControls);
+            bindingList.append(row);
+        });
+        container.append(bindingHeader, bindingList);
 
         const selection = this.pendingTaskSelection;
         if (!selection) {
@@ -800,13 +1002,36 @@ class ReaderApplication {
         prompt.className = 'reader-task-prompt';
         prompt.rows = 3;
         prompt.placeholder = this.dictionary().taskPrompt;
+        const pendingRequest = this.pendingPrimaryTaskRequest;
+        const automaticPrompt = pendingRequest?.selection === selection ? pendingRequest.prompt : '';
+        prompt.value = automaticPrompt;
+        const target = document.createElement('label');
+        target.className = 'reader-task-target';
+        const targetLabel = document.createElement('span');
+        targetLabel.textContent = this.dictionary().sendTarget;
+        const targetSelect = document.createElement('select');
+        const targetId = automaticPrompt
+            ? primary.taskId
+            : (bindings.tasks.some(task => task.taskId === this.taskTargetId) ? this.taskTargetId || primary.taskId : primary.taskId);
+        bindings.tasks.forEach(task => {
+            const option = document.createElement('option');
+            option.value = task.taskId;
+            option.textContent = task.taskName || task.taskId;
+            option.selected = task.taskId === targetId;
+            targetSelect.append(option);
+        });
+        targetSelect.disabled = !!automaticPrompt;
+        targetSelect.addEventListener('change', () => {
+            this.taskTargetId = targetSelect.value;
+        });
+        target.append(targetLabel, targetSelect);
         const send = document.createElement('button');
         send.type = 'button';
         send.className = 'reader-task-send';
         send.textContent = this.dictionary().sendToTask;
         const response = document.createElement('div');
         response.className = 'reader-task-response';
-        send.addEventListener('click', () => {
+        const sendPrompt = () => {
             const value = prompt.value.trim();
             if (!value) {
                 prompt.focus();
@@ -814,10 +1039,12 @@ class ReaderApplication {
             }
             send.disabled = true;
             prompt.disabled = true;
+            targetSelect.disabled = true;
             response.textContent = this.dictionary().taskWaiting;
             void this.postJson<{ taskId: string; message: string }>('/api/codex/turn', {
                 prompt: value,
-                selection
+                selection,
+                taskId: targetId
             }).then(result => {
                 if (!response.isConnected) return;
                 response.innerHTML = result.message
@@ -831,49 +1058,72 @@ class ReaderApplication {
             }, error => this.renderTaskError(response, error)).finally(() => {
                 send.disabled = false;
                 prompt.disabled = false;
+                targetSelect.disabled = !!automaticPrompt;
             });
-        });
-        container.append(context, prompt, send, response);
-        window.requestAnimationFrame(() => prompt.focus());
+        };
+        send.addEventListener('click', sendPrompt);
+        container.append(target, context, prompt, send, response);
+        if (automaticPrompt) {
+            this.pendingPrimaryTaskRequest = undefined;
+            window.requestAnimationFrame(sendPrompt);
+        } else {
+            window.requestAnimationFrame(() => prompt.focus());
+        }
     }
 
-    private renderTaskPicker(container: HTMLElement): void {
+    private renderTaskPicker(container: HTMLElement, additional = false, forceRefresh = false): void {
+        const header = document.createElement('div');
+        header.className = 'reader-task-picker-header';
         const heading = document.createElement('p');
         heading.className = 'reader-panel-summary';
-        heading.textContent = this.dictionary().bindTask;
-        const refresh = document.createElement('button');
-        refresh.type = 'button';
-        refresh.className = 'reader-definition-scope';
-        refresh.textContent = this.dictionary().reloadTasks;
+        heading.textContent = additional ? this.dictionary().bindAdditionalTask : this.dictionary().bindTask;
+        const controls = document.createElement('div');
+        controls.className = 'reader-detail-actions';
+        const refresh = this.panelIconButton('reload', this.dictionary().reloadTasks, () => void load(true));
+        controls.append(refresh);
+        if (additional) controls.append(this.panelIconButton('x', this.dictionary().close, () => this.renderTasks(container)));
         const results = document.createElement('div');
         results.className = 'reader-panel-list reader-task-list';
-        const load = async () => {
+        const renderTaskEntries = (tasks: ReaderTaskSummary[]) => {
+            results.replaceChildren();
+            const unboundTasks = tasks.filter(task => !this.taskBindings?.tasks.some(binding => binding.taskId === task.taskId));
+            if (!unboundTasks.length) {
+                results.append(this.emptyState(this.dictionary().noTasks));
+                return;
+            }
+            unboundTasks.forEach(task => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'reader-task-entry';
+                const name = document.createElement('strong');
+                name.textContent = task.taskName || task.taskId;
+                button.append(name);
+                button.addEventListener('click', () => {
+                    void this.postJson<{ bindings?: ReaderTaskBindings }>('/api/codex/binding', {
+                        taskId: task.taskId,
+                        primary: !this.taskBindings
+                    }).then(result => {
+                        this.setTaskBindings(result.bindings);
+                        if (container.isConnected) this.renderTasks(container);
+                    }, error => {
+                        this.taskListCache = undefined;
+                        this.renderTaskError(container, error);
+                    });
+                });
+                results.append(button);
+            });
+        };
+        const load = async (force = false) => {
+            if (!force && this.taskListCache) {
+                renderTaskEntries(this.taskListCache);
+                return;
+            }
             refresh.disabled = true;
             results.replaceChildren(this.emptyState(this.dictionary().loadingTasks));
             try {
                 const payload = await this.fetchJson<{ tasks: ReaderTaskSummary[] }>('/api/codex/tasks');
-                results.replaceChildren();
-                if (!payload.tasks.length) {
-                    results.append(this.emptyState(this.dictionary().noTasks));
-                    return;
-                }
-                payload.tasks.forEach(task => {
-                    const button = document.createElement('button');
-                    button.type = 'button';
-                    button.className = 'reader-task-entry';
-                    const name = document.createElement('strong');
-                    name.textContent = task.taskName || task.taskId;
-                    const preview = document.createElement('span');
-                    preview.textContent = task.preview || task.taskId;
-                    button.append(name, preview);
-                    button.addEventListener('click', () => {
-                        void this.postJson<{ binding?: ReaderTaskBinding }>('/api/codex/binding', { taskId: task.taskId }).then(result => {
-                            this.taskBinding = result.binding;
-                            this.renderTasks(container);
-                        }, error => this.renderTaskError(container, error));
-                    });
-                    results.append(button);
-                });
+                this.taskListCache = payload.tasks;
+                renderTaskEntries(payload.tasks);
             } catch (error) {
                 this.renderTaskError(results, error, this.dictionary().taskUnavailable);
             } finally {
@@ -881,9 +1131,9 @@ class ReaderApplication {
                 this.toolbarPanel.reposition();
             }
         };
-        refresh.addEventListener('click', () => void load());
-        container.append(heading, refresh, results);
-        void load();
+        header.append(heading, controls);
+        container.append(header, results);
+        void load(forceRefresh);
     }
 
     private renderTaskError(container: HTMLElement, error: unknown, fallback = ''): void {
@@ -1082,106 +1332,11 @@ class ReaderApplication {
         show(symbols[0]);
     }
 
-    private renderFormulas(container: HTMLElement): void {
-        const pageSize = 12;
-        let pageIndex = 0;
-        const search = document.createElement('input');
-        search.type = 'search';
-        search.className = 'reader-panel-search';
-        search.placeholder = this.dictionary().searchFormulas;
-        const list = document.createElement('div');
-        list.className = 'reader-panel-list reader-formula-list';
-        const detail = document.createElement('section');
-        detail.className = 'reader-formula-detail';
-        const renderResults = () => {
-            const normalized = normalizeQuery(search.value).replace(/\s/g, '');
-            const formulas = (this.page?.formulas || []).filter(formula => formula.display && (
-                !normalized || normalizeQuery(formula.latex).replace(/\s/g, '').includes(normalized)
-            ));
-            list.replaceChildren();
-            if (formulas.length === 0) {
-                list.append(this.emptyState(this.dictionary().noFormulas));
-                detail.replaceChildren();
-                return;
-            }
-            const pageCount = Math.ceil(formulas.length / pageSize);
-            pageIndex = Math.min(pageIndex, pageCount - 1);
-            const visibleFormulas = formulas.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize);
-            visibleFormulas.forEach(formula => {
-                const button = document.createElement('button');
-                button.type = 'button';
-                button.className = 'reader-formula-entry';
-                button.innerHTML = this.renderFormula(formula);
-                button.addEventListener('click', () => {
-                    if (!detail.isConnected) list.after(detail);
-                    this.showFormulaDetail(detail, formula);
-                    this.locateFormula(formula.id);
-                });
-                list.append(button);
-            });
-            if (pageCount > 1) {
-                const pagination = document.createElement('div');
-                pagination.className = 'reader-formula-pagination';
-                const previous = this.panelIconButton('chevron-left', this.dictionary().previousPage, () => {
-                    pageIndex--;
-                    renderResults();
-                });
-                previous.disabled = pageIndex === 0;
-                const status = document.createElement('output');
-                status.textContent = this.formatFormulaPage(pageIndex + 1, pageCount, formulas.length);
-                const next = this.panelIconButton('chevron-right', this.dictionary().nextPage, () => {
-                    pageIndex++;
-                    renderResults();
-                });
-                next.disabled = pageIndex >= pageCount - 1;
-                pagination.append(previous, status, next);
-                list.append(pagination);
-            }
-            this.toolbarPanel.reposition();
-        };
-        search.addEventListener('input', () => {
-            pageIndex = 0;
-            renderResults();
-        });
-        container.append(search, list);
-        renderResults();
-        window.requestAnimationFrame(() => search.focus());
-    }
-
-    private formatFormulaPage(page: number, pageCount: number, total: number): string {
-        return this.state?.language === 'en'
-            ? `Page ${page} / ${pageCount} (${total})`
-            : `第 ${page} / ${pageCount} 页 (${total})`;
-    }
-
-    private showFormulaDetail(detail: HTMLElement, formula: ReaderFormula): void {
-        detail.replaceChildren();
-        const actions = document.createElement('div');
-        actions.className = 'reader-detail-actions';
-        actions.append(
-            this.panelIconButton('copy', this.dictionary().copyLatex, button => void this.copyPanelText(button, formula.latex))
-        );
-        detail.append(actions);
-        this.toolbarPanel.reposition();
-    }
-
-    private locateFormula(id: string): void {
-        const formula = this.article.querySelector<HTMLElement>('[data-reader-formula="' + CSS.escape(id) + '"]');
-        if (!formula) return;
-        formula.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        formula.classList.add('is-highlighted');
-        window.setTimeout(() => formula.classList.remove('is-highlighted'), 1500);
-    }
-
     private emptyState(value: string): HTMLElement {
         const element = document.createElement('p');
         element.className = 'reader-panel-empty';
         element.textContent = value;
         return element;
-    }
-
-    private renderFormula(formula: ReaderFormula): string {
-        return renderReaderFormula(formula);
     }
 
     private panelIconButton(icon: ReaderIconName, label: string, action: (button: HTMLButtonElement) => void): HTMLButtonElement {
@@ -1193,19 +1348,6 @@ class ReaderApplication {
         button.setAttribute('aria-label', label);
         button.addEventListener('click', () => action(button));
         return button;
-    }
-
-    private async copyPanelText(button: HTMLButtonElement, value: string): Promise<void> {
-        if (!(await copyReaderText(value))) return;
-        const label = button.dataset.tooltip || button.getAttribute('aria-label') || '';
-        button.classList.add('is-copied');
-        button.dataset.tooltip = this.dictionary().copied;
-        button.setAttribute('aria-label', this.dictionary().copied);
-        window.setTimeout(() => {
-            button.classList.remove('is-copied');
-            button.dataset.tooltip = label;
-            button.setAttribute('aria-label', label);
-        }, 1200);
     }
 
     private renderOptions(currentFilePath: string, labels = this.page?.labels || {}) {

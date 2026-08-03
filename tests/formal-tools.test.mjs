@@ -733,6 +733,35 @@ async function testDependencyGraph() {
     assert.match(combinedOutput(bridges), /命题 1\.2 Statement Uses/);
 }
 
+async function testProofTerminatorsExcludeFollowingExplanatoryReferences() {
+    const root = await makeWorkspace('dependency-proof-terminator');
+    await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
+        '# Chapter 1',
+        '',
+        '命题 #h-1111111111111111（Base）：Base statement.',
+        '',
+        'Proof: direct. $\\square$',
+        '',
+        '> 注（Forward reference）：A strengthened application appears in @h-2222222222222222.',
+        '',
+        '推论 #h-2222222222222222（Application）：By @h-1111111111111111, the conclusion follows.',
+        ''
+    ].join('\n'));
+
+    const prepare = runCli(root, ['prepare']);
+    assert.equal(prepare.status, 0, combinedOutput(prepare));
+
+    const graph = JSON.parse(await read(root, '.markdown-formal/dependency-graph.json'));
+    const edgeKey = edge => `${edge.from}->${edge.to}:${edge.where}`;
+    assert.deepEqual(graph.edges.map(edgeKey), ['h-2222222222222222->h-1111111111111111:statement']);
+    assert.deepEqual(graph.ambientReferences, [{
+        to: 'h-2222222222222222',
+        path: 'book1/01-a.md',
+        line: 7
+    }]);
+    assert.equal(graph.diagnostics.filter(item => item.code === 'ambient-dependency-ref').length, 1);
+}
+
 async function testEquationFigureTableNumbering() {
     const root = await makeWorkspace('media-numbering');
     await fs.writeFile(path.join(root, 'book1', '01-a.md'), [
@@ -1173,6 +1202,8 @@ async function testReaderServer() {
         '',
         '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
         '',
+        'A related strengthening: see @h-4444444444444444.',
+        '',
         'Proof: direct.',
         '',
         '命题 #h-4444444444444444（Consequence）：By @h-3333333333333333 and @h-2222222222222222, the conclusion follows.',
@@ -1181,13 +1212,22 @@ async function testReaderServer() {
         '',
         '注 #h-5555555555555555（Supporting Fact）：This supplemental fact is proof-backed.',
         '',
-        'Proof: by @h-3333333333333333.',
+        'Proof: by @h-3333333333333333. $\\square$',
+        '',
+        '> 注（Related reading）：A later note cites @h-4444444444444444.',
         '',
         '注（Plain Note）：This explanatory note must not receive a marker.',
         ''
     ].join('\n'));
     const prepare = runCli(root, ['prepare']);
     assert.equal(prepare.status, 0, combinedOutput(prepare));
+    const dependencyGraph = JSON.parse(await read(root, '.markdown-formal/dependency-graph.json'));
+    assert.ok(dependencyGraph.edges.some(edge => (
+        edge.from === 'h-3333333333333333'
+        && edge.to === 'h-4444444444444444'
+        && edge.where === 'statement'
+        && edge.relation === 'explanatory'
+    )));
 
     const reader = await startReader(root, {
         env: { MARKDOWN_FORMAL_READER_STATE: path.join(root, 'reader-projects.json') }
@@ -1212,12 +1252,14 @@ async function testReaderServer() {
         assert.equal(theoremMarker.directDependencies, 0);
         assert.equal(theoremMarker.directDependents, 2);
         assert.equal(theoremMarker.impactCount, 2);
+        assert.equal(theoremMarker.ambientReferenceCount, 1);
         assert.deepEqual(theoremMarker.downstream.map(item => item.id).sort(), ['h-4444444444444444', 'h-5555555555555555']);
         assert.deepEqual(page.dependencyMarkers['h-4444444444444444'], {
             directDependencies: 1,
             sourceReferenceCount: 2,
             directDependents: 0,
             impactCount: 0,
+            ambientReferenceCount: 1,
             role: 'leaf',
             kind: 'theorem-like',
             upstream: [{
@@ -1234,6 +1276,7 @@ async function testReaderServer() {
             sourceReferenceCount: 1,
             directDependents: 0,
             impactCount: 0,
+            ambientReferenceCount: 0,
             role: 'leaf',
             kind: 'remark',
             upstream: [{
@@ -1347,10 +1390,15 @@ async function testReaderCodexTaskBinding() {
 let buffer = '';
 const cwd = process.env.MARKDOWN_FORMAL_FAKE_CODEX_CWD;
 const write = value => process.stdout.write(JSON.stringify(value) + '\\n');
-const thread = {
+const primaryThread = {
   id: 'task-reader-fixture', cwd, name: 'Reader fixture task', preview: 'Discuss the formal source',
   updatedAt: 1, canAcceptDirectInput: true
 };
+const reviewThread = {
+  id: 'task-reader-review', cwd, name: 'Reader review task', preview: 'Review a formal source',
+  updatedAt: 2, canAcceptDirectInput: true
+};
+const persistentThreads = [primaryThread, reviewThread];
 const temporaryThread = {
   id: 'temporary-reader-fixture', cwd, name: 'Temporary Reader discussion', preview: 'Ephemeral selection discussion',
   updatedAt: 1, canAcceptDirectInput: true, ephemeral: true
@@ -1358,8 +1406,12 @@ const temporaryThread = {
 const temporaryTurns = [];
 const receive = message => {
   if (message.method === 'initialize') return write({ id: message.id, result: { platformFamily: 'test' } });
-  if (message.method === 'thread/list') return write({ id: message.id, result: { data: [thread] } });
-  if (message.method === 'thread/resume') return write({ id: message.id, result: { thread, cwd } });
+  if (message.method === 'thread/list') return write({ id: message.id, result: { data: persistentThreads } });
+  if (message.method === 'thread/resume') {
+    const thread = persistentThreads.find(item => item.id === message.params.threadId);
+    if (!thread) return write({ id: message.id, error: { message: 'Unknown Reader task.' } });
+    return write({ id: message.id, result: { thread, cwd } });
+  }
   if (message.method === 'thread/start') {
     if (message.params.ephemeral !== true || message.params.sandbox !== 'read-only' || message.params.approvalPolicy !== 'never') {
       return write({ id: message.id, error: { message: 'Temporary Reader discussions must be ephemeral and read-only.' } });
@@ -1383,9 +1435,15 @@ const receive = message => {
       return write({ id: message.id, error: { message: 'Reader project knowledge context was missing.' } });
     }
     const isTemporary = message.params.threadId === temporaryThread.id;
+    const persistent = persistentThreads.find(item => item.id === message.params.threadId);
+    if (!isTemporary && !persistent) return write({ id: message.id, error: { message: 'Unexpected Reader task turn.' } });
+    const visiblePrompt = String(message.params.input?.[0]?.text || '');
+    if (!isTemporary && (!visiblePrompt.includes('Markdown Formal Reader') || !visiblePrompt.includes('book1/01-foundations.md:3–3'))) {
+      return write({ id: message.id, error: { message: 'Reader source card was not visible in the task history.' } });
+    }
     const turn = { id: (isTemporary ? 'turn-temporary-fixture' : 'turn-reader-fixture'), status: 'completed' };
     return setTimeout(() => {
-      const response = isTemporary ? 'Temporary Reader context received.' : 'Reader context received.';
+      const response = isTemporary ? 'Temporary Reader context received.' : 'Reader context received for ' + persistent.id + '.';
       if (isTemporary) temporaryTurns.push({
         id: turn.id + '-' + temporaryTurns.length,
         items: [
@@ -1422,21 +1480,35 @@ process.stdin.on('data', chunk => {
     try {
         const state = await (await fetch(reader.url + '/api/state')).json();
         assert.equal(typeof state.requestToken, 'string');
-        assert.equal(state.codex.binding, undefined);
+        assert.equal(state.codex.bindings, undefined);
 
         const blocked = await fetch(reader.url + '/api/codex/tasks');
         assert.equal(blocked.status, 403);
         const headers = { 'x-markdown-formal-reader-token': state.requestToken, 'content-type': 'application/json' };
         const tasks = await (await fetch(reader.url + '/api/codex/tasks', { headers })).json();
-        assert.equal(tasks.tasks.length, 1);
+        assert.equal(tasks.tasks.length, 2);
         assert.equal(tasks.tasks[0].taskId, 'task-reader-fixture');
+        assert.deepEqual(Object.keys(tasks.tasks[0]).sort(), ['taskId', 'taskName']);
 
         const bound = await (await fetch(reader.url + '/api/codex/binding', {
             method: 'POST',
             headers,
-            body: JSON.stringify({ taskId: 'task-reader-fixture' })
+            body: JSON.stringify({ taskId: 'task-reader-fixture', primary: true })
         })).json();
-        assert.equal(bound.binding.taskName, 'Reader fixture task');
+        assert.equal(bound.bindings.primaryTaskId, 'task-reader-fixture');
+        assert.deepEqual(bound.bindings.tasks.map(task => task.taskId), ['task-reader-fixture']);
+
+        const added = await (await fetch(reader.url + '/api/codex/binding', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ taskId: 'task-reader-review', primary: false })
+        })).json();
+        assert.equal(added.bindings.primaryTaskId, 'task-reader-fixture');
+        assert.deepEqual(added.bindings.tasks.map(task => task.taskId), ['task-reader-fixture', 'task-reader-review']);
+
+        const persistedBindings = JSON.parse(await fs.readFile(path.join(root, 'reader-task-bindings.json'), 'utf8'));
+        assert.equal(persistedBindings.version, 2);
+        assert.equal(persistedBindings.bindings[0].primaryTaskId, 'task-reader-fixture');
 
         const turnRequest = () => fetch(reader.url + '/api/codex/turn', {
             method: 'POST',
@@ -1458,7 +1530,74 @@ process.stdin.on('data', chunk => {
         assert.ok(completed);
         const turn = await completed.json();
         assert.equal(turn.taskId, 'task-reader-fixture');
-        assert.equal(turn.message, 'Reader context received.');
+        assert.equal(turn.message, 'Reader context received for task-reader-fixture.');
+
+        const reviewTurn = await (await fetch(reader.url + '/api/codex/turn', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                prompt: 'Review this statement separately.',
+                taskId: 'task-reader-review',
+                selection: {
+                    filePath: 'book1/01-foundations.md',
+                    startLine: 3,
+                    endLine: 3,
+                    markdown: '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
+                    text: 'Finite cover'
+                }
+            })
+        })).json();
+        assert.equal(reviewTurn.taskId, 'task-reader-review');
+        assert.equal(reviewTurn.message, 'Reader context received for task-reader-review.');
+
+        const madeDefault = await (await fetch(reader.url + '/api/codex/binding', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ taskId: 'task-reader-review', primary: true })
+        })).json();
+        assert.equal(madeDefault.bindings.primaryTaskId, 'task-reader-review');
+
+        const defaultTurn = await (await fetch(reader.url + '/api/codex/turn', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                prompt: 'Use the current default task.',
+                selection: {
+                    filePath: 'book1/01-foundations.md',
+                    startLine: 3,
+                    endLine: 3,
+                    markdown: '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
+                    text: 'Finite cover'
+                }
+            })
+        })).json();
+        assert.equal(defaultTurn.taskId, 'task-reader-review');
+        assert.equal(defaultTurn.message, 'Reader context received for task-reader-review.');
+
+        const restoredPrimary = await (await fetch(reader.url + '/api/codex/unbind', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ taskId: 'task-reader-review' })
+        })).json();
+        assert.equal(restoredPrimary.bindings.primaryTaskId, 'task-reader-fixture');
+        assert.deepEqual(restoredPrimary.bindings.tasks.map(task => task.taskId), ['task-reader-fixture']);
+
+        const unboundTarget = await fetch(reader.url + '/api/codex/turn', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                prompt: 'This target should be rejected.',
+                taskId: 'task-reader-review',
+                selection: {
+                    filePath: 'book1/01-foundations.md',
+                    startLine: 3,
+                    endLine: 3,
+                    markdown: '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
+                    text: 'Finite cover'
+                }
+            })
+        });
+        assert.equal(unboundTarget.status, 409);
 
         const temporary = await (await fetch(reader.url + '/api/codex/discussions', {
             method: 'POST',
@@ -1505,7 +1644,7 @@ process.stdin.on('data', chunk => {
             body: JSON.stringify({ conclusion: 'The theorem supplies a finite subcover.' })
         })).json();
         assert.equal(injected.taskId, 'task-reader-fixture');
-        assert.equal(injected.message, 'Reader context received.');
+        assert.equal(injected.message, 'Reader context received for task-reader-fixture.');
 
         const closed = await fetch(reader.url + '/api/codex/discussions/' + temporary.discussionId + '/close', {
             method: 'POST',
@@ -1981,6 +2120,7 @@ const tests = [
     ['recall boundaries and optional blocks', testRecallBoundariesAndOptionalBlocks],
     ['strong marker with softbreak', testStrongMarkerWithSoftbreak],
     ['dependency graph', testDependencyGraph],
+    ['proof terminators exclude explanatory references', testProofTerminatorsExcludeFollowingExplanatoryReferences],
     ['equation figure table numbering', testEquationFigureTableNumbering],
     ['structured marker validation', testStructuredMarkerValidation],
     ['cross-book references require dependencies', testCrossBookReferencesRequireDependencies],

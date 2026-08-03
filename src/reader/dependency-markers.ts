@@ -7,7 +7,17 @@ export interface ReaderDependencyGraph {
         kind?: string;
         sourceReferenceCount?: number;
     }>;
-    edges?: Array<{ from?: string; to?: string }>;
+    edges?: Array<{
+        from?: string;
+        to?: string;
+        where?: 'statement' | 'proof' | 'body';
+        relation?: 'strict' | 'explanatory';
+    }>;
+    ambientReferences?: Array<{
+        to?: string;
+        path?: string;
+        line?: number;
+    }>;
 }
 
 export type ReaderDependencyMarkerRole = 'leaf' | 'referenced' | 'bridge';
@@ -26,6 +36,7 @@ export interface ReaderDependencyMarker {
     sourceReferenceCount: number;
     directDependents: number;
     impactCount: number;
+    ambientReferenceCount: number;
     role: ReaderDependencyMarkerRole;
     kind: ReaderDependencyMarkerKind;
     upstream: ReaderDependencyNeighbor[];
@@ -73,9 +84,15 @@ function dependencyNeighbors(
         .sort((left, right) => left.display.localeCompare(right.display, 'zh-Hans-CN'));
 }
 
+function isStrictDependencyEdge(edge: NonNullable<ReaderDependencyGraph['edges']>[number]): boolean {
+    return edge.relation !== 'explanatory' && (edge.where === 'statement' || edge.where === 'proof');
+}
+
 /**
- * Produces the small, page-local graph projection used by Reader markers.
- * Graph direction is source formal claim -> referenced formal claim, so reverse
+ * Produces the small, page-local strict-dependency projection used by Reader
+ * markers. It admits only explicit strict references in a proposition's
+ * statement or proof, and deliberately excludes explanatory/body references
+ * and self-references. Graph direction is source formal claim -> referenced formal claim, so reverse
  * adjacency describes the later dependency nodes affected by a node.
  * sourceReferenceCount is separate context: it includes explicit formal
  * references to sections and definitions as well as dependency nodes.
@@ -86,19 +103,32 @@ export function projectReaderDependencyMarkers(
 ): Record<string, ReaderDependencyMarker> {
     const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
     const edges = Array.isArray(graph?.edges) ? graph.edges : [];
+    const ambientReferences = Array.isArray(graph?.ambientReferences) ? graph.ambientReferences : [];
     const nodeIds = new Set(nodes.map(node => node.id).filter((id): id is string => typeof id === 'string' && id.length > 0));
     const nodeById = new Map(nodes
         .filter((node): node is NonNullable<ReaderDependencyGraph['nodes']>[number] & { id: string } => typeof node?.id === 'string' && node.id.length > 0)
         .map(node => [node.id, node]));
     const dependencies = new Map<string, Set<string>>();
     const dependents = new Map<string, Set<string>>();
+    const ambientReferenceCounts = new Map<string, number>();
 
     for (const edge of edges) {
         const from = edge?.from;
         const to = edge?.to;
-        if (typeof from !== 'string' || typeof to !== 'string' || !nodeIds.has(from) || !nodeIds.has(to)) continue;
+        if (!isStrictDependencyEdge(edge)
+            || typeof from !== 'string'
+            || typeof to !== 'string'
+            || from === to
+            || !nodeIds.has(from)
+            || !nodeIds.has(to)) continue;
         addAdjacent(dependencies, from, to);
         addAdjacent(dependents, to, from);
+    }
+
+    for (const reference of ambientReferences) {
+        const target = reference?.to;
+        if (typeof target !== 'string' || !nodeIds.has(target)) continue;
+        ambientReferenceCounts.set(target, (ambientReferenceCounts.get(target) || 0) + 1);
     }
 
     const markers: Record<string, ReaderDependencyMarker> = {};
@@ -112,6 +142,7 @@ export function projectReaderDependencyMarkers(
             sourceReferenceCount,
             directDependents,
             impactCount: reachableCount(dependents, node.id),
+            ambientReferenceCount: ambientReferenceCounts.get(node.id) || 0,
             role: directDependents === 0 ? 'leaf' : directDependencies > 0 ? 'bridge' : 'referenced',
             kind: node.kind === 'remark' ? 'remark' : 'theorem-like',
             upstream: dependencyNeighbors(dependencies.get(node.id), nodeById),

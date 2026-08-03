@@ -33,7 +33,7 @@ export class ReaderToolbarPanel {
         this.close();
 
         const panel = document.createElement('section');
-        panel.className = 'reader-toolbar-panel';
+        panel.className = 'reader-toolbar-panel is-' + id;
         panel.setAttribute('role', 'dialog');
         panel.setAttribute('aria-label', title);
         const header = document.createElement('header');
@@ -66,7 +66,10 @@ export class ReaderToolbarPanel {
 
     reposition(): void {
         if (!this.panel || !this.trigger) return;
-        positionReaderPopover(this.panel, this.trigger.getBoundingClientRect(), { maxWidth: 580, gap: 8 });
+        positionReaderPopover(this.panel, this.trigger.getBoundingClientRect(), {
+            maxWidth: this.activeId === 'propositions' ? 780 : 580,
+            gap: 8
+        });
     }
 
     close(): void {

@@ -141,6 +141,7 @@ export interface FormalPageReference {
 }
 
 export type DependencyEdgeWhere = 'statement' | 'proof' | 'body';
+export type DependencyEdgeRelation = 'strict' | 'explanatory';
 export type DependencyGraphWhereFilter = DependencyEdgeWhere | 'all';
 export type DependencyGraphMatrixScope = 'book' | 'volume' | 'chapter';
 
@@ -173,6 +174,7 @@ export interface DependencyGraphEdge {
     to: string;
     kind: 'explicit_ref';
     where: DependencyEdgeWhere;
+    relation: DependencyEdgeRelation;
     path: string;
     line: number;
 }
@@ -185,6 +187,12 @@ export interface DependencyGraphDiagnostic {
     message: string;
 }
 
+export interface DependencyGraphAmbientReference {
+    to: string;
+    path: string;
+    line: number;
+}
+
 export interface DependencyGraphCycle {
     ids: string[];
     displays: string[];
@@ -195,6 +203,7 @@ export interface DependencyGraph {
     generatedBy: 'markdown-formal';
     nodes: DependencyGraphNode[];
     edges: DependencyGraphEdge[];
+    ambientReferences: DependencyGraphAmbientReference[];
     cycles: DependencyGraphCycle[];
     diagnostics: DependencyGraphDiagnostic[];
     summary: {
@@ -1553,6 +1562,13 @@ function isProofBoundaryLine(line: string): boolean {
     return /^(?:证明(?:概要|草图|思路|如下|在此略去)?|Proof(?:\s+sketch)?|Sketch of proof)\s*(?:[：:。.．.]|$|\s)/i.test(text);
 }
 
+function isProofTerminatorLine(line: string): boolean {
+    const text = normalizeProofBoundaryLine(line);
+    return /(?:证毕|Q\.?E\.?D\.?|∎|□)\s*[。.．.]?\s*$/i.test(text)
+        || /\$\s*\\square\s*\$\s*[。.．.]?\s*$/.test(text)
+        || /\\\[\s*\\square\s*\\\]\s*[。.．.]?\s*$/.test(text);
+}
+
 function isMarkerBoundaryLine(line: string): boolean {
     return /^#{1,6}\s+/.test(line) || !!parseFormalMarkerLine(line);
 }
@@ -2565,9 +2581,10 @@ function findProofRange(lines: string[], startLine: number, statementEndLine: nu
     }
 
     let proofEndIndex = proofStartIndex;
-    for (let i = proofStartIndex + 1; i < lines.length; i++) {
+    for (let i = proofStartIndex; i < lines.length; i++) {
         if (isMarkerBoundaryLine(lines[i])) break;
         proofEndIndex = i;
+        if (isProofTerminatorLine(lines[i])) break;
     }
 
     return {
@@ -2620,6 +2637,14 @@ function dependencyEdgeWhere(block: DependencySourceBlock, line: number): Depend
         return 'proof';
     }
     return 'body';
+}
+
+function dependencyEdgeRelation(line: string, id: string): DependencyEdgeRelation {
+    const reference = `@${escapeRegExp(id)}(?:\\.(?:title|full))?`;
+    const explanatoryLead = '(?:见|参见|详见|参阅|请参见|另见|see(?:\\s+also)?|cf\\.?)';
+    return new RegExp(`${explanatoryLead}\\s*${reference}`, 'i').test(line)
+        ? 'explanatory'
+        : 'strict';
 }
 
 function dependencyGraphNode(def: FormalDefinition, config: any): DependencyGraphNode {
@@ -2723,8 +2748,10 @@ export function buildDependencyGraph(state: any, documents: FormalDocument[]): D
         .sort(compareDefinitionRecords);
     const nodeById = new Map(dependencyDefinitions.map(def => [def.id as string, dependencyGraphNode(def, config)]));
     const blocksByFile = dependencySourceBlocks(dependencyDefinitions, documents);
+    const linesByFile = new Map(documents.map(document => [toPosix(document.filePath), (document.content || '').split(/\r?\n/)]));
     const sourceReferences = new Map<string, Set<string>>();
     const edges: DependencyGraphEdge[] = [];
+    const ambientReferences: DependencyGraphAmbientReference[] = [];
     const diagnostics: DependencyGraphDiagnostic[] = [];
 
     for (const ref of references) {
@@ -2738,6 +2765,7 @@ export function buildDependencyGraph(state: any, documents: FormalDocument[]): D
         const target = nodeById.get(ref.id);
         if (!target) continue;
         if (!sourceBlock) {
+            ambientReferences.push({ to: ref.id, path: ref.file, line: ref.line });
             diagnostics.push({
                 severity: 'info',
                 code: 'ambient-dependency-ref',
@@ -2748,11 +2776,14 @@ export function buildDependencyGraph(state: any, documents: FormalDocument[]): D
             continue;
         }
 
+        const where = dependencyEdgeWhere(sourceBlock, ref.line);
+        const sourceLine = linesByFile.get(ref.file)?.[ref.line - 1] || '';
         edges.push({
             from: sourceBlock.id,
             to: ref.id,
             kind: 'explicit_ref',
-            where: dependencyEdgeWhere(sourceBlock, ref.line),
+            where,
+            relation: where === 'body' ? 'explanatory' : dependencyEdgeRelation(sourceLine, ref.id),
             path: ref.file,
             line: ref.line
         });
@@ -2789,6 +2820,7 @@ export function buildDependencyGraph(state: any, documents: FormalDocument[]): D
         generatedBy: 'markdown-formal',
         nodes,
         edges,
+        ambientReferences,
         cycles,
         diagnostics,
         summary: {
@@ -3353,7 +3385,7 @@ export function renderAgentGuide(state: any): string {
         '- Chapter/page anchors: put `#h-...` / `#tmp-*` on the file\'s unique highest-level heading when the page needs stable refs. The hash is hidden in preview and does not create a section number. Use `@h-...`, `@h-....title`, or `@h-....full` from `reference-map.md` to reference the page.',
         '- Compatibility chapter/page refs: `@chapter:book1/02-main.md`, `@chapter:book1/02-main.md.title`, or `@chapter:book1/02-main.md.full` still work; paths are relative to the formal root that owns `.markdown-formal/`. `@page:path.md` is for intro, summary, and appendix pages. Prefer page hashes when available. `finish` normalizes `./` and `../` input sugar to root-relative paths.',
         '- Theorem-like recall captures the statement before `证明` / `Proof`; keep proofs after an explicit proof marker.',
-        '- Dependency graph: `.markdown-formal/dependency-graph.json` is the canonical explicit dependency graph. It uses only `@h-...` references between propositions/lemmas/theorems/corollaries and proof-backed hash remarks, and marks edges as `statement`, `proof`, or `body`; `.markdown-formal/dependency-report.md` separates mainline theorem-like and supplemental remark statistics. Use `npm run formal -- graph summary`, `graph impact <h-id>`, `graph upstream <h-id>`, `graph focus <h-id> --depth 2`, `graph bridges`, `graph isolated`, `graph cycles`, or `graph matrix chapter|volume|book` for Markdown analysis. Add `--where statement|proof|body` to filter edge placement. These are structural graph tools, not domain interpretation.',
+        '- Dependency graph: `.markdown-formal/dependency-graph.json` is the canonical explicit reference graph. It uses only `@h-...` references between propositions/lemmas/theorems/corollaries and proof-backed hash remarks, and marks edges as `statement`, `proof`, or `body`. Edges introduced as explanatory navigation (`见 @h-...`, `参见 @h-...`, or `see @h-...`) are preserved with relation `explanatory`; the Reader relation map excludes them, body references, and self-references from its strict dependency view. `.markdown-formal/dependency-report.md` separates mainline theorem-like and supplemental remark statistics. Use `npm run formal -- graph summary`, `graph impact <h-id>`, `graph upstream <h-id>`, `graph focus <h-id> --depth 2`, `graph bridges`, `graph isolated`, `graph cycles`, or `graph matrix chapter|volume|book` for Markdown analysis. Add `--where statement|proof|body` to filter edge placement. These are structural graph tools, not domain interpretation.',
         '- Definitions and project knowledge: lookup is a tool-first, AI-exception workflow. The tool scans standard `定义（Term）：...` / `Definition (Term): ...` definitions and deliberately named concept/glossary appendices; `.markdown-formal/project-analysis.md` records detected concept, notation, and summary pages. Do not refresh `.markdown-formal/definitions.json` after ordinary edits. Use it only for nonstandard phrases, aliases/bilingual lookup, stable multi-paragraph previews, or a boundary the deterministic extractor cannot represent; include Markdown `content` for those entries. Reader task context carries detected sources from the current book. Full rendered lookup previews are only guaranteed for definitions in the currently previewed file; cross-file search is primarily for locating and jumping.',
         '- Explanatory remarks stay plain: `注（Title）：...` / `Remark (Title): ...`, without hash. Non-mainline fact remarks that need a proof or later citation use `注 #tmp-*（Title）：...`; `> 注 #tmp-*（Title）：...` is also recognized inside standard blockquotes. A hash remark is an unnumbered supplemental dependency node and supports recall; a plain remark never enters the dependency graph or Reader dependency markers. Examples stay plain by default; only explicitly cited examples use `例 #tmp-*` / `Example #tmp-*` and remain numbered.',
         '- Symbols: maintain only project-specific `source`, `pattern`, and `meaning` entries in `.markdown-formal/symbols.json` when explicit notation semantics change; patterns describe the notation itself with balanced delimiters, not whole equations or open-ended formula fragments. Detected notation appendices are context only and do not infer symbol meanings. The navigation symbol table lists symbols matched in the current preview file. Symbols are not inline formula refs and are not searched through the definition search box.',

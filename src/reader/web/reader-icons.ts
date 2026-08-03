@@ -5,15 +5,17 @@ import {
     ChevronRight,
     createElement,
     Copy,
-    FunctionSquare,
+    GitBranch,
     ListTree,
     LocateFixed,
     MessageSquarePlus,
     MessageSquareText,
     PanelLeftClose,
     PanelLeftOpen,
+    Plus,
     RefreshCw,
     Sigma,
+    Star,
     X,
     type IconNode
 } from 'lucide';
@@ -28,13 +30,15 @@ export type ReaderIconName =
     | 'copy-source'
     | 'copy-line'
     | 'discuss'
-    | 'formulas'
+    | 'propositions'
     | 'contents'
     | 'task'
     | 'navigation-close'
     | 'navigation-open'
+    | 'plus'
     | 'reload'
     | 'sigma'
+    | 'star'
     | 'x';
 
 const ICONS: Record<ReaderIconName, IconNode> = {
@@ -47,13 +51,15 @@ const ICONS: Record<ReaderIconName, IconNode> = {
     'copy-source': Copy,
     'copy-line': Copy,
     discuss: MessageSquarePlus,
-    formulas: FunctionSquare,
+    propositions: GitBranch,
     contents: ListTree,
     task: MessageSquareText,
     'navigation-close': PanelLeftClose,
     'navigation-open': PanelLeftOpen,
+    plus: Plus,
     reload: RefreshCw,
     sigma: Sigma,
+    star: Star,
     x: X
 };
 

@@ -65,13 +65,14 @@ export class ReaderDiscussionDialog {
         document.addEventListener('keydown', this.onKeyDown);
     }
 
-    open(selection: ReaderDiscussionSelection): void {
+    open(selection: ReaderDiscussionSelection, initialPrompt?: string): void {
         this.close();
         this.selection = selection;
         this.discussionId = '';
         this.messages = [];
         this.pending = false;
         this.render();
+        if (initialPrompt) void this.send(initialPrompt);
     }
 
     dispose(): void {
