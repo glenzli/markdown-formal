@@ -10,7 +10,6 @@
 
 ## 🌍 English
 
-
 Math Workspace is a local environment for long-form mathematical writing and formalization work. It keeps the manuscript in Markdown that remains readable to humans and AI, while organizing stable numbering, references, proposition dependencies, notation, Lean anchors, review, and publication into one inspectable workflow.
 
 The current release uses Markdown as its manuscript source layer and `math-workspace` as both the package and CLI name, but the product scope is broader than Markdown. The Reader, Lean toolchain, and Codex MCP all serve the mathematical project itself: how the manuscript evolves, how propositions support one another, whether notation has drifted, and whether formal implementations remain aligned with the source.
@@ -205,11 +204,13 @@ Deterministic commands own identity, references, scanning, and validation. Model
 The release and npm package ship reviewable AI artifacts:
 
 - `skills/editor.md` contains target-project writing rules.
+- `skills/math-writing.md` contains project-neutral mathematical writing, revision, and proof-audit rules.
 - `skills/integrator.md` explains how to merge those rules into existing project constraints.
 - `skills/lean-formalization.md` defines Lean anchoring, implementation, and validation rules.
 - `vasm-catalog/vasmc-catalog.yaml` provides exports whose hashes can be locked by a VASMC lockfile.
 
 These rules are never installed or updated remotely without review. A target project should inspect them first, then merge them into its own `AGENTS.md`, skill, or project guide.
+`skills-src/*.vasm.md` is the sole content source for generic rules. `npm run content:build` generates `skills/`, plugin `SKILL.md` files, and the hashed catalog. Do not edit those generated files directly; target projects should consume a reviewed release or catalog.
 
 ### Development
 
@@ -446,11 +447,13 @@ math-workspace finish path/to/chapter.md
 release 和 npm 包提供可审阅的 AI artifact：
 
 - `skills/editor.md`：目标项目的写作规则。
+- `skills/math-writing.md`：与具体理论无关的数学撰写、修订和证明审计规则。
 - `skills/integrator.md`：把规则融合进既有项目约束的组合指南。
 - `skills/lean-formalization.md`：Lean 锚定、实现和验证规则。
 - `vasm-catalog/vasmc-catalog.yaml`：可由 VASMC lockfile 固定 hash 的 exports。
 
 这些规则不会远程自动安装或更新。目标项目应先审阅，再融合进自己的 `AGENTS.md`、skill 或项目指南。
+`skills-src/*.vasm.md` 是通用规则的唯一内容源；`npm run content:build` 生成 `skills/`、plugin 内的 `SKILL.md` 和带 hash 的 catalog。不要直接修改这些生成文件，目标项目应消费经过审阅的 release 或 catalog。
 
 ## 开发
 

@@ -86,6 +86,7 @@ const words = {
         propositions: '命题审阅',
         symbolAudit: '符号审计',
         symbolAuditIntro: '仅在点击开始后调用 Codex。它先提取各章记号并机械发现同形候选，再统一辨别同义复述、特化、兼容复用与真正冲突。',
+        draftFormalToolsUnavailable: '探索稿中不可用',
         symbolAuditCache: (reusable: number, total: number, missing: number) => `缓存：${reusable}/${total} 个文件可复用；本次需提取 ${missing} 个。`,
         symbolAuditConfiguredModel: '模型',
         symbolAuditConfiguredEffort: '强度',
@@ -258,6 +259,7 @@ const words = {
         propositions: 'Proposition review',
         symbolAudit: 'Symbol audit',
         symbolAuditIntro: 'Codex is called only after you start an audit. It extracts notation, discovers same-surface candidates mechanically, then reconciles restatements, specializations, compatible reuse, and genuine conflicts.',
+        draftFormalToolsUnavailable: 'Unavailable for exploratory drafts',
         symbolAuditCache: (reusable: number, total: number, missing: number) => `Cache: ${reusable}/${total} files reusable; ${missing} need extraction.`,
         symbolAuditConfiguredModel: 'Model',
         symbolAuditConfiguredEffort: 'Effort',
@@ -939,6 +941,26 @@ class ReaderApplication {
         increase.setAttribute('aria-label', dictionary.increaseFont);
         this.updateNavigationToggle();
         this.updateDiscussionMarkControls();
+        this.updateDraftToolbarAvailability();
+    }
+
+    private updateDraftToolbarAvailability(): void {
+        const isDraft = this.page?.page.documentMode === 'draft';
+        const unavailablePanels = new Set(['definitions', 'symbols', 'propositions', 'symbol-audit']);
+        const dictionary = this.dictionary();
+        this.root.querySelectorAll<HTMLButtonElement>('[data-panel]').forEach(button => {
+            const panel = button.dataset.panel || '';
+            const unavailable = isDraft && unavailablePanels.has(panel);
+            button.disabled = unavailable;
+            button.classList.toggle('is-unavailable', unavailable);
+            const titleKey = panel === 'symbol-audit' ? 'symbolAudit' : panel;
+            const candidate = dictionary[titleKey as keyof typeof dictionary];
+            const label = unavailable
+                ? dictionary.draftFormalToolsUnavailable
+                : (typeof candidate === 'string' ? candidate : panel);
+            button.dataset.tooltip = label;
+            button.setAttribute('aria-label', label);
+        });
     }
 
     private updateFontSize(value: number, persist = true): void {
@@ -1284,6 +1306,7 @@ class ReaderApplication {
             this.updateHistory(filePath, effectiveHistoryMode);
             this.renderNavigation((this.root.querySelector('#reader-page-filter') as HTMLInputElement).value);
             this.renderArticle();
+            this.updateDraftToolbarAvailability();
             if (anchor) {
                 window.requestAnimationFrame(() => this.scrollToAnchor(anchor));
             } else {
@@ -1391,6 +1414,8 @@ class ReaderApplication {
 
     private openPanel(view: string, trigger: HTMLElement): void {
         if (!this.state) return;
+        if (this.page?.page.documentMode === 'draft'
+            && ['definitions', 'symbols', 'propositions', 'symbol-audit'].includes(view)) return;
         const dictionary = this.dictionary();
         const titleKey = view === 'symbol-audit' ? 'symbolAudit' : view;
         const candidate = dictionary[titleKey as keyof typeof dictionary];

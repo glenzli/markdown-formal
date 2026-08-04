@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lean Formalization"
+  short_description: "Align Lean proofs with mathematical source"
+  default_prompt: "Use $lean-formalization to align this Lean declaration with its Math Workspace source anchor."

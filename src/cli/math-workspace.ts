@@ -2809,6 +2809,7 @@ async function printArtifactPaths() {
         ['CLI', path.join(__dirname, 'math-workspace.js')],
         ['workspace UI', path.join(PACKAGE_ROOT, 'out', 'reader', 'index.html')],
         ['editor skill', path.join(PACKAGE_ROOT, 'skills', 'editor.md')],
+        ['math writing skill', path.join(PACKAGE_ROOT, 'skills', 'math-writing.md')],
         ['integrator guide', path.join(PACKAGE_ROOT, 'skills', 'integrator.md')],
         ['Lean formalization skill', path.join(PACKAGE_ROOT, 'skills', 'lean-formalization.md')],
         ['VASMC catalog', path.join(PACKAGE_ROOT, 'vasm-catalog', 'vasmc-catalog.yaml')],
@@ -2821,8 +2822,8 @@ async function printArtifactPaths() {
         console.log(`${label}: ${toPosix(filePath)}${exists ? '' : ' (missing)'}`);
     }
     console.log('');
-    console.log('AI workflow: review skills/editor.md and skills/integrator.md; for Lean projects, also review skills/lean-formalization.md.');
-    console.log('VASMC: vasmc add --catalog <VASMC catalog> --export editor|integrator|lean-formalization');
+    console.log('AI workflow: review skills/editor.md, skills/math-writing.md, and skills/integrator.md; for Lean projects, also review skills/lean-formalization.md.');
+    console.log('VASMC: vasmc add --catalog <VASMC catalog> --export editor|math-writing|integrator|lean-formalization');
 }
 
 function parseReaderArgs(args: string[]): { rootPath?: string; port: number; help?: boolean } {

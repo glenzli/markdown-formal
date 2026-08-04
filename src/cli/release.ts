@@ -181,7 +181,7 @@ Run \`npm run workspace -- prepare\` from the project root that owns \`.math-wor
 
 ### AI Artifacts
 
-Review \`skills/editor.md\` and \`skills/integrator.md\`; when the project uses Lean, also review \`skills/lean-formalization.md\`. Merge the rules into the target project's native AI instructions. If the target project uses VASMC, consume the matching catalog exports so the consumer lockfile fixes artifact hashes. Do not auto-install or auto-update skills from an untrusted remote source.
+Review \`skills/editor.md\`, \`skills/math-writing.md\`, and \`skills/integrator.md\`; when the project uses Lean, also review \`skills/lean-formalization.md\`. Merge the rules into the target project's native AI instructions. If the target project uses VASMC, consume the matching catalog exports so the consumer lockfile fixes artifact hashes. Do not auto-install or auto-update skills from an untrusted remote source.
 
 <a id="中文"></a>
 
@@ -240,7 +240,7 @@ cp -R cli/* tools/math-workspace/
 
 ### AI Artifacts
 
-审阅 \`skills/editor.md\` 和 \`skills/integrator.md\`；项目使用 Lean 时再审阅 \`skills/lean-formalization.md\`。把规则融合到目标项目原生 AI 指令中；若目标项目使用 VASMC，则消费相应 catalog export，让 consumer lockfile 固定 artifact hash。不要从不可信远端自动安装或自动更新 skill。
+审阅 \`skills/editor.md\`、\`skills/math-writing.md\` 和 \`skills/integrator.md\`；项目使用 Lean 时再审阅 \`skills/lean-formalization.md\`。把规则融合到目标项目原生 AI 指令中；若目标项目使用 VASMC，则消费相应 catalog export，让 consumer lockfile 固定 artifact hash。不要从不可信远端自动安装或自动更新 skill。
 `;
 }
 
@@ -256,6 +256,7 @@ async function main(): Promise<void> {
     await requiredPath(path.join(ROOT, 'out', 'cli', 'release.js'));
     await requiredPath(path.join(ROOT, 'out', 'reader', 'index.html'));
     await requiredPath(path.join(ROOT, 'skills', 'editor.md'));
+    await requiredPath(path.join(ROOT, 'skills', 'math-writing.md'));
     await requiredPath(path.join(ROOT, 'skills', 'integrator.md'));
     await requiredPath(path.join(ROOT, 'skills', 'lean-formalization.md'));
     await requiredPath(path.join(catalogRoot, 'vasmc-catalog.yaml'));

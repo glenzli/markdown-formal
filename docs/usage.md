@@ -242,6 +242,7 @@ AI rules no longer live in a separate public documentation page. Target projects
 
 ```text
 skills/editor.md      # writing and migration rules
+skills/math-writing.md  # project-neutral mathematical writing and proof-audit rules
 skills/integrator.md  # how to merge those rules into native project instructions
 skills/lean-formalization.md  # Lean anchoring, implementation, and validation rules
 ```
@@ -250,15 +251,18 @@ For npm installs, the paths are:
 
 ```text
 node_modules/math-workspace/skills/editor.md
+node_modules/math-workspace/skills/math-writing.md
 node_modules/math-workspace/skills/integrator.md
 node_modules/math-workspace/skills/lean-formalization.md
 ```
 
-If the target project uses VASMC, lock both artifacts through the catalog:
+If the target project uses VASMC, lock the workspace, mathematical-writing, and integration artifacts through the catalog; Lean projects should also lock the Lean artifact:
 
 ```bash
 vasmc add --catalog node_modules/math-workspace/vasm-catalog/vasmc-catalog.yaml --export editor --alias math-workspace-editor
+vasmc add --catalog node_modules/math-workspace/vasm-catalog/vasmc-catalog.yaml --export math-writing --alias math-workspace-math-writing
 vasmc add --catalog node_modules/math-workspace/vasm-catalog/vasmc-catalog.yaml --export integrator --alias math-workspace-integrator
+vasmc add --catalog node_modules/math-workspace/vasm-catalog/vasmc-catalog.yaml --export lean-formalization --alias math-workspace-lean-formalization
 ```
 
 For release bundles, use this catalog path instead:
@@ -758,6 +762,7 @@ AI 规则不再放在单独的 public doc 中。目标项目应直接读取随�
 
 ```text
 skills/editor.md      # 具体写作和迁移规则
+skills/math-writing.md  # 通用数学撰写、修订与证明审计规则
 skills/integrator.md  # 如何融合进目标项目原生 AI 指令
 skills/lean-formalization.md  # Lean 锚定、实现与验证规则
 ```
@@ -766,15 +771,18 @@ skills/lean-formalization.md  # Lean 锚定、实现与验证规则
 
 ```text
 node_modules/math-workspace/skills/editor.md
+node_modules/math-workspace/skills/math-writing.md
 node_modules/math-workspace/skills/integrator.md
 node_modules/math-workspace/skills/lean-formalization.md
 ```
 
-如果目标项目使用 VASMC，使用 catalog 锁定这两个 artifact：
+如果目标项目使用 VASMC，使用 catalog 锁定工作区、数学写作与融合 artifact；Lean 项目再锁定 Lean artifact：
 
 ```bash
 vasmc add --catalog node_modules/math-workspace/vasm-catalog/vasmc-catalog.yaml --export editor --alias math-workspace-editor
+vasmc add --catalog node_modules/math-workspace/vasm-catalog/vasmc-catalog.yaml --export math-writing --alias math-workspace-math-writing
 vasmc add --catalog node_modules/math-workspace/vasm-catalog/vasmc-catalog.yaml --export integrator --alias math-workspace-integrator
+vasmc add --catalog node_modules/math-workspace/vasm-catalog/vasmc-catalog.yaml --export lean-formalization --alias math-workspace-lean-formalization
 ```
 
 对于 release bundle，把上面的 catalog 路径替换为：

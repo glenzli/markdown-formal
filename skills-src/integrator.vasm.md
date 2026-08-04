@@ -2,7 +2,7 @@
 vasm:
   alias: math-workspace-integrator-guide
   version: "0.1.0"
-  intent: "Guide AI agents to merge math-workspace writing rules into a target project's native workflow."
+  intent: "Guide AI agents to merge math-workspace mechanics and mathematical-writing rules into a target project's native workflow."
   compile:
     format: integrative
   integration:
@@ -11,16 +11,20 @@ vasm:
       - "editor"
       - "skills-src/editor.vasm.md"
       - "skills/editor.md"
+      - "vasm:math-workspace-math-writing-skill"
+      - "math-writing"
+      - "skills-src/math-writing.vasm.md"
+      - "skills/math-writing.md"
 ---
 
 # math-workspace integrative 组件
 
-这是组合指南，不是应原样附加到目标项目末尾的 prompt。把 [editor.md](../skills/editor.md) 的规则拆入目标项目既有的写作、迁移、审阅和发布流程；目标项目自己的术语、证明风格、章节模板和 release 规则仍是主导。
+这是组合指南，不是应原样附加到目标项目末尾的 prompt。把 [editor.md](../skills/editor.md) 的工作区规则和 [math-writing.md](../skills/math-writing.md) 的通用数学纪律拆入目标项目既有的写作、迁移、审阅和发布流程；目标项目自己的公理、术语、证明风格、章节模板和 release 规则仍是主导。
 
 ## 整合前
 
 1. 读取目标项目的 AI 指令入口、写作样例和 `package.json` scripts。
-2. 读取 `editor.md`、已有 `.math-workspace/config.json` 和目标项目的写作样例。已有对象要被引用时，只读取 `reference-map.md` 的相关行；`agent-guide.md` 仅作为当前索引状态的补充卡片。
+2. 读取 `editor.md`、`math-writing.md`、已有 `.math-workspace/config.json` 和目标项目的写作样例。已有对象要被引用时，只读取 `reference-map.md` 的相关行；`agent-guide.md` 仅作为当前索引状态的补充卡片。
 3. 若项目尚未初始化，先接入 CLI 并运行：
 
 ```bash
@@ -28,6 +32,16 @@ npm run workspace -- prepare
 ```
 
 不要自动下载、安装或更新远端 skill；以已审阅的 release/npm/VASMC artifact 为输入，并在目标项目中融合规则。
+
+## 融合优先级
+
+- 把通用规则视为数学严谨性和工具安全性的底线；项目层可以补充对象、公理、术语、路径、命令和更严格的验收门槛。
+- 项目层不得静默删除或削弱“不得隐藏假设、不得改变结论强度、不得伪造依赖、不得夸大形式化覆盖”等通用约束。
+- 通用 artifact 中的占位命令、路径或命名与项目实际配置不同时，以项目已验证的具体配置为准，但保留通用规则表达的行为目的。
+- 两层规则语义相同但措辞重复时，只保留一次，并采用更具体或更严格的表达。
+- 两层在数学前提、结论、修改权限或安全边界上真正冲突时，不自动选择一侧；在生成报告中保留冲突并要求人工裁决。
+- 生成后的项目 skill 必须保留来源 artifact、版本或 lock hash 的可追踪性，并通过生成差异审阅后提交。
+
 
 ## 必须融入的规则
 
@@ -63,6 +77,6 @@ npm run workspace -- prepare
 - `prepare`、`finish`、`verify` 可运行；新 ID 能稳定生成，断裂引用会被发现。
 - 概念/术语附录存在时会在 `project-analysis.md` 中被识别；没有时不要求人工制造概念表。
 - 定义和符号不参与 theorem-like 编号；跨 book 边界被显式配置。
-- VASMC 消费者同时锁定 `editor` 与 `integrator` catalog exports；release/vendored 升级经过 checksum 与 diff 审阅。
+- VASMC 消费者锁定 `editor`、`math-writing` 与 `integrator` catalog exports；release/vendored 升级经过 checksum、生成差异与融合规则审阅。
 
 完整迁移、PDF 和发布流程见 `docs/usage.md` 与 `docs/release.md`。

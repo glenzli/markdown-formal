@@ -28,6 +28,10 @@ catalog:
       source: "skills-src/editor.vasm.md"
       targetLang: "zh-CN"
       file: "math-workspace-editor.zh-CN.md"
+    math-writing:
+      source: "skills-src/math-writing.vasm.md"
+      targetLang: "zh-CN"
+      file: "math-workspace-math-writing.zh-CN.md"
     integrator:
       source: "skills-src/integrator.vasm.md"
       file: "math-workspace-integrator.md"

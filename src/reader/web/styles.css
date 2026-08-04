@@ -262,7 +262,7 @@ button { cursor: pointer; }
 .reader-icon { display: block; flex: 0 0 auto; width: 17px; height: 17px; stroke: currentColor; }
 .icon-button .reader-icon { width: 18px; height: 18px; }
 .tool-button .reader-icon { width: 18px; height: 18px; }
-.icon-button:hover:not(:disabled), .tool-button:hover, .tool-button.is-active { background: #e8edf0; color: #175889; }
+.icon-button:hover:not(:disabled), .tool-button:hover:not(:disabled), .tool-button.is-active { background: #e8edf0; color: #175889; }
 .tool-button.has-discussion-marks { position: relative; }
 .tool-button.has-discussion-marks::after {
     position: absolute;
@@ -281,7 +281,7 @@ button { cursor: pointer; }
     line-height: 13px;
     text-align: center;
 }
-.icon-button:disabled { cursor: default; opacity: .35; }
+.icon-button:disabled, .tool-button:disabled { cursor: default; opacity: .35; }
 .reader-type-control { gap: 0; }
 .type-size-button {
     border: 0;
@@ -1059,7 +1059,7 @@ button { cursor: pointer; }
     .reader-project-choose:hover { background: #287bad; }
     .reader-recent-projects, .reader-recent-projects button { border-color: #3e4347; }
     .reader-article h1, .reader-article h2, .reader-article h3, .reader-article h4 { color: #f1f2f3; }
-    .reader-nav-page:hover, .icon-button:hover:not(:disabled), .tool-button:hover, .tool-button.is-active, .type-size-button:hover:not(:disabled), .reader-outline:hover, .reader-definition-entry:hover { background: #31353a; }
+    .reader-nav-page:hover, .icon-button:hover:not(:disabled), .tool-button:hover:not(:disabled), .tool-button.is-active, .type-size-button:hover:not(:disabled), .reader-outline:hover, .reader-definition-entry:hover { background: #31353a; }
     .reader-nav-page.is-selected { background: #303b42; box-shadow: inset 3px 0 #6e9bb6; color: #dce6ec; }
     .reader-nav-page.is-active { background: #3c4b54; box-shadow: inset 3px 0 #8fc2df; color: #f0f5f7; }
     .reader-nav-context-menu, .reader-nav-context-submenu { border-color: #4a4f54; background: #26292c; box-shadow: 0 14px 30px rgba(0, 0, 0, .45); }
