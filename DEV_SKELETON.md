@@ -36,7 +36,7 @@
 - Formal IDs are stable implementation data; reader-facing numbers are rendered or exported from metadata.
 - Definitions and symbols are lookup aids, not theorem-numbering objects.
 - Project knowledge analysis may derive context from deliberately named concept/glossary, notation, and summary pages, but must not infer terms or symbol meanings from ordinary prose or rewrite source content.
-- The local Reader is opt-in for workspaces with `.math-workspace/config.json`, binds only to loopback, and must remain read-only; ordinary Markdown preview should stay ordinary elsewhere.
+- The local Reader is opt-in for workspaces with `.math-workspace/config.json`, binds only to loopback, and is source read-only; it may write explicit document lifecycle metadata only after a deliberate local user action. Ordinary Markdown preview should stay ordinary elsewhere.
 - Release bundles and npm packages ship runtime artifacts, public docs, generated AI artifacts under `skills/`, and VASMC catalog exports for lockable reuse.
 - Built Reader and CLI runtimes should remain dependency-free after bundling.
 - Dependency changes require caution and explicit verification because supply-chain risk matters for editor tooling.

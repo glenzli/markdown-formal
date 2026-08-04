@@ -226,6 +226,25 @@ const words = {
         integrationSegmented: '分段接入',
         integrationUnmanaged: '未接入',
         integrationAttention: '需要收束',
+        documentStage: '文档阶段',
+        documentStageUnset: '设置阶段',
+        documentStageDraft: '初稿',
+        documentStageRevising: '修订中',
+        documentStageStable: '稳定稿',
+        documentStageChanged: '有改动',
+        documentStageSaved: '已更新文档阶段',
+        documentStageMilestone: '版本里程碑',
+        documentStageMilestoneHint: '例如 RC1 或 v1',
+        documentStageRecord: '记录里程碑',
+        documentStageClear: '清除里程碑',
+        draftCollectionSummary: (total: number) => total + ' 篇',
+        expandDraftCollection: '展开草稿区',
+        collapseDraftCollection: '收起草稿区',
+        documentStageMenu: '修改状态',
+        documentStageSelection: (count: number) => `已选 ${count} 篇文档`,
+        documentStageBatch: (count: number) => count === 1 ? '修改文档阶段' : `修改 ${count} 篇文档阶段`,
+        documentStageBatchSaved: (count: number) => count === 1 ? '已更新文档阶段' : `已更新 ${count} 篇文档阶段`,
+        documentStageBatchNoFormal: '探索稿不使用文档阶段',
         integrationGroupSummary: (managed: number, total: number) => `接入 ${managed}/${total}`,
         integrationManagedDetail: (anchors: number) => `唯一页锚点已建立；稳定锚点 ${anchors} 个`,
         integrationSegmentedDetail: (anchors: number) => `已有 ${anchors} 个稳定锚点，但尚无唯一页锚点`,
@@ -379,6 +398,25 @@ const words = {
         integrationSegmented: 'Segmented integration',
         integrationUnmanaged: 'Not integrated',
         integrationAttention: 'Needs consolidation',
+        documentStage: 'Document stage',
+        documentStageUnset: 'Set stage',
+        documentStageDraft: 'Initial draft',
+        documentStageRevising: 'Revising',
+        documentStageStable: 'Stable draft',
+        documentStageChanged: 'Changed',
+        documentStageSaved: 'Document stage updated',
+        documentStageMilestone: 'Version milestone',
+        documentStageMilestoneHint: 'For example RC1 or v1',
+        documentStageRecord: 'Record milestone',
+        documentStageClear: 'Clear milestone',
+        draftCollectionSummary: (total: number) => String(total),
+        expandDraftCollection: 'Expand drafts',
+        collapseDraftCollection: 'Collapse drafts',
+        documentStageMenu: 'Change stage',
+        documentStageSelection: (count: number) => `${count} document${count === 1 ? '' : 's'} selected`,
+        documentStageBatch: (count: number) => count === 1 ? 'Change document stage' : `Change stage for ${count} documents`,
+        documentStageBatchSaved: (count: number) => count === 1 ? 'Document stage updated' : `Updated stage for ${count} documents`,
+        documentStageBatchNoFormal: 'Draft collections do not use document stages',
         integrationGroupSummary: (managed: number, total: number) => `Integrated ${managed}/${total}`,
         integrationManagedDetail: (anchors: number) => `A unique page anchor is available; ${anchors} stable anchor${anchors === 1 ? '' : 's'}`,
         integrationSegmentedDetail: (anchors: number) => `${anchors} stable anchor${anchors === 1 ? '' : 's'} found, but no unique page anchor`,
@@ -468,9 +506,46 @@ function pageIntegrationTooltip(page: ReaderPage | undefined, language: Language
     return `${pageIntegrationStatusLabel(integration, language)} · ${pageIntegrationDetail(integration, language)}`;
 }
 
+function documentStageLabel(page: ReaderPage | undefined, language: Language): string {
+    const dictionary = words[language];
+    switch (page?.lifecycle?.stage) {
+        case 'draft': return dictionary.documentStageDraft;
+        case 'revising': return dictionary.documentStageRevising;
+        case 'stable': return dictionary.documentStageStable;
+        default: return dictionary.documentStageUnset;
+    }
+}
+
+function documentStatusText(page: ReaderPage | undefined, language: Language): string {
+    const stage = documentStageLabel(page, language);
+    const checkpoint = page?.lifecycle?.checkpoint;
+    if (!checkpoint) return stage;
+    return `${checkpoint.label} · ${page?.lifecycle?.changedSinceCheckpoint ? words[language].documentStageChanged : stage}`;
+}
+
+function documentStatusBadge(page: ReaderPage | undefined, language: Language, interactive = false): HTMLElement | undefined {
+    const lifecycle = page?.lifecycle;
+    if (page?.documentMode === 'draft') return undefined;
+    const hasState = !!lifecycle?.stage || !!lifecycle?.checkpoint;
+    if (!interactive && !hasState) return undefined;
+    const element = interactive ? document.createElement('button') : document.createElement('span');
+    element.className = 'reader-document-status' + (interactive ? ' is-interactive' : '') + (lifecycle?.changedSinceCheckpoint ? ' is-changed' : '');
+    element.textContent = documentStatusText(page, language);
+    element.title = words[language].documentStage + '：' + documentStatusText(page, language);
+    if (interactive) {
+        (element as HTMLButtonElement).type = 'button';
+        element.dataset.documentStatus = 'true';
+    }
+    return element;
+}
+
 function pageIntegrationGlyph(page: ReaderPage | undefined, language: Language): HTMLSpanElement {
-    const integration = pageIntegration(page);
     const glyph = document.createElement('span');
+    if (page?.documentMode === 'draft') {
+        glyph.className = 'reader-page-integration is-hidden';
+        return glyph;
+    }
+    const integration = pageIntegration(page);
     glyph.className = 'reader-page-integration is-' + integration.status;
     glyph.dataset.readerTooltip = pageIntegrationTooltip(page, language);
     glyph.setAttribute('aria-hidden', 'true');
@@ -481,6 +556,7 @@ const DEFAULT_FONT_SIZE = 14;
 const MIN_FONT_SIZE = 12;
 const MAX_FONT_SIZE = 24;
 const FONT_SIZE_STORAGE_KEY = 'math-workspace.font-size';
+const DRAFT_COLLECTIONS_STORAGE_KEY = 'math-workspace.collapsed-draft-collections';
 const NAVIGATION_STORAGE_KEY = 'math-workspace.navigation-collapsed';
 
 function storedFontSize(): number {
@@ -499,6 +575,15 @@ function storedNavigationCollapsed(): boolean {
         return false;
     }
 }
+function storedCollapsedDraftCollections(): Set<string> {
+    try {
+        const value = JSON.parse(localStorage.getItem(DRAFT_COLLECTIONS_STORAGE_KEY) || '[]');
+        return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []);
+    } catch (_error) {
+        return new Set();
+    }
+}
+
 
 class ReaderApplication {
     private readonly root = document.getElementById('reader-app') as HTMLElement;
@@ -506,12 +591,17 @@ class ReaderApplication {
     private state: ReaderState | undefined;
     private page: ReaderPagePayload | undefined;
     private currentPath = '';
+    private selectedPagePaths: string[] = [];
+    private selectionAnchorPath = '';
+    private navigationContextMenu: HTMLElement | undefined;
+    private navigationContextMenuCleanup: (() => void) | undefined;
     private historyPaths: string[] = [];
     private historyIndex = -1;
     private pageRequestId = 0;
     private fontSize = storedFontSize();
     private navigationCollapsed = storedNavigationCollapsed();
     private main!: HTMLElement;
+    private collapsedDraftCollections = storedCollapsedDraftCollections();
     private article!: HTMLElement;
     private pageTitle!: HTMLElement;
     private liveStatus!: HTMLElement;
@@ -548,6 +638,8 @@ class ReaderApplication {
             this.article.textContent = 'No Markdown pages were found in the bound project.';
             return;
         }
+        this.selectedPagePaths = [initialPath];
+        this.selectionAnchorPath = initialPath;
         await this.openPage(initialPath, 'replace');
         if (initialView === 'symbol-audit-report') await this.openSymbolAuditReport('replace');
     }
@@ -707,7 +799,7 @@ class ReaderApplication {
     private async fetchJson<T>(url: string): Promise<T> {
         const response = await fetch(url, {
             cache: 'no-store',
-            headers: (url === '/api/discussion-marks' || url.startsWith('/api/symbol-audit')) && this.state?.requestToken
+            headers: (url === '/api/discussion-marks' || url === '/api/document-state' || url.startsWith('/api/symbol-audit')) && this.state?.requestToken
                 ? { 'x-math-workspace-token': this.state.requestToken }
                 : undefined
         });
@@ -718,6 +810,9 @@ class ReaderApplication {
     private async postJson<T>(url: string, value: unknown = {}): Promise<T> {
         const headers: Record<string, string> = { 'content-type': 'application/json' };
         if ((url === '/api/discussion-marks' || url.startsWith('/api/symbol-audit')) && this.state?.requestToken) {
+            headers['x-math-workspace-token'] = this.state.requestToken;
+        }
+        if (url === '/api/document-state' && this.state?.requestToken) {
             headers['x-math-workspace-token'] = this.state.requestToken;
         }
         const response = await fetch(url, {
@@ -885,6 +980,169 @@ class ReaderApplication {
         replaceReaderButtonIcon(toggle, this.navigationCollapsed ? 'navigation-open' : 'navigation-close', 18);
     }
 
+    private setDraftCollectionCollapsed(collectionId: string, value: boolean): void {
+        if (value) this.collapsedDraftCollections.add(collectionId);
+        else this.collapsedDraftCollections.delete(collectionId);
+        try {
+            localStorage.setItem(DRAFT_COLLECTIONS_STORAGE_KEY, JSON.stringify([...this.collapsedDraftCollections].sort()));
+        } catch (_error) {
+            // The in-memory setting still works in restricted browser contexts.
+        }
+        const filter = this.root.querySelector('#reader-page-filter') as HTMLInputElement | null;
+        this.renderNavigation(filter?.value || '');
+    }
+    private pageForPath(filePath: string): ReaderPage | undefined {
+        return this.state?.pages.find(page => page.filePath === filePath);
+    }
+
+    private formalSelectedPagePaths(): string[] {
+        return this.selectedPagePaths.filter(filePath => this.pageForPath(filePath)?.documentMode !== 'draft');
+    }
+
+    private setNavigationSelection(filePaths: string[], anchor = filePaths[0] || ''): void {
+        const known = new Set(this.state?.pages.map(page => page.filePath) || []);
+        this.selectedPagePaths = [...new Set(filePaths)].filter(filePath => known.has(filePath));
+        this.selectionAnchorPath = this.selectedPagePaths.includes(anchor) ? anchor : (this.selectedPagePaths[0] || '');
+        this.renderNavigation((this.root.querySelector('#reader-page-filter') as HTMLInputElement | null)?.value || '');
+    }
+
+    private selectNavigationPage(filePath: string, event: MouseEvent): void {
+        if (!this.state || !this.pageForPath(filePath)) return;
+        const additive = event.metaKey || event.ctrlKey;
+        let next: string[];
+        if (event.shiftKey && this.selectionAnchorPath && this.pageForPath(this.selectionAnchorPath)) {
+            const paths = this.state.pages.map(page => page.filePath);
+            const start = paths.indexOf(this.selectionAnchorPath);
+            const end = paths.indexOf(filePath);
+            const [from, to] = start <= end ? [start, end] : [end, start];
+            const range = paths.slice(from, to + 1);
+            next = [this.selectionAnchorPath, ...range.filter(path => path !== this.selectionAnchorPath)];
+        } else if (additive) {
+            next = this.selectedPagePaths.includes(filePath)
+                ? this.selectedPagePaths.filter(path => path !== filePath)
+                : [...this.selectedPagePaths, filePath];
+            if (next.length === 0) next = [filePath];
+            this.selectionAnchorPath = filePath;
+        } else {
+            next = [filePath];
+            this.selectionAnchorPath = filePath;
+        }
+        this.setNavigationSelection(next, this.selectionAnchorPath || filePath);
+        const primary = this.selectedPagePaths[0];
+        if (primary && primary !== this.currentPath) void this.openPage(primary, 'push');
+    }
+
+    private closeNavigationContextMenu(): void {
+        this.navigationContextMenuCleanup?.();
+        this.navigationContextMenuCleanup = undefined;
+        this.navigationContextMenu?.remove();
+        this.navigationContextMenu = undefined;
+    }
+
+    private openNavigationContextMenuForPage(filePath: string, clientX: number, clientY: number): void {
+        if (!this.selectedPagePaths.includes(filePath)) {
+            this.selectionAnchorPath = filePath;
+            this.setNavigationSelection([filePath], filePath);
+            if (filePath !== this.currentPath) void this.openPage(filePath, 'push');
+        }
+        this.openNavigationContextMenu(clientX, clientY);
+    }
+
+    private openNavigationContextMenu(clientX: number, clientY: number): void {
+        this.closeNavigationContextMenu();
+        const filePaths = this.formalSelectedPagePaths();
+        if (filePaths.length === 0) {
+            this.reportLive(this.dictionary().documentStageBatchNoFormal);
+            return;
+        }
+        const menu = document.createElement('section');
+        menu.className = 'reader-nav-context-menu';
+        menu.setAttribute('role', 'menu');
+        menu.setAttribute('aria-label', this.dictionary().documentStageBatch(filePaths.length));
+        const title = document.createElement('div');
+        title.className = 'reader-nav-context-menu-title';
+        title.textContent = this.dictionary().documentStageSelection(filePaths.length);
+        menu.append(title);
+        const stageBranch = document.createElement('div');
+        stageBranch.className = 'reader-nav-context-menu-branch';
+        const stageTrigger = document.createElement('button');
+        stageTrigger.type = 'button';
+        stageTrigger.className = 'reader-nav-context-menu-trigger';
+        stageTrigger.setAttribute('role', 'menuitem');
+        stageTrigger.setAttribute('aria-haspopup', 'menu');
+        stageTrigger.setAttribute('aria-expanded', 'false');
+        const stageLabel = document.createElement('span');
+        stageLabel.textContent = this.dictionary().documentStageMenu;
+        stageTrigger.append(stageLabel, readerIcon('chevron-right', 13));
+        const stageMenu = document.createElement('div');
+        stageMenu.className = 'reader-nav-context-submenu';
+        stageMenu.setAttribute('role', 'menu');
+        const setStageMenuOpen = (open: boolean) => {
+            menu.classList.toggle('is-stage-submenu-open', open);
+            stageTrigger.setAttribute('aria-expanded', String(open));
+        };
+        stageTrigger.addEventListener('click', () => setStageMenuOpen(!menu.classList.contains('is-stage-submenu-open')));
+        stageTrigger.addEventListener('mouseenter', () => setStageMenuOpen(true));
+        stageTrigger.addEventListener('keydown', event => {
+            if (event.key !== 'ArrowRight') return;
+            event.preventDefault();
+            setStageMenuOpen(true);
+            stageMenu.querySelector<HTMLButtonElement>('button')?.focus();
+        });
+        stageBranch.addEventListener('mouseleave', () => setStageMenuOpen(false));
+        ([
+            ['draft', this.dictionary().documentStageDraft],
+            ['revising', this.dictionary().documentStageRevising],
+            ['stable', this.dictionary().documentStageStable]
+        ] as const).forEach(([stage, label]) => {
+            const action = document.createElement('button');
+            action.type = 'button';
+            action.className = 'reader-nav-context-menu-item';
+            action.setAttribute('role', 'menuitem');
+            action.textContent = label;
+            action.addEventListener('click', () => void this.saveNavigationStages(filePaths, stage));
+            stageMenu.append(action);
+        });
+        stageBranch.append(stageTrigger, stageMenu);
+        menu.append(stageBranch);
+        menu.style.left = clientX + 'px';
+        menu.style.top = clientY + 'px';
+        document.body.append(menu);
+        window.requestAnimationFrame(() => {
+            const bounds = menu.getBoundingClientRect();
+            menu.style.left = Math.max(8, Math.min(clientX, window.innerWidth - bounds.width - 8)) + 'px';
+            menu.style.top = Math.max(8, Math.min(clientY, window.innerHeight - bounds.height - 8)) + 'px';
+        });
+        const dismissPointer = (event: PointerEvent) => {
+            if (!menu.contains(event.target as Node)) this.closeNavigationContextMenu();
+        };
+        const dismissKey = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') this.closeNavigationContextMenu();
+        };
+        document.addEventListener('pointerdown', dismissPointer, true);
+        document.addEventListener('keydown', dismissKey);
+        this.navigationContextMenu = menu;
+        this.navigationContextMenuCleanup = () => {
+            document.removeEventListener('pointerdown', dismissPointer, true);
+            document.removeEventListener('keydown', dismissKey);
+        };
+    }
+
+    private async saveNavigationStages(filePaths: string[], stage: 'draft' | 'revising' | 'stable'): Promise<void> {
+        this.closeNavigationContextMenu();
+        try {
+            for (const filePath of filePaths) {
+                await this.postJson('/api/document-state', { filePath, stage });
+            }
+            await this.refreshState();
+            const primary = this.selectedPagePaths[0];
+            if (primary) await this.openPage(primary, 'replace', '', true);
+            this.reportLive(this.dictionary().documentStageBatchSaved(filePaths.length));
+        } catch (error: any) {
+            this.reportLive(error instanceof Error ? error.message : String(error));
+        }
+    }
+
     private updateDiscussionMarkControls(): void {
         const tools = this.root.querySelector<HTMLButtonElement>('#reader-discussion-tools');
         if (!tools) return;
@@ -926,7 +1184,9 @@ class ReaderApplication {
         )).forEach(page => {
             const data = page as ReaderPage & { bookTitle?: string; bookKey?: string; volumeTitle?: string };
             const book = data.bookTitle || data.bookKey || this.state?.rootName || '';
-            const groupName = data.volumeTitle ? book + ' · ' + data.volumeTitle : book;
+            const groupName = page.documentMode === 'draft'
+                ? (page.documentCollectionTitle || this.dictionary().documentStageDraft)
+                : (data.volumeTitle ? book + ' · ' + data.volumeTitle : book);
             if (!groups.has(groupName)) groups.set(groupName, []);
             groups.get(groupName)?.push(page);
         });
@@ -939,23 +1199,61 @@ class ReaderApplication {
             const heading = document.createElement('h2');
             const headingText = document.createElement('span');
             headingText.innerHTML = renderFormalInline(this.markdown, groupName, this.renderOptions('', {}));
+            const isDraftCollection = pages[0]?.documentMode === 'draft';
             const integrated = pages.filter(page => pageIntegration(page).status === 'managed').length;
+            const draftCollectionId = pages[0]?.documentCollectionId;
+            const summaryText = isDraftCollection
+                ? this.dictionary().draftCollectionSummary(pages.length)
+                : this.dictionary().integrationGroupSummary(integrated, pages.length);
             const summary = document.createElement('span');
             summary.className = 'reader-nav-integration-summary';
-            summary.textContent = this.dictionary().integrationGroupSummary(integrated, pages.length);
-            summary.title = this.dictionary().integrationGroupSummary(integrated, pages.length);
-            heading.append(headingText, summary);
+            summary.textContent = summaryText;
+            summary.title = summaryText;
+            const isCollapsed = Boolean(isDraftCollection && draftCollectionId && !normalized && this.collapsedDraftCollections.has(draftCollectionId));
+            if (isDraftCollection && draftCollectionId) {
+                const toggle = document.createElement('button');
+                toggle.type = 'button';
+                toggle.className = 'reader-nav-group-toggle' + (isCollapsed ? ' is-collapsed' : '');
+                toggle.dataset.draftCollectionToggle = draftCollectionId;
+                toggle.setAttribute('aria-expanded', String(!isCollapsed));
+                toggle.setAttribute('aria-label', isCollapsed ? this.dictionary().expandDraftCollection : this.dictionary().collapseDraftCollection);
+                toggle.append(readerIcon(isCollapsed ? 'chevron-down' : 'chevron-up', 13));
+                heading.append(headingText, summary, toggle);
+            } else {
+                heading.append(headingText, summary);
+            }
             group.append(heading);
+            if (isCollapsed) {
+                navigation.append(group);
+                return;
+            }
             pages.forEach(page => {
                 const button = document.createElement('button');
                 button.type = 'button';
-                button.className = 'reader-nav-page' + (page.filePath === this.currentPath ? ' is-active' : '');
+                const selectedIndex = this.selectedPagePaths.indexOf(page.filePath);
+                button.className = 'reader-nav-page'
+                    + (selectedIndex >= 0 ? ' is-selected' : '')
+                    + (selectedIndex === 0 ? ' is-active' : '');
                 button.dataset.pagePath = page.filePath;
+                button.setAttribute('aria-selected', String(selectedIndex >= 0));
+                button.addEventListener('click', event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.selectNavigationPage(page.filePath, event);
+                });
+                button.addEventListener('contextmenu', event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.openNavigationContextMenuForPage(page.filePath, event.clientX, event.clientY);
+                });
                 const title = page.displayHeading || page.title;
                 const label = document.createElement('span');
                 label.className = 'reader-nav-page-label';
                 label.innerHTML = renderFormalInline(this.markdown, title, this.renderOptions(page.filePath, {}));
-                button.append(label, pageIntegrationGlyph(page, this.state!.language));
+                button.append(label);
+                const status = documentStatusBadge(page, this.state!.language);
+                if (status) button.append(status);
+                button.append(pageIntegrationGlyph(page, this.state!.language));
                 button.setAttribute('aria-label', `${title} — ${pageIntegrationTooltip(page, this.state!.language)}`);
                 group.append(button);
             });
@@ -965,6 +1263,10 @@ class ReaderApplication {
 
     private async openPage(filePath: string, historyMode: 'push' | 'replace' | 'pop', anchor = '', preserveScroll = false): Promise<void> {
         if (!this.state || !this.state.pages.some(page => page.filePath === filePath)) return;
+        if (!this.selectedPagePaths.includes(filePath)) {
+            this.selectedPagePaths = [filePath];
+            this.selectionAnchorPath = filePath;
+        }
         const effectiveHistoryMode = this.symbolAuditReportOpen && historyMode === 'push' && filePath === this.currentPath
             ? 'replace'
             : historyMode;
@@ -1017,8 +1319,15 @@ class ReaderApplication {
         const titleLabel = document.createElement('span');
         titleLabel.className = 'reader-page-title-label';
         titleLabel.innerHTML = renderFormalInline(this.markdown, title, this.renderOptions(this.page.filePath, this.page.labels));
-        this.pageTitle.replaceChildren(titleLabel, pageIntegrationGlyph(this.page.page, this.state.language));
-        this.pageTitle.setAttribute('aria-label', `${title} — ${pageIntegrationTooltip(this.page.page, this.state.language)}`);
+        const documentStatus = documentStatusBadge(this.page.page, this.state.language, true);
+        const titleParts: Node[] = [titleLabel];
+        if (documentStatus) titleParts.push(documentStatus);
+        titleParts.push(pageIntegrationGlyph(this.page.page, this.state.language));
+        this.pageTitle.replaceChildren(...titleParts);
+        const descriptor = this.page.page?.documentMode === 'draft'
+            ? (this.page.page?.documentCollectionTitle || 'Draft collection')
+            : pageIntegrationTooltip(this.page.page, this.state.language);
+        this.pageTitle.setAttribute('aria-label', title + ' — ' + descriptor);
         document.title = title + ' — Math Workspace';
         const rendered = renderFormalDocument(this.markdown, this.page.content, {
             currentFilePath: this.page.filePath,
@@ -1093,6 +1402,67 @@ class ReaderApplication {
             if (view === 'propositions') this.propositionReview.render(content, this.currentPropositionReviewItems());
             if (view === 'symbol-audit') this.renderSymbolAudit(content);
         });
+    }
+
+    private openDocumentStage(trigger: HTMLElement): void {
+        const page = this.page?.page;
+        if (!page || !this.state) return;
+        if (page.documentMode === 'draft') return;
+        const dictionary = this.dictionary();
+        this.toolbarPanel.open('document-stage', trigger, dictionary.documentStage, content => {
+            const summary = document.createElement('p');
+            summary.className = 'reader-document-stage-summary';
+            summary.textContent = documentStatusText(page, this.state!.language);
+            const stages = document.createElement('div');
+            stages.className = 'reader-document-stage-actions';
+            ([
+                ['draft', dictionary.documentStageDraft],
+                ['revising', dictionary.documentStageRevising],
+                ['stable', dictionary.documentStageStable]
+            ] as const).forEach(([stage, label]) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'reader-symbol-audit-button';
+                button.textContent = label;
+                button.addEventListener('click', () => void this.saveDocumentStage({ stage }));
+                stages.append(button);
+            });
+            const checkpoint = document.createElement('div');
+            checkpoint.className = 'reader-document-stage-checkpoint';
+            const input = document.createElement('input');
+            input.className = 'reader-panel-search';
+            input.placeholder = dictionary.documentStageMilestoneHint;
+            input.value = page.lifecycle?.checkpoint?.label || '';
+            const record = document.createElement('button');
+            record.type = 'button';
+            record.className = 'reader-symbol-audit-button';
+            record.textContent = dictionary.documentStageRecord;
+            record.addEventListener('click', () => void this.saveDocumentStage({ checkpointLabel: input.value }));
+            checkpoint.append(input, record);
+            content.append(summary, stages, checkpoint);
+            if (page.lifecycle?.checkpoint) {
+                const clear = document.createElement('button');
+                clear.type = 'button';
+                clear.className = 'reader-document-stage-clear';
+                clear.textContent = dictionary.documentStageClear;
+                clear.addEventListener('click', () => void this.saveDocumentStage({ clearCheckpoint: true }));
+                content.append(clear);
+            }
+        });
+    }
+
+    private async saveDocumentStage(update: { stage?: 'draft' | 'revising' | 'stable'; checkpointLabel?: string; clearCheckpoint?: boolean }): Promise<void> {
+        if (!this.page) return;
+        const filePath = this.page.filePath;
+        try {
+            await this.postJson('/api/document-state', { filePath, ...update });
+            this.toolbarPanel.close();
+            await this.refreshState();
+            await this.openPage(filePath, 'replace', '', true);
+            this.reportLive(this.dictionary().documentStageSaved);
+        } catch (error: any) {
+            this.reportLive(error instanceof Error ? error.message : String(error));
+        }
     }
 
     private async refreshDiscussionMarks(): Promise<ReaderDiscussionMark[]> {
@@ -1522,6 +1892,12 @@ class ReaderApplication {
             const target = event.target as HTMLElement | null;
             if (!target) return;
             const projectPicker = target.closest<HTMLElement>('[data-project-picker]');
+            const draftCollectionToggle = target.closest<HTMLElement>('[data-draft-collection-toggle]');
+            if (draftCollectionToggle?.dataset.draftCollectionToggle) {
+                const collectionId = draftCollectionToggle.dataset.draftCollectionToggle;
+                this.setDraftCollectionCollapsed(collectionId, draftCollectionToggle.getAttribute('aria-expanded') !== 'false');
+                return;
+            }
             if (projectPicker) {
                 void this.chooseProject('/api/projects/pick');
                 return;
@@ -1531,9 +1907,9 @@ class ReaderApplication {
                 void this.chooseProject('/api/projects/recent', { index: Number(recentProject.dataset.recentProject) });
                 return;
             }
-            const pageButton = target.closest<HTMLElement>('[data-page-path]');
-            if (pageButton?.dataset.pagePath) {
-                void this.openPage(pageButton.dataset.pagePath, 'push');
+            const documentStatus = target.closest<HTMLElement>('[data-document-status]');
+            if (documentStatus && this.page) {
+                this.openDocumentStage(documentStatus);
                 return;
             }
             const panelButton = target.closest<HTMLElement>('[data-panel]');

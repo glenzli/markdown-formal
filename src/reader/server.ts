@@ -20,6 +20,7 @@ import {
 } from './discussion-marks';
 import { ReaderProjectRegistry } from './projects';
 import { ReaderWorkspace, type WorkspaceSnapshot } from './workspace';
+import { updateDocumentState, type DocumentLifecycleUpdate } from './document-state';
 import { readLeanBuild } from '../lean/lean-state';
 import { readLeanDependencyArtifact } from '../lean/lean-dependencies';
 import { SymbolAuditService } from './symbol-audit-service';
@@ -97,9 +98,10 @@ function displayLabel(label: LabelData, config: any, pagesByPath: Map<string, Pa
     return number ? name + ' ' + number : name;
 }
 
-function decoratePage(page: PageData, config: any): Record<string, unknown> {
+function decoratePage(page: PageData, config: any, lifecycle?: unknown): Record<string, unknown> {
     return {
         ...page,
+        ...(lifecycle ? { lifecycle } : {}),
         displayHeading: formatPageHeading(page, config),
         displayReference: formatPageReference(page, config)
     };
@@ -192,11 +194,12 @@ function stateProjection(snapshot: WorkspaceSnapshot, rootPath: string): Record<
         refreshedAt: snapshot.refreshedAt,
         rootName: path.basename(rootPath),
         language: snapshot.state.config?.language || 'zh',
-        pages: pages.map((page: PageData) => decoratePage(page, snapshot.state.config)),
+        pages: pages.map((page: PageData) => decoratePage(page, snapshot.state.config, snapshot.state.documentState?.lifecycles?.[page.filePath])),
         definitions: definitions.map(definitionSummary),
         issues: snapshot.state.issues || [],
         dependencySummary: snapshot.state.dependencyGraph?.summary || {},
         leanSummary: snapshot.state.leanIndex?.summary || {},
+        documentState: { orphaned: snapshot.state.documentState?.orphaned || [] },
         projectAnalysis: snapshot.state.projectAnalysis || { schemaVersion: 1, sources: [], summary: {} }
     };
 }
@@ -305,6 +308,24 @@ function symbolAuditSettingsInput(value: unknown): SymbolAuditSettings {
         } else throw new Error('Symbol audit scope kind is invalid.');
     }
     return { ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(scope ? { scope } : {}) };
+}
+
+function documentStateInput(value: unknown): DocumentLifecycleUpdate {
+    const record = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+    const filePath = typeof record.filePath === 'string' ? toPosix(record.filePath).replace(/^\/+/, '') : '';
+    if (!filePath || filePath.startsWith('../') || filePath.includes('/../')) throw new Error('Document path is invalid.');
+    const stage = record.stage;
+    if (stage !== undefined && !['draft', 'revising', 'stable'].includes(stage as string)) throw new Error('Document stage is invalid.');
+    const checkpointLabel = record.checkpointLabel;
+    if (checkpointLabel !== undefined && typeof checkpointLabel !== 'string') throw new Error('Version label is invalid.');
+    const clearCheckpoint = record.clearCheckpoint;
+    if (clearCheckpoint !== undefined && typeof clearCheckpoint !== 'boolean') throw new Error('Checkpoint operation is invalid.');
+    return {
+        filePath,
+        ...(stage !== undefined ? { stage: stage as DocumentLifecycleUpdate['stage'] } : {}),
+        ...(checkpointLabel !== undefined ? { checkpointLabel: checkpointLabel as string } : {}),
+        ...(clearCheckpoint === true ? { clearCheckpoint: true } : {})
+    };
 }
 
 function discussionMarkInput(snapshot: WorkspaceSnapshot, rootPath: string, value: any): ReaderDiscussionMarkInput {
@@ -569,6 +590,23 @@ export async function startReaderServer(options: FormalReaderServerOptions): Pro
                 return;
             }
 
+            if (url.pathname === '/api/document-state') {
+                if (!requireRequestToken(request, response, requestToken)) return;
+                if (request.method === 'GET') {
+                    sendJson(response, 200, snapshot.state.documentState || { schemaVersion: 1, records: {}, lifecycles: {}, orphaned: [] });
+                    return;
+                }
+                if (request.method === 'POST') {
+                    const body = await readJsonRequest(request, 8 * 1024);
+                    const documentState = await updateDocumentState(rootPath, snapshot.state.config, snapshot.documents, documentStateInput(body));
+                    const refreshed = workspace.applyDocumentState(documentState, [documentState.stateFile]);
+                    sendJson(response, 200, { documentState, state: stateProjection(refreshed, rootPath) });
+                    return;
+                }
+                sendText(response, 405, 'Document state supports GET and POST.');
+                return;
+            }
+
             if (url.pathname === '/api/symbol-audit' || url.pathname === '/api/symbol-audit/models') {
                 if (!requireRequestToken(request, response, requestToken)) return;
                 if (url.pathname === '/api/symbol-audit/models') {
@@ -625,7 +663,7 @@ export async function startReaderServer(options: FormalReaderServerOptions): Pro
                 sendJson(response, 200, stripUndefinedFields({
                     revision: snapshot.revision,
                     filePath,
-                    page: rawPage ? decoratePage(rawPage, snapshot.state.config) : undefined,
+                    page: rawPage ? decoratePage(rawPage, snapshot.state.config, snapshot.state.documentState?.lifecycles?.[filePath]) : undefined,
                     content,
                     labels: labelsForContent(snapshot, [content, ...symbols.map(symbol => symbol.meaning)].join('\n')),
                     dependencyMarkers: projectReaderDependencyMarkers(snapshot.state.dependencyGraph, filePath, snapshot.state.leanIndex),

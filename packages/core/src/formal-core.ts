@@ -50,6 +50,13 @@ export interface PageData {
     line?: number;
     level?: number;
     integration?: PageIntegrationData;
+    /**
+     * Reader-only document grouping. Draft pages deliberately bypass the
+     * formal scanner, so this is not a claim about formal coverage.
+     */
+    documentMode?: 'formal' | 'draft';
+    documentCollectionId?: string;
+    documentCollectionTitle?: string;
 }
 
 export type PageIntegrationStatus = 'managed' | 'segmented' | 'unmanaged' | 'attention';

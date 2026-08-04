@@ -3,7 +3,9 @@ import {
     BookOpenText,
     ChevronLeft,
     ChevronRight,
+    ChevronDown,
     createElement,
+    ChevronUp,
     Copy,
     Eraser,
     GitBranch,
@@ -29,7 +31,9 @@ export type ReaderIconName =
     | 'arrow-left'
     | 'locate'
     | 'copy'
+    | 'chevron-down'
     | 'definition'
+    | 'chevron-up'
     | 'chevron-left'
     | 'chevron-right'
     | 'copy-source'
@@ -52,7 +56,9 @@ export type ReaderIconName =
     | 'x';
 
 const ICONS: Record<ReaderIconName, IconNode> = {
+    'chevron-down': ChevronDown,
     'arrow-left': ArrowLeft,
+    'chevron-up': ChevronUp,
     locate: LocateFixed,
     copy: Copy,
     definition: BookOpenText,

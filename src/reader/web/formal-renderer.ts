@@ -21,6 +21,15 @@ export interface ReaderPage {
     appendix?: string;
     line?: number;
     integration?: ReaderPageIntegration;
+    documentMode?: 'formal' | 'draft';
+    documentCollectionId?: string;
+    documentCollectionTitle?: string;
+    lifecycle?: {
+        mode: 'formal' | 'draft';
+        stage?: 'draft' | 'revising' | 'stable';
+        checkpoint?: { label: string; recordedAt: string; contentHash?: string };
+        changedSinceCheckpoint: boolean;
+    };
 }
 
 export interface ReaderPageIntegration {
