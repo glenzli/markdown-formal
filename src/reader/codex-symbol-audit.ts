@@ -545,7 +545,7 @@ export class CodexSymbolAuditRunner {
                     method: 'initialize',
                     id,
                     params: {
-                        clientInfo: { name: 'math_workspace', title: 'Math Workspace', version: '0.1.0' },
+                        clientInfo: { name: 'math-workspace', title: 'Math Workspace', version: '0.1.0' },
                         capabilities: { experimentalApi: true }
                     }
                 });

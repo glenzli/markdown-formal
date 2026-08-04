@@ -1567,6 +1567,8 @@ async function testReaderMcpServer() {
     await fs.writeFile(path.join(root, 'book1', '01-foundations.md'), [
         '# #h-1111111111111111 Foundations',
         '',
+        '定义（紧致性）：每个开覆盖都有有限子覆盖。',
+        '',
         '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
         ''
     ].join('\n'));
@@ -1575,6 +1577,7 @@ async function testReaderMcpServer() {
 
     const rootPath = await fs.realpath(root);
     const discussionMarksPath = path.join(root, 'discussion-marks.json');
+    const symbolAuditStatePath = path.join(root, 'symbol-audit.json');
     await fs.writeFile(discussionMarksPath, JSON.stringify({
         version: 1,
         marks: [{
@@ -1585,41 +1588,111 @@ async function testReaderMcpServer() {
             revision: 1,
             filePath: 'book1/01-foundations.md',
             title: 'Finite cover',
-            startLine: 3,
-            endLine: 3,
+            startLine: 5,
+            endLine: 5,
             sourceHash: 'fixture',
             kind: 'selection'
         }]
     }));
+    const auditBinding = {
+        id: 'mwsym_fixture_c',
+        filePath: 'book1/01-foundations.md',
+        startLine: 5,
+        endLine: 5,
+        expression: 'C',
+        normalizedExpression: 'C',
+        structure: { base: 'C', modifiers: [] },
+        kind: 'temporary',
+        scope: 'local',
+        bindingKey: 'cover-constant',
+        semanticType: 'constant',
+        meaning: 'a local cover constant',
+        evidence: 'C is fixed in this theorem.',
+        confidence: 'high'
+    };
+    await fs.writeFile(symbolAuditStatePath, JSON.stringify({
+        version: 1,
+        projects: {
+            [rootPath]: {
+                settings: {},
+                extractions: {},
+                reports: {
+                    legacy: {
+                        cacheKey: 'legacy',
+                        createdAt: '2026-08-04T00:00:00.000Z',
+                        inputHash: 'fixture',
+                        promptVersion: 'symbol-audit-v2',
+                        reviewVersion: 'symbol-audit-reconciliation-v1',
+                        bindingCount: 1,
+                        externalSpecialBindingCount: 0,
+                        scannedFiles: 1,
+                        reusedFiles: 0,
+                        hardConflicts: [{
+                            expression: 'C',
+                            severity: 'hard',
+                            reason: 'A local binding collides with maintained notation.',
+                            bindings: [auditBinding]
+                        }],
+                        candidates: [{ expression: 'C', bindings: [auditBinding] }],
+                        reconciliations: [],
+                        advisories: []
+                    }
+                },
+                latestReportKey: 'legacy'
+            }
+        }
+    }));
 
-    const mcp = await startMcp(root, { env: { MATH_WORKSPACE_DISCUSSION_MARKS: discussionMarksPath } });
+    const mcp = await startMcp(root, { env: {
+        MATH_WORKSPACE_DISCUSSION_MARKS: discussionMarksPath,
+        MATH_WORKSPACE_SYMBOL_AUDIT_STATE: symbolAuditStatePath
+    } });
     try {
         const tools = await mcp.request('tools/list');
-        const formalReader = tools.tools.find(tool => tool.name === 'math_workspace');
-        assert.ok(formalReader);
-        assert.equal(formalReader._meta, undefined);
+        const names = tools.tools.map(tool => tool.name).sort();
+        assert.deepEqual(names, [
+            'inspect_dependencies',
+            'inspect_lean_alignment',
+            'lookup_formal_object',
+            'lookup_knowledge',
+            'open',
+            'read_marks',
+            'read_symbol_audit',
+            'verify'
+        ]);
+        tools.tools.forEach(tool => assert.equal(tool._meta, undefined));
 
         const launch = await mcp.request('tools/call', {
-            name: 'math_workspace',
+            name: 'open',
             arguments: { pagePath: 'book1/01-foundations.md' }
         });
         assert.equal(launch.isError, undefined);
-        assert.equal(launch.structuredContent.rootPath, await fs.realpath(root));
+        assert.equal(launch.structuredContent.rootPath, rootPath);
         assert.equal(launch.structuredContent.pagePath, 'book1/01-foundations.md');
         assert.match(launch.structuredContent.url, /^http:\/\/127\.0\.0\.1:\d+\/\?path=book1%2F01-foundations\.md$/);
         assert.match(launch.content[0].text, /Codex's local browser/);
 
-        const marks = await mcp.request('tools/call', {
-            name: 'math_workspace_discussion_marks_get',
-            arguments: {}
-        });
+        const marks = await mcp.request('tools/call', { name: 'read_marks', arguments: {} });
         assert.equal(marks.structuredContent.result.marks.length, 1);
         assert.match(marks.content[0].text, /已读取 1 个标记。/);
+
+        const knowledge = await mcp.request('tools/call', {
+            name: 'lookup_knowledge',
+            arguments: { query: '紧致性' }
+        });
+        assert.equal(knowledge.isError, undefined, JSON.stringify(knowledge));
+        assert.ok(knowledge.structuredContent.result.matches.some(match => match.kind === 'definition' && match.title === '紧致性'));
+
+        const audit = await mcp.request('tools/call', { name: 'read_symbol_audit', arguments: {} });
+        assert.equal(audit.isError, undefined, JSON.stringify(audit));
+        assert.equal(audit.structuredContent.result.reportState, 'stale');
+        assert.equal(audit.structuredContent.result.report.hardConflictCount, 1);
+        assert.equal(audit.structuredContent.result.report.findings[0].expression, 'C');
+        assert.equal(audit.structuredContent.result.report.findings[0].bindings[0].filePath, 'book1/01-foundations.md');
     } finally {
         await stopReader(mcp.child);
     }
 }
-
 async function testReaderPluginMcpConfig() {
     const pluginRoot = path.join(repoRoot, 'plugins', 'math-workspace');
     const manifest = JSON.parse(await fs.readFile(path.join(pluginRoot, '.codex-plugin', 'plugin.json'), 'utf8'));
@@ -1634,272 +1707,6 @@ async function testReaderPluginMcpConfig() {
             }
         }
     });
-}
-
-async function testReaderTemporaryDiscussion() {
-    const root = await makeWorkspace('reader-codex');
-    await fs.writeFile(path.join(root, 'book1', '01-foundations.md'), [
-        '# #h-1111111111111111 Foundations',
-        '',
-        '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
-        ''
-    ].join('\n'));
-    await fs.writeFile(path.join(root, 'book1', 'appendix-b-core-concepts.md'), [
-        '# Appendix B: Core Concepts',
-        '',
-        '| Term | Definition |',
-        '| --- | --- |',
-        '| Finite cover | Every open cover has a finite subcover. |',
-        ''
-    ].join('\n'));
-    await fs.mkdir(path.join(root, 'book2'), { recursive: true });
-    await fs.writeFile(path.join(root, 'book2', 'appendix-b-core-concepts.md'), [
-        '# Appendix B: Core Concepts',
-        '',
-        '| Term | Definition |',
-        '| --- | --- |',
-        '| Unrelated term | A definition from another book. |',
-        ''
-    ].join('\n'));
-    assert.equal(runCli(root, ['prepare']).status, 0);
-
-    const fakeCodex = path.join(root, 'fake-codex.mjs');
-    await fs.writeFile(fakeCodex, `#!/usr/bin/env node
-let buffer = '';
-const cwd = process.env.MATH_WORKSPACE_FAKE_CODEX_CWD;
-const write = value => process.stdout.write(JSON.stringify(value) + '\\n');
-const temporaryThread = {
-  id: 'temporary-reader-fixture', cwd, name: 'Temporary Reader discussion', preview: 'Ephemeral selection discussion',
-  updatedAt: 1, canAcceptDirectInput: true, ephemeral: true
-};
-const temporaryTurns = [];
-const receive = message => {
-  if (message.method === 'initialize') {
-    if (message.params.capabilities?.experimentalApi !== true) {
-      return write({ id: message.id, error: { message: 'Reader must opt in to Codex experimental API capabilities.' } });
-    }
-    return write({ id: message.id, result: { platformFamily: 'test' } });
-  }
-  if (message.method === 'thread/start') {
-    if (message.params.ephemeral !== true || message.params.sandbox !== 'read-only' || message.params.approvalPolicy !== 'never') {
-      return write({ id: message.id, error: { message: 'Temporary Reader discussions must be ephemeral and read-only.' } });
-    }
-    return write({ id: message.id, result: { thread: temporaryThread, cwd } });
-  }
-  if (message.method === 'thread/read') {
-    if (message.params.threadId !== temporaryThread.id || message.params.includeTurns !== true) {
-      return write({ id: message.id, error: { message: 'Unexpected Reader discussion refresh.' } });
-    }
-    return write({ id: message.id, result: { thread: { ...temporaryThread, turns: temporaryTurns } } });
-  }
-  if (message.method === 'turn/start') {
-    if (message.params.threadId !== temporaryThread.id) {
-      return write({ id: message.id, error: { message: 'Temporary Reader discussions must not target a persistent task.' } });
-    }
-    const selectionContext = message.params.additionalContext?.['math-workspace-selection']?.value;
-    if (!selectionContext) {
-      return write({ id: message.id, error: { message: 'Reader selection context was missing.' } });
-    }
-    const parsedContext = JSON.parse(selectionContext);
-    if (parsedContext.projectKnowledge?.summary?.conceptSources !== 1 || parsedContext.projectKnowledge?.sources?.[0]?.filePath !== 'book1/appendix-b-core-concepts.md') {
-      return write({ id: message.id, error: { message: 'Reader project knowledge context was missing.' } });
-    }
-    const turn = { id: 'turn-temporary-fixture-' + temporaryTurns.length, status: 'completed' };
-    return setTimeout(() => {
-      const response = 'Temporary Reader context received.';
-      temporaryTurns.push({
-        id: turn.id,
-        items: [
-          { type: 'userMessage', id: 'user-' + temporaryTurns.length, content: message.params.input },
-          { type: 'agentMessage', id: 'assistant-' + temporaryTurns.length, text: response }
-        ]
-      });
-      write({ method: 'item/agentMessage/delta', params: { threadId: message.params.threadId, turnId: turn.id, itemId: 'message', delta: response } });
-      write({ id: message.id, result: { turn } });
-      write({ method: 'turn/completed', params: { threadId: message.params.threadId, turn } });
-    }, 30);
-  }
-};
-process.stdin.setEncoding('utf8');
-process.stdin.on('data', chunk => {
-  buffer += chunk;
-  let index = buffer.indexOf('\\n');
-  while (index >= 0) {
-    const line = buffer.slice(0, index).trim();
-    buffer = buffer.slice(index + 1);
-    if (line) receive(JSON.parse(line));
-    index = buffer.indexOf('\\n');
-  }
-});
-`);
-    await fs.chmod(fakeCodex, 0o755);
-    const env = {
-        MATH_WORKSPACE_STATE: path.join(root, 'reader-projects.json'),
-        MATH_WORKSPACE_CODEX_COMMAND: fakeCodex,
-        MATH_WORKSPACE_FAKE_CODEX_CWD: root
-    };
-    const reader = await startReader(root, { env });
-    try {
-        const state = await (await fetch(reader.url + '/api/state')).json();
-        assert.equal(typeof state.requestToken, 'string');
-        assert.equal('codex' in state, false);
-        const headers = { 'x-math-workspace-token': state.requestToken, 'content-type': 'application/json' };
-        assert.equal((await fetch(reader.url + '/api/codex/tasks')).status, 403);
-        assert.equal((await fetch(reader.url + '/api/codex/tasks', { headers })).status, 404);
-
-        const temporary = await (await fetch(reader.url + '/api/codex/discussions', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-                prompt: 'Explain the selected theorem without editing files.',
-                selection: {
-                    filePath: 'book1/01-foundations.md',
-                    startLine: 3,
-                    endLine: 3,
-                    markdown: '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
-                    text: 'Finite cover'
-                }
-            })
-        })).json();
-        assert.match(temporary.discussionId, /^[a-f0-9]{36}$/);
-        assert.equal(temporary.message, 'Temporary Reader context received.');
-
-        const continuation = await (await fetch(reader.url + '/api/codex/discussions/' + temporary.discussionId + '/turn', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ prompt: 'State the key implication.' })
-        })).json();
-        assert.equal(continuation.discussionId, temporary.discussionId);
-        assert.equal(continuation.message, 'Temporary Reader context received.');
-
-        const refreshed = await (await fetch(reader.url + '/api/codex/discussions/' + temporary.discussionId + '/refresh', {
-            method: 'POST',
-            headers,
-            body: '{}'
-        })).json();
-        assert.equal(refreshed.discussionId, temporary.discussionId);
-        assert.equal(refreshed.synchronized, true);
-        assert.deepEqual(refreshed.messages, [
-            { role: 'user', text: 'Explain the selected theorem without editing files.' },
-            { role: 'assistant', text: 'Temporary Reader context received.' },
-            { role: 'user', text: 'State the key implication.' },
-            { role: 'assistant', text: 'Temporary Reader context received.' }
-        ]);
-
-        const injection = await fetch(reader.url + '/api/codex/discussions/' + temporary.discussionId + '/inject', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ conclusion: 'The theorem supplies a finite subcover.' })
-        });
-        assert.equal(injection.status, 404);
-
-        const closed = await fetch(reader.url + '/api/codex/discussions/' + temporary.discussionId + '/close', {
-            method: 'POST',
-            headers,
-            body: '{}'
-        });
-        assert.equal(closed.status, 200);
-        const unavailable = await fetch(reader.url + '/api/codex/discussions/' + temporary.discussionId + '/turn', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ prompt: 'Should fail.' })
-        });
-        assert.equal(unavailable.status, 404);
-    } finally {
-        await stopReader(reader.child);
-    }
-}
-
-async function testReaderSelectionHandoff() {
-    const root = await makeWorkspace('reader-handoff');
-    const chapterPath = path.join(root, 'book1', '01-foundations.md');
-    await fs.writeFile(chapterPath, [
-        '# #h-1111111111111111 Foundations',
-        '',
-        '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
-        '',
-        '推论 #h-4444444444444444（Consequence）：Apply @h-3333333333333333.',
-        ''
-    ].join('\n'));
-    assert.equal(runCli(root, ['prepare']).status, 0);
-    const env = {
-        MATH_WORKSPACE_STATE: path.join(root, 'reader-projects.json'),
-        MATH_WORKSPACE_HANDOFFS: path.join(root, 'reader-handoffs.json')
-    };
-    const reader = await startReader(root, { env });
-    try {
-        const state = await (await fetch(reader.url + '/api/state')).json();
-        const handoffResponse = await fetch(reader.url + '/api/handoffs', {
-            method: 'POST',
-            headers: {
-                'content-type': 'application/json',
-                'x-math-workspace-token': state.requestToken
-            },
-            body: JSON.stringify({
-                prompt: 'Explain the selected theorem without editing source.',
-                selection: {
-                    filePath: 'book1/01-foundations.md',
-                    startLine: 3,
-                    endLine: 3,
-                    markdown: '定理 #h-3333333333333333（Finite cover）：Every open cover has a finite subcover.',
-                    text: 'Finite cover'
-                }
-            })
-        });
-        assert.equal(handoffResponse.status, 200);
-        const handoff = await handoffResponse.json();
-        assert.match(handoff.selectionId, /^mwsel_[a-f0-9]{24}$/);
-        assert.match(handoff.taskPrompt, /math_workspace_selection_get/);
-        assert.match(handoff.taskPrompt, /Explain the selected theorem/);
-        const storedHandoffs = JSON.parse(await fs.readFile(env.MATH_WORKSPACE_HANDOFFS, 'utf8'));
-        assert.equal(storedHandoffs.handoffs[0].id, handoff.selectionId, JSON.stringify(storedHandoffs));
-        assert.equal(storedHandoffs.handoffs[0].rootPath, await fs.realpath(root), JSON.stringify(storedHandoffs));
-
-        const mcp = await startMcp(root, { env });
-        try {
-            const tools = await mcp.request('tools/list');
-            ['math_workspace_selection_get', 'math_workspace_formal_lookup', 'math_workspace_dependency_slice', 'math_workspace_lean_alignment', 'math_workspace_verify'].forEach(name => {
-                assert.ok(tools.tools.some(tool => tool.name === name), `${name} should be available`);
-            });
-            const selected = await mcp.request('tools/call', {
-                name: 'math_workspace_selection_get',
-                arguments: { selectionId: handoff.selectionId }
-            });
-            assert.equal(selected.isError, undefined, JSON.stringify(selected));
-            assert.ok(selected.structuredContent, JSON.stringify(selected));
-            assert.equal(selected.structuredContent.result.selectionId, handoff.selectionId);
-            assert.equal(selected.structuredContent.result.source.filePath, 'book1/01-foundations.md');
-            assert.match(selected.structuredContent.result.source.sourceLines, /Finite cover/);
-
-            const formal = await mcp.request('tools/call', {
-                name: 'math_workspace_formal_lookup',
-                arguments: { id: 'h-3333333333333333' }
-            });
-            assert.match(formal.structuredContent.result.content, /Finite cover/);
-            const dependencies = await mcp.request('tools/call', {
-                name: 'math_workspace_dependency_slice',
-                arguments: { id: 'h-3333333333333333', direction: 'downstream' }
-            });
-            assert.equal(dependencies.structuredContent.result.strictOnly, true);
-            assert.ok(dependencies.structuredContent.result.nodes.some(node => node.id === 'h-4444444444444444'));
-            const verification = await mcp.request('tools/call', {
-                name: 'math_workspace_verify', arguments: {}
-            });
-            assert.equal(verification.structuredContent.result.readOnly, true);
-
-            await fs.writeFile(chapterPath, (await fs.readFile(chapterPath, 'utf8')).replace('finite subcover.', 'finite extracted subcover.'));
-            const stale = await mcp.request('tools/call', {
-                name: 'math_workspace_selection_get',
-                arguments: { selectionId: handoff.selectionId }
-            });
-            assert.equal(stale.isError, true);
-            assert.match(stale.content[0].text, /changed after it was handed off/);
-        } finally {
-            await stopReader(mcp.child);
-        }
-    } finally {
-        await stopReader(reader.child);
-    }
 }
 
 async function testReaderDiscussionMarks() {
@@ -1966,10 +1773,9 @@ async function testReaderDiscussionMarks() {
         const mcp = await startMcp(root, { env });
         try {
             const tools = await mcp.request('tools/list');
-            assert.ok(tools.tools.some(tool => tool.name === 'math_workspace_discussion_marks_get'));
-            assert.equal(tools.tools.some(tool => tool.name === 'math_workspace_selection_get'), false);
+            assert.ok(tools.tools.some(tool => tool.name === 'read_marks'));
             const marked = await mcp.request('tools/call', {
-                name: 'math_workspace_discussion_marks_get',
+                name: 'read_marks',
                 arguments: {}
             });
             assert.equal(marked.isError, undefined, JSON.stringify(marked));
@@ -1983,7 +1789,7 @@ async function testReaderDiscussionMarks() {
 
             await fs.writeFile(chapterPath, (await fs.readFile(chapterPath, 'utf8')).replace('finite subcover.', 'finite extracted subcover.'));
             const stale = await mcp.request('tools/call', {
-                name: 'math_workspace_discussion_marks_get',
+                name: 'read_marks',
                 arguments: {}
             });
             assert.equal(stale.structuredContent.result.marks[0].status, 'changed');

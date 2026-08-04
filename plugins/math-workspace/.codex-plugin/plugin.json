@@ -1,6 +1,6 @@
 {
   "name": "math-workspace",
-  "version": "0.1.0+codex.20260803053730",
+  "version": "0.1.0+codex.20260805101808",
   "description": "Query local Math Workspace context from Codex.",
   "author": {
     "name": "Glen Li",
@@ -20,7 +20,7 @@
   "interface": {
     "displayName": "Math Workspace",
     "shortDescription": "Open and query the local mathematical workspace.",
-    "longDescription": "Open or query the independent Math Workspace for a prepared project from Codex. The plugin resolves short-lived Reader selections and formal/Lean context without duplicating a Codex discussion UI.",
+    "longDescription": "Open or query the independent Math Workspace for a prepared project from Codex. The plugin resolves deliberate source marks, maintained project knowledge, cached audits, and formal/Lean evidence without duplicating a Codex discussion UI.",
     "developerName": "Glen Li",
     "category": "Productivity",
     "capabilities": [

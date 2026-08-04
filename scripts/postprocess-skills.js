@@ -5,7 +5,7 @@ const root = path.resolve(__dirname, '..');
 const skills = [
     {
         name: 'math-writing',
-        description: 'Write, revise, or audit rigorous mathematical prose without changing its assumptions, quantifiers, scope, or conclusion. Use for definitions, statements, proofs, counterexamples, notation, boundary cases, and mathematical necessity review in any project.',
+        description: 'Write, redesign, revise, or audit rigorous mathematical prose while making intended changes to assumptions, quantifiers, scope, and conclusions explicit. Use for definitions, statements, proofs, counterexamples, notation, boundary cases, conceptual rewrites, and mathematical necessity review in any project.',
         artifact: 'skills/math-writing.md',
         source: 'skills-src/math-writing.vasm.md'
     },

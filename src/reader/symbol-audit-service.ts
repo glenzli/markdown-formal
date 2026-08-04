@@ -216,35 +216,10 @@ export class SymbolAuditService {
     }
 
     async status(rootPath: string, snapshot: WorkspaceSnapshot): Promise<SymbolAuditStatus> {
-        const project = await this.store.project(rootPath);
-        const allSources = allSourcesForSnapshot(snapshot);
-        const catalog = scopeCatalog(snapshot, allSources);
-        const sources = sourcesForScope(allSources, catalog, project.settings.scope);
-        const externalSpecialBindings = externalRegisteredSpecialBindings(snapshot, new Set(sources.map(source => source.filePath)));
-        const reusableFiles = sources.filter(source => (
-            !!project.extractions[symbolAuditExtractionCacheKey(source.filePath, sha256(source.content), project.settings)]
-        )).length;
-        const key = currentReportKey(sources, project.settings, externalSpecialBindings);
-        const report = project.reports[key] || (project.latestReportKey ? project.reports[project.latestReportKey] : undefined);
-        const reportState: SymbolAuditStatus['reportState'] = !report
-            ? 'none'
-            : project.reports[key] ? 'current' : 'stale';
+        const status = await readSymbolAuditStatus(rootPath, snapshot, this.store);
         const job = this.active?.rootPath === rootPath ? this.active : this.lastJob?.rootPath === rootPath ? this.lastJob : undefined;
         return {
-            settings: project.settings,
-            cache: {
-                totalFiles: sources.length,
-                reusableFiles,
-                missingFiles: sources.length - reusableFiles
-            },
-            scope: {
-                selectedFilePaths: sources.map(source => source.filePath),
-                pages: catalog.pages,
-                groups: catalog.groups,
-                externalSpecialBindingCount: externalSpecialBindings.length
-            },
-            reportState,
-            ...(report ? { report } : {}),
+            ...status,
             ...(job ? { job: this.publicJob(job) } : {})
         };
     }
@@ -378,4 +353,41 @@ export class SymbolAuditService {
         const { rootPath: _rootPath, settings: _settings, cancelled: _cancelled, ...status } = job;
         return status;
     }
+}
+
+/** Read cached audit state without creating a Codex bridge or starting model work. */
+export async function readSymbolAuditStatus(
+    rootPath: string,
+    snapshot: WorkspaceSnapshot,
+    store = new SymbolAuditStore()
+): Promise<SymbolAuditStatus> {
+    const project = await store.project(rootPath);
+    const allSources = allSourcesForSnapshot(snapshot);
+    const catalog = scopeCatalog(snapshot, allSources);
+    const sources = sourcesForScope(allSources, catalog, project.settings.scope);
+    const externalSpecialBindings = externalRegisteredSpecialBindings(snapshot, new Set(sources.map(source => source.filePath)));
+    const reusableFiles = sources.filter(source => (
+        !!project.extractions[symbolAuditExtractionCacheKey(source.filePath, sha256(source.content), project.settings)]
+    )).length;
+    const key = currentReportKey(sources, project.settings, externalSpecialBindings);
+    const report = project.reports[key] || (project.latestReportKey ? project.reports[project.latestReportKey] : undefined);
+    const reportState: SymbolAuditStatus['reportState'] = !report
+        ? 'none'
+        : project.reports[key] ? 'current' : 'stale';
+    return {
+        settings: project.settings,
+        cache: {
+            totalFiles: sources.length,
+            reusableFiles,
+            missingFiles: sources.length - reusableFiles
+        },
+        scope: {
+            selectedFilePaths: sources.map(source => source.filePath),
+            pages: catalog.pages,
+            groups: catalog.groups,
+            externalSpecialBindingCount: externalSpecialBindings.length
+        },
+        reportState,
+        ...(report ? { report } : {})
+    };
 }

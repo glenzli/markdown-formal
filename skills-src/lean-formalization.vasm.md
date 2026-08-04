@@ -12,14 +12,15 @@ vasm:
 
 用 Math Workspace 稳定 hash 作为数学正文与 Lean 声明之间的对应层。Lean 锚点只表示存在可审计的对应关系，不自动表示正文对象已被完整形式化、Lean 与正文语义完全等价，或项目已经构建通过。
 
-## 建立正文契约
+## 判断本轮对齐目标
 
-1. 开始前运行 `math-workspace prepare` 或项目 wrapper。
-2. 读取 `.math-workspace/config.json`、`.math-workspace/agent-guide.md`、`.math-workspace/lean-index.json`、`.math-workspace/lean-report.md` 与目标正文对象；已有时也读取 `.math-workspace/lean-contracts.json`、`.math-workspace/lean-build.json` 与 `.math-workspace/lean-dependency-report.md`。
-3. 只用稳定 `h-*` 对齐正文；不得把生成的显示编号写入 Lean 名称、文件名或 docstring。
-4. 同时遵守目标项目自己的数学、Lean、构建与发布规范；目标项目规则可以比本规则更严格。
+1. 先判断本轮是维护既有正文—Lean 对应，还是正文仍在概念性重写。前者进入完整对齐闭环；后者把现有 Lean 当作可核对的证据与历史实现，不强制同步到尚未稳定的正文。
+2. 开始前运行 `math-workspace prepare` 或项目 wrapper。
+3. 读取 `.math-workspace/config.json`、`.math-workspace/agent-guide.md`、`.math-workspace/lean-index.json`、`.math-workspace/lean-report.md` 与目标正文对象；已有时也读取 `.math-workspace/lean-contracts.json`、`.math-workspace/lean-build.json` 与 `.math-workspace/lean-dependency-report.md`。
+4. 只用稳定 `h-*` 对齐正文；不得把生成的显示编号写入 Lean 名称、文件名或 docstring。
+5. 同时遵守目标项目自己的数学、Lean、构建与发布规范；目标项目规则可以比本规则更严格。
 
-若正文与 Lean 在假设、量词、定义域、局部/全局范围或结论形态上不一致，先报告冲突，再决定修改哪一侧。不得为了简化 Lean 静默强化或弱化正文。
+若正文与 Lean 在假设、量词、定义域、局部/全局范围或结论形态上不一致，先报告差异，再结合本轮目标决定修改正文、修改 Lean、替换映射或暂时放弃映射。contract drift 只说明审阅基线之后发生了变化，不替代这项判断。不得为了简化 Lean 静默强化或弱化正文。
 
 ## 编写锚点与声明
 

@@ -1,11 +1,13 @@
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { formatDisplayNumber, type LabelData, type PageData } from '@math-workspace/core';
+import { buildRuntimeDefinitions, formatDisplayNumber, type LabelData, type PageData } from '@math-workspace/core';
 import { readLeanBuild } from '../lean/lean-state';
 import { readLeanDependencyArtifact } from '../lean/lean-dependencies';
 import { ReaderDiscussionMarkStore } from '../reader/discussion-marks';
 import { loadWorkspaceSnapshot, type WorkspaceSnapshot } from '../reader/workspace';
+import { readSymbolAuditStatus } from '../reader/symbol-audit-service';
+import { SymbolAuditStore, type SymbolAuditBinding } from '../reader/symbol-audit';
 
 const nodeFs = require('node:fs');
 
@@ -22,6 +24,7 @@ const MAX_GRAPH_NODES = 72;
 export interface WorkspaceQueryOptions {
     rootPath?: string;
     discussionMarksPath?: string;
+    symbolAuditStatePath?: string;
 }
 
 function normalizeFormalId(value: string): string {
@@ -70,11 +73,46 @@ function nodeSummary(snapshot: WorkspaceSnapshot, id: string): Record<string, un
     return { id };
 }
 
+function normalizedSearch(value: unknown): string {
+    return String(value || '').normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function preview(value: unknown, maximum = 480): string {
+    const compact = String(value || '').replace(/\s+/g, ' ').trim();
+    return compact.length <= maximum ? compact : compact.slice(0, maximum) + '…';
+}
+
+function matchScore(query: string, primary: unknown[], secondary: unknown[] = []): number | undefined {
+    const primaryValues = primary.map(normalizedSearch).filter(Boolean);
+    const secondaryValues = secondary.map(normalizedSearch).filter(Boolean);
+    if (primaryValues.some(value => value === query)) return 0;
+    if (primaryValues.some(value => value.startsWith(query))) return 1;
+    if (primaryValues.some(value => value.includes(query))) return 2;
+    if (secondaryValues.some(value => value.includes(query))) return 3;
+    return undefined;
+}
+
+function auditBinding(binding: SymbolAuditBinding): Record<string, unknown> {
+    return {
+        expression: binding.expression,
+        kind: binding.kind,
+        scope: binding.scope,
+        meaning: binding.meaning,
+        evidence: binding.evidence,
+        confidence: binding.confidence,
+        filePath: binding.filePath,
+        startLine: binding.startLine,
+        endLine: binding.endLine
+    };
+}
+
 export class WorkspaceQueries {
     private readonly discussionMarks: ReaderDiscussionMarkStore;
+    private readonly symbolAudit: SymbolAuditStore;
 
     constructor(private readonly options: WorkspaceQueryOptions = {}) {
         this.discussionMarks = new ReaderDiscussionMarkStore({ stateFilePath: options.discussionMarksPath });
+        this.symbolAudit = new SymbolAuditStore({ stateFilePath: options.symbolAuditStatePath });
     }
 
     async discussionMarksGet(projectRoot?: string): Promise<Record<string, unknown>> {
@@ -200,6 +238,126 @@ export class WorkspaceQueries {
             status: anchor.status,
             ...(Object.keys(builds).length ? { builds } : {}),
             ...(dependencies?.comparisons?.[id] ? { dependencyComparison: dependencies.comparisons[id] } : {})
+        };
+    }
+
+    async knowledgeLookup(queryInput: string, limit = 12, projectRoot?: string): Promise<Record<string, unknown>> {
+        const rootPath = await this.resolveRoot(projectRoot);
+        const snapshot = await loadWorkspaceSnapshot(rootPath);
+        const query = normalizedSearch(queryInput);
+        if (!query) throw new Error('A non-empty project-knowledge query is required.');
+        const boundedLimit = Math.max(1, Math.min(40, Number.isInteger(limit) ? limit : 12));
+        const matches: Array<Record<string, unknown> & { score: number; sortKey: string }> = [];
+
+        for (const definition of buildRuntimeDefinitions(snapshot.state.definitions || [])) {
+            const score = matchScore(query, [definition.title, ...(definition.aliases || [])], [definition.content]);
+            if (score === undefined) continue;
+            matches.push({
+                score,
+                sortKey: `definition:${definition.title}:${definition.filePath}:${definition.line}`,
+                kind: 'definition',
+                title: definition.title,
+                ...(definition.aliases?.length ? { aliases: definition.aliases } : {}),
+                origin: definition.origin,
+                filePath: definition.filePath,
+                line: definition.line,
+                preview: preview(definition.content)
+            });
+        }
+        for (const symbol of snapshot.state.symbols || []) {
+            const score = matchScore(query, [symbol.pattern, symbol.display], [symbol.meaning]);
+            if (score === undefined) continue;
+            matches.push({
+                score,
+                sortKey: `symbol:${symbol.pattern}:${symbol.sourceFilePath || ''}:${symbol.sourceLine || 0}`,
+                kind: 'symbol',
+                pattern: symbol.pattern,
+                display: symbol.display,
+                meaning: symbol.meaning,
+                scope: symbol.scope,
+                ...(symbol.sourceFilePath ? { filePath: symbol.sourceFilePath } : {}),
+                ...(Number.isInteger(symbol.sourceLine) ? { line: symbol.sourceLine } : {})
+            });
+        }
+        for (const source of snapshot.state.projectAnalysis?.sources || []) {
+            const score = matchScore(query, [source.title, source.kind, source.filePath]);
+            if (score === undefined) continue;
+            matches.push({
+                score,
+                sortKey: `source:${source.filePath}`,
+                kind: 'project-source',
+                sourceKind: source.kind,
+                title: source.title,
+                filePath: source.filePath,
+                confidence: source.confidence,
+                extractedDefinitions: source.extractedDefinitions
+            });
+        }
+        matches.sort((left, right) => left.score - right.score || left.sortKey.localeCompare(right.sortKey));
+        const projected = matches.slice(0, boundedLimit).map(({ score: _score, sortKey: _sortKey, ...match }) => match);
+        return {
+            query: queryInput.trim(),
+            total: matches.length,
+            returned: projected.length,
+            truncated: matches.length > projected.length,
+            matches: projected
+        };
+    }
+
+    async symbolAuditReport(limit = 40, projectRoot?: string): Promise<Record<string, unknown>> {
+        const rootPath = await this.resolveRoot(projectRoot);
+        const snapshot = await loadWorkspaceSnapshot(rootPath);
+        const status = await readSymbolAuditStatus(rootPath, snapshot, this.symbolAudit);
+        const report = status.report;
+        if (!report) {
+            return {
+                reportState: status.reportState,
+                settings: status.settings,
+                cache: status.cache,
+                scope: status.scope,
+                guidance: 'No cached symbol-audit report is available. Start an audit explicitly in Math Workspace if the user wants one.'
+            };
+        }
+        const boundedLimit = Math.max(1, Math.min(100, Number.isInteger(limit) ? limit : 40));
+        const candidates = new Map(report.candidates.map(candidate => [candidate.expression, candidate]));
+        const findings = [
+            ...report.hardConflicts.map(conflict => ({
+                expression: conflict.expression,
+                severity: conflict.severity,
+                reason: conflict.reason,
+                bindings: conflict.bindings.map(auditBinding)
+            })),
+            ...report.advisories.map(advisory => {
+                const bindingKeys = new Set(advisory.bindingKeys || []);
+                const bindings = (candidates.get(advisory.expression)?.bindings || [])
+                    .filter(binding => !bindingKeys.size || bindingKeys.has(binding.bindingKey));
+                return {
+                    expression: advisory.expression,
+                    severity: advisory.severity,
+                    reason: advisory.reason,
+                    bindings: bindings.map(auditBinding)
+                };
+            })
+        ];
+        return {
+            reportState: status.reportState,
+            settings: status.settings,
+            cache: status.cache,
+            scope: status.scope,
+            report: {
+                createdAt: report.createdAt,
+                model: report.model,
+                effort: report.effort,
+                bindingCount: report.bindingCount,
+                externalSpecialBindingCount: report.externalSpecialBindingCount,
+                scannedFiles: report.scannedFiles,
+                reusedFiles: report.reusedFiles,
+                hardConflictCount: report.hardConflicts.length,
+                advisoryCount: report.advisories.length,
+                reconciledCount: report.reconciliations.length,
+                findings: findings.slice(0, boundedLimit),
+                truncated: findings.length > boundedLimit
+            }
         };
     }
 

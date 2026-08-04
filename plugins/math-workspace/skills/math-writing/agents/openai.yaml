@@ -1,4 +1,4 @@
 interface:
   display_name: "Math Writing"
   short_description: "Write and audit rigorous mathematical prose"
-  default_prompt: "Use $math-writing to revise this mathematical argument without changing its assumptions or conclusion."
+  default_prompt: "Use $math-writing to revise or redesign this mathematical argument, making any intended change to assumptions or conclusions explicit."

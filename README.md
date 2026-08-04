@@ -112,12 +112,14 @@ The in-document marking tools support text selection, lasso, whole-proposition s
 
 When the discussion continues in a native Codex task, MCP can return those locators and Codex can read the corresponding source. The repository exposes these read-only tools:
 
-- `math_workspace_discussion_marks_get` returns deliberate, active marks.
-- `math_workspace_formal_lookup` looks up one formal object by stable ID.
-- `math_workspace_dependency_slice` returns a bounded strict upstream/downstream slice.
-- `math_workspace_lean_alignment` returns Lean anchor, build, and dependency evidence.
-- `math_workspace_verify` performs an in-memory, read-only validation scan.
-- `math_workspace` starts or reuses the local Reader.
+- `read_marks` returns deliberate, active marks.
+- `lookup_formal_object` looks up one formal object by stable ID.
+- `inspect_dependencies` returns a bounded strict upstream/downstream slice.
+- `inspect_lean_alignment` returns Lean anchor, build, and dependency evidence.
+- `lookup_knowledge` searches maintained definitions, aliases, notation, and named knowledge sources.
+- `read_symbol_audit` reads a cached audit that the user has already run.
+- `verify` performs an in-memory, read-only validation scan.
+- `open` starts or reuses the local workspace.
 
 ```bash
 math-workspace mcp
@@ -355,12 +357,14 @@ Reader 只读取项目源码，不直接写入书稿。增强界面只会在存�
 
 在原生 Codex 任务中讨论时，MCP 可以读取这些定位，再由 Codex 打开对应源码。仓库提供的只读工具包括：
 
-- `math_workspace_discussion_marks_get`：读取当前主动标记的位置。
-- `math_workspace_formal_lookup`：按稳定 ID 查询一个 formal 对象。
-- `math_workspace_dependency_slice`：读取有限深度的严格上下游。
-- `math_workspace_lean_alignment`：查询 Lean 锚点、构建和依赖证据。
-- `math_workspace_verify`：在内存中执行只读校验。
-- `math_workspace`：启动或复用本地 Reader。
+- `read_marks`：读取当前主动标记的位置。
+- `lookup_formal_object`：按稳定 ID 查询一个 formal 对象。
+- `inspect_dependencies`：读取有限深度的严格上下游。
+- `inspect_lean_alignment`：查询 Lean 锚点、构建和依赖证据。
+- `lookup_knowledge`：按术语、别名或符号查询项目维护的知识。
+- `read_symbol_audit`：读取用户已经运行并缓存的符号审计结果。
+- `verify`：在内存中执行只读校验。
+- `open`：启动或复用本地工作区。
 
 ```bash
 math-workspace mcp

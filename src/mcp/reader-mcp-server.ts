@@ -85,7 +85,7 @@ export async function runReaderMcpServer(options: ReaderMcpServerOptions = {}): 
         name: 'math-workspace',
         version: '0.1.0'
     }, {
-        instructions: 'Use Math Workspace for local, read-only formal Markdown and Lean context. When a user asks about marked material, a selected passage, or “this/these” in the current Math Workspace, call math_workspace_discussion_marks_get first, then read the returned Markdown locations from the local project. Discussion marks are locators, not copied source. After you have read active marked locations, begin the user-facing answer with the short receipt `已读取 N 个标记。`, replacing N with the number of active marks; do not list mark IDs or repeat a separate receipt. Use narrow lookup, dependency, Lean, and validation tools instead of asking the user to paste project context.'
+        instructions: 'Use Math Workspace for local, read-only formal Markdown and Lean context. When a user asks about marked material, a selected passage, or “this/these” in the current Math Workspace, call read_marks first, then read the returned Markdown locations from the local project. Discussion marks are locators, not copied source. After you have read active marked locations, begin the user-facing answer with the short receipt `已读取 N 个标记。`, replacing N with the number of active marks; do not list mark IDs or repeat a separate receipt. Use narrow lookup, project-knowledge, cached-audit, dependency, Lean, and validation tools only when the task needs their evidence instead of asking the user to paste broad project context. Dependency and audit results do not decide edits automatically.'
     });
 
     const projectRoot = z.string().optional().describe('Absolute or relative root of a project containing .math-workspace/config.json. Defaults to the MCP working directory.');
@@ -104,7 +104,7 @@ export async function runReaderMcpServer(options: ReaderMcpServerOptions = {}): 
         }
     };
 
-    server.registerTool('math_workspace_discussion_marks_get', {
+    server.registerTool('read_marks', {
         title: 'Read Math Workspace discussion marks',
         description: 'Return the ordered, validated source locations deliberately marked in Math Workspace. Read the referenced Markdown ranges locally for their actual source; this tool never copies their content into context.',
         inputSchema: { projectRoot },
@@ -130,7 +130,7 @@ export async function runReaderMcpServer(options: ReaderMcpServerOptions = {}): 
         }
     });
 
-    server.registerTool('math_workspace_formal_lookup', {
+    server.registerTool('lookup_formal_object', {
         title: 'Look up a formal Markdown object',
         description: 'Return one formal object’s stable location, source excerpt, and Lean-anchor summary by h- id.',
         inputSchema: { id: z.string().describe('An h- id, with or without @ or #.'), projectRoot },
@@ -138,7 +138,7 @@ export async function runReaderMcpServer(options: ReaderMcpServerOptions = {}): 
         annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
     }, ({ id, projectRoot: root }) => query(() => queries.formalLookup(id, root), `Math Workspace formal object ${id} loaded.`));
 
-    server.registerTool('math_workspace_dependency_slice', {
+    server.registerTool('inspect_dependencies', {
         title: 'Inspect strict formal dependencies',
         description: 'Return a bounded, strict-only upstream and/or downstream dependency slice for one formal object.',
         inputSchema: {
@@ -151,7 +151,7 @@ export async function runReaderMcpServer(options: ReaderMcpServerOptions = {}): 
         annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
     }, ({ id, direction, depth, projectRoot: root }) => query(() => queries.dependencySlice(id, direction, depth, root), `Math Workspace dependency slice for ${id} loaded.`));
 
-    server.registerTool('math_workspace_lean_alignment', {
+    server.registerTool('inspect_lean_alignment', {
         title: 'Inspect Lean alignment',
         description: 'Return observed Lean anchors, declaration status, build evidence, and dependency comparison for one formal object.',
         inputSchema: { id: z.string().describe('An h- id, with or without @ or #.'), projectRoot },
@@ -159,7 +159,36 @@ export async function runReaderMcpServer(options: ReaderMcpServerOptions = {}): 
         annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
     }, ({ id, projectRoot: root }) => query(() => queries.leanAlignment(id, root), `Math Workspace Lean alignment for ${id} loaded.`));
 
-    server.registerTool('math_workspace_verify', {
+    server.registerTool('lookup_knowledge', {
+        title: 'Look up project definitions and notation',
+        description: 'Search current project definitions, aliases, maintained notation, and deliberately named project-knowledge sources. Returns narrow source locators and short previews, not inferred mathematical claims.',
+        inputSchema: {
+            query: z.string().describe('A term, alias, LaTeX symbol, or maintained project-knowledge source name.'),
+            limit: z.number().int().min(1).max(40).optional().describe('Maximum matches. Defaults to 12.'),
+            projectRoot
+        },
+        outputSchema: { result: z.object({}).passthrough() },
+        annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+    }, ({ query: search, limit, projectRoot: root }) => query(
+        () => queries.knowledgeLookup(search, limit, root),
+        `Project knowledge matching ${search} loaded.`
+    ));
+
+    server.registerTool('read_symbol_audit', {
+        title: 'Read the cached symbol-audit report',
+        description: 'Return the current or stale cached symbol-audit findings with source locations. This read-only tool never starts an audit or calls a model.',
+        inputSchema: {
+            limit: z.number().int().min(1).max(100).optional().describe('Maximum actionable findings. Defaults to 40.'),
+            projectRoot
+        },
+        outputSchema: { result: z.object({}).passthrough() },
+        annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+    }, ({ limit, projectRoot: root }) => query(
+        () => queries.symbolAuditReport(limit, root),
+        'Cached symbol-audit state loaded.'
+    ));
+
+    server.registerTool('verify', {
         title: 'Run a read-only Math Workspace validation scan',
         description: 'Scan formal Markdown and Lean alignment in memory. It does not generate artifacts, run Lean builds, or modify source files.',
         inputSchema: { strictChapters: z.boolean().optional().describe('Treat chapter-gap warnings as blocking.'), projectRoot },
@@ -167,7 +196,7 @@ export async function runReaderMcpServer(options: ReaderMcpServerOptions = {}): 
         annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
     }, ({ strictChapters, projectRoot: root }) => query(() => queries.verify(strictChapters, root), 'Math Workspace read-only validation completed.'));
 
-    server.registerTool('math_workspace', {
+    server.registerTool('open', {
         title: 'Open Math Workspace',
         description: 'Start or reuse the local Math Workspace for a prepared project, optionally opening one Markdown page.',
         inputSchema: {
