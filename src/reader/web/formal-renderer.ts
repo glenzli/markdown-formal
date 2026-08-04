@@ -20,6 +20,14 @@ export interface ReaderPage {
     chapter?: number;
     appendix?: string;
     line?: number;
+    integration?: ReaderPageIntegration;
+}
+
+export interface ReaderPageIntegration {
+    status: 'managed' | 'segmented' | 'unmanaged' | 'attention';
+    stableAnchorCount: number;
+    temporaryAnchorCount: number;
+    issueCount: number;
 }
 
 export type { ReaderDependencyMarker } from '../dependency-markers';

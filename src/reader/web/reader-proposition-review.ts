@@ -3,7 +3,10 @@ import type { ReaderDependencyMarker } from './formal-renderer';
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 const MAP_WIDTH = 720;
-const NODE_RADIUS = 24;
+const NODE_RADIUS = 21;
+const GRAPH_ROW_HEIGHT = 76;
+const GRAPH_NODE_Y_OFFSET = 42;
+const GRAPH_GROUP_GAP = 14;
 
 type NodeStatus = 'hub' | 'linked' | 'terminal' | 'isolated';
 type GraphGroupKind = 'cluster' | 'terminal' | 'isolated';
@@ -220,14 +223,14 @@ function layoutItems(items: ReaderPropositionReviewItem[]): GraphLayout {
                 x: 12,
                 y: cursor,
                 width: width - 24,
-                height: 82,
+                height: GRAPH_ROW_HEIGHT,
                 positions: chain.map((item, index) => ({
                     item,
                     x: 44 + (index + .5) * ((width - 88) / chain.length),
-                    y: cursor + 45
+                    y: cursor + GRAPH_NODE_Y_OFFSET
                 }))
             };
-            cursor += positioned.height + 16;
+            cursor += positioned.height + GRAPH_GROUP_GAP;
             return positioned;
         }
         const levelById = levelsFor(group.items);
@@ -245,10 +248,10 @@ function layoutItems(items: ReaderPropositionReviewItem[]): GraphLayout {
             members.forEach((item, index) => positions.push({
                 item,
                 x: 44 + (index + .5) * ((width - 88) / members.length),
-                y: cursor + 45 + levelIndex * 82
+                y: cursor + GRAPH_NODE_Y_OFFSET + levelIndex * GRAPH_ROW_HEIGHT
             }));
         });
-        const height = 82 + Math.max(0, sortedLevels.length - 1) * 82;
+        const height = GRAPH_ROW_HEIGHT + Math.max(0, sortedLevels.length - 1) * GRAPH_ROW_HEIGHT;
         const positioned: PositionedGraphGroup = {
             ...group,
             x: 12,
@@ -257,12 +260,12 @@ function layoutItems(items: ReaderPropositionReviewItem[]): GraphLayout {
             height,
             positions
         };
-        cursor += height + 16;
+        cursor += height + GRAPH_GROUP_GAP;
         return positioned;
     });
     return {
         width,
-        height: Math.max(96, cursor - 4),
+        height: Math.max(90, cursor - 4),
         positions: groups.flatMap(group => group.positions),
         groups
     };
@@ -344,14 +347,14 @@ function appendSupplementalReferenceBadge(
     badge.setAttribute('class', 'reader-proposition-map-reference-badge');
     badge.setAttribute('aria-hidden', 'true');
     const background = svgElement('rect');
-    background.setAttribute('x', String(x + 10));
-    background.setAttribute('y', String(y - 25));
-    background.setAttribute('width', '14');
-    background.setAttribute('height', '14');
-    background.setAttribute('rx', '7');
+    background.setAttribute('x', String(x + 8));
+    background.setAttribute('y', String(y - 22));
+    background.setAttribute('width', '12');
+    background.setAttribute('height', '12');
+    background.setAttribute('rx', '6');
     const label = svgElement('text');
-    label.setAttribute('x', String(x + 17));
-    label.setAttribute('y', String(y - 15));
+    label.setAttribute('x', String(x + 14));
+    label.setAttribute('y', String(y - 13.8));
     label.setAttribute('text-anchor', 'middle');
     label.textContent = String(count);
     badge.append(background, label);
@@ -363,12 +366,12 @@ function appendLeanAnchorBadge(svg: SVGElement, x: number, y: number): void {
     badge.setAttribute('class', 'reader-proposition-map-lean-badge');
     badge.setAttribute('aria-hidden', 'true');
     const background = svgElement('circle');
-    background.setAttribute('cx', String(x + 17));
-    background.setAttribute('cy', String(y + 17));
-    background.setAttribute('r', '7');
+    background.setAttribute('cx', String(x + 15));
+    background.setAttribute('cy', String(y + 15));
+    background.setAttribute('r', '6');
     const label = svgElement('text');
-    label.setAttribute('x', String(x + 17));
-    label.setAttribute('y', String(y + 19.6));
+    label.setAttribute('x', String(x + 15));
+    label.setAttribute('y', String(y + 17.2));
     label.setAttribute('text-anchor', 'middle');
     label.textContent = 'L';
     badge.append(background, label);
@@ -497,7 +500,7 @@ export class ReaderPropositionReview {
             circle.setAttribute('r', String(NODE_RADIUS));
             const text = svgElement('text');
             text.setAttribute('x', String(position.x));
-            text.setAttribute('y', String(position.y + 3.5));
+            text.setAttribute('y', String(position.y + 3.2));
             text.setAttribute('text-anchor', 'middle');
             text.textContent = item.compactDisplay;
             node.append(title, circle, text);

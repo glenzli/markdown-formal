@@ -5,7 +5,7 @@ description: Open the local Math Workspace for a prepared formal Markdown projec
 
 # Open Math Workspace
 
-Use `math_workspace` when the user asks to read, inspect, or navigate a prepared Math Workspace project. When the user refers to marked material, a marked passage, or “this/these” in a Math Workspace discussion, call `math_workspace_discussion_marks_get` before answering, then read the returned Markdown locations from the project.
+Use `math_workspace` when the user asks to read, inspect, or navigate a prepared Math Workspace project. When the user refers to marked material, a marked passage, or “this/these” in a Math Workspace discussion, call `math_workspace_discussion_marks_get` before answering, then read the returned Markdown locations from the project. If it returns active marks and you read them, begin the user-facing answer with `已读取 N 个标记。`, using the exact active-mark count. Keep that receipt to one sentence and do not expose mark IDs unless the user asks.
 
 - Pass the current project root when it contains `.math-workspace/config.json`.
 - Pass a project-relative `pagePath` when the user identified a chapter to open.

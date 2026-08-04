@@ -49,6 +49,21 @@ export interface PageData {
     appendix?: string;
     line?: number;
     level?: number;
+    integration?: PageIntegrationData;
+}
+
+export type PageIntegrationStatus = 'managed' | 'segmented' | 'unmanaged' | 'attention';
+
+/**
+ * Describes whether a Markdown page has the stable structure Math Workspace
+ * needs to index and address it. It is deliberately not a statement about
+ * mathematical completeness, review status, or Lean coverage.
+ */
+export interface PageIntegrationData {
+    status: PageIntegrationStatus;
+    stableAnchorCount: number;
+    temporaryAnchorCount: number;
+    issueCount: number;
 }
 
 export interface FormalIssue {
@@ -1929,6 +1944,7 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
     const pages: PageData[] = [];
     const issues: FormalIssue[] = [];
     const unitFiles = new Map<string, UnitFile[]>();
+    const anchorsByFile = new Map<string, { stable: number; temporary: number }>();
 
     for (const document of files) {
         const filePath = toPosix(document.filePath);
@@ -1986,7 +2002,12 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
         }
 
         collectReferences(content, filePath, references, pageReferences);
-        const markerStarts = collectMarkerStarts(content, filePath)
+        const allMarkerStarts = collectMarkerStarts(content, filePath);
+        anchorsByFile.set(filePath, {
+            stable: allMarkerStarts.filter(marker => typeof marker.id === 'string' && marker.id.startsWith('h-')).length,
+            temporary: allMarkerStarts.filter(marker => typeof marker.id === 'string' && marker.id.startsWith('tmp-')).length
+        });
+        const markerStarts = allMarkerStarts
             .filter(marker => !isPageAnchorMarker(marker, pageAnchor));
         if (markerStarts.some(marker => marker.type !== 'def') && !unit) {
             issues.push({
@@ -2146,6 +2167,24 @@ export function scanFormalDocuments(documents: FormalDocument[], configInput: an
     issues.push(...lintReferences(references, labels, definitions, config));
     issues.push(...lintPageReferences(pageReferences, pages, config));
     issues.push(...lintPages(pages));
+
+    for (const page of pages) {
+        const anchors = anchorsByFile.get(page.filePath) || { stable: 0, temporary: 0 };
+        const issueCount = issues.filter(issue => issue.file === page.filePath).length;
+        const hasStablePageAnchor = typeof page.id === 'string' && page.id.startsWith('h-');
+        page.integration = {
+            status: anchors.temporary > 0 || issueCount > 0
+                ? 'attention'
+                : hasStablePageAnchor
+                    ? 'managed'
+                    : anchors.stable > 0
+                        ? 'segmented'
+                        : 'unmanaged',
+            stableAnchorCount: anchors.stable,
+            temporaryAnchorCount: anchors.temporary,
+            issueCount
+        };
+    }
 
     definitions.sort(compareDefinitionRecords);
     pages.sort(comparePages);

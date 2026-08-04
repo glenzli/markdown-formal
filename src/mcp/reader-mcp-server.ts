@@ -85,7 +85,7 @@ export async function runReaderMcpServer(options: ReaderMcpServerOptions = {}): 
         name: 'math-workspace',
         version: '0.1.0'
     }, {
-        instructions: 'Use Math Workspace for local, read-only formal Markdown and Lean context. When a user asks about marked material, a selected passage, or “this/these” in the current Math Workspace, call math_workspace_discussion_marks_get first, then read the returned Markdown locations from the local project. Discussion marks are locators, not copied source. Use narrow lookup, dependency, Lean, and validation tools instead of asking the user to paste project context.'
+        instructions: 'Use Math Workspace for local, read-only formal Markdown and Lean context. When a user asks about marked material, a selected passage, or “this/these” in the current Math Workspace, call math_workspace_discussion_marks_get first, then read the returned Markdown locations from the local project. Discussion marks are locators, not copied source. After you have read active marked locations, begin the user-facing answer with the short receipt `已读取 N 个标记。`, replacing N with the number of active marks; do not list mark IDs or repeat a separate receipt. Use narrow lookup, dependency, Lean, and validation tools instead of asking the user to paste project context.'
     });
 
     const projectRoot = z.string().optional().describe('Absolute or relative root of a project containing .math-workspace/config.json. Defaults to the MCP working directory.');
@@ -110,7 +110,25 @@ export async function runReaderMcpServer(options: ReaderMcpServerOptions = {}): 
         inputSchema: { projectRoot },
         outputSchema: { result: z.object({}).passthrough() },
         annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
-    }, ({ projectRoot: root }) => query(() => queries.discussionMarksGet(root), 'Math Workspace discussion marks loaded.'));
+    }, async ({ projectRoot: root }) => {
+        try {
+            const result = await queries.discussionMarksGet(root);
+            const marks = Array.isArray(result.marks) ? result.marks : [];
+            const count = marks.length;
+            const followUp = count
+                ? `Found ${count} active discussion mark${count === 1 ? '' : 's'}. Read every referenced Markdown range before answering, then begin the user-facing answer with: 已读取 ${count} 个标记。`
+                : 'No active discussion marks are available for this project.';
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: `${followUp}\n\n${JSON.stringify(result, null, 2)}`
+                }],
+                structuredContent: { result }
+            };
+        } catch (error) {
+            return { content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }], isError: true };
+        }
+    });
 
     server.registerTool('math_workspace_formal_lookup', {
         title: 'Look up a formal Markdown object',

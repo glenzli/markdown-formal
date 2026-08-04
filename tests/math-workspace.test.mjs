@@ -1182,6 +1182,69 @@ async function testPageTitleUsesUniqueHighestHeading() {
     assert.match(report, /Local Section/);
 }
 
+async function testPageIntegrationStatus() {
+    const root = await makeWorkspace('page-integration');
+    await fs.writeFile(path.join(root, 'book1', '01-managed.md'), [
+        '# #h-1111111111111111 Managed page',
+        '',
+        'Content.',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', '02-segmented.md'), [
+        '## #h-2222222222222222 First segment',
+        '',
+        'Content.',
+        '',
+        '## #h-3333333333333333 Second segment',
+        '',
+        'Content.',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', '03-unmanaged.md'), [
+        '# Unmanaged page',
+        '',
+        'Content.',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', '04-attention.md'), [
+        '# #tmp-page Pending page',
+        '',
+        'Content.',
+        ''
+    ].join('\n'));
+
+    const prepare = runCli(root, ['prepare']);
+    assert.notEqual(prepare.status, 0, combinedOutput(prepare));
+    assert.match(combinedOutput(prepare), /tmp-id-left/);
+    const readerIndex = JSON.parse(await read(root, '.math-workspace/workspace-index.json'));
+    const integrationFor = filePath => readerIndex.pages.find(page => page.filePath === filePath)?.integration;
+
+    assert.deepEqual(integrationFor('book1/01-managed.md'), {
+        status: 'managed',
+        stableAnchorCount: 1,
+        temporaryAnchorCount: 0,
+        issueCount: 0
+    });
+    assert.deepEqual(integrationFor('book1/02-segmented.md'), {
+        status: 'segmented',
+        stableAnchorCount: 2,
+        temporaryAnchorCount: 0,
+        issueCount: 0
+    });
+    assert.deepEqual(integrationFor('book1/03-unmanaged.md'), {
+        status: 'unmanaged',
+        stableAnchorCount: 0,
+        temporaryAnchorCount: 0,
+        issueCount: 0
+    });
+    assert.deepEqual(integrationFor('book1/04-attention.md'), {
+        status: 'attention',
+        stableAnchorCount: 0,
+        temporaryAnchorCount: 1,
+        issueCount: 1
+    });
+}
+
 async function testPerfDummyThresholds() {
     const root = await makeWorkspace('perf');
     const pass = runCli(root, ['perf-dummy', '2', '5', '--max-ms', '10000', '--max-heap-mb', '512']);
@@ -1510,7 +1573,26 @@ async function testReaderMcpServer() {
     const prepare = runCli(root, ['prepare']);
     assert.equal(prepare.status, 0, combinedOutput(prepare));
 
-    const mcp = await startMcp(root);
+    const rootPath = await fs.realpath(root);
+    const discussionMarksPath = path.join(root, 'discussion-marks.json');
+    await fs.writeFile(discussionMarksPath, JSON.stringify({
+        version: 1,
+        marks: [{
+            id: 'mwmark_reader_mcp',
+            order: 1,
+            createdAt: '2026-08-04T00:00:00.000Z',
+            rootPath,
+            revision: 1,
+            filePath: 'book1/01-foundations.md',
+            title: 'Finite cover',
+            startLine: 3,
+            endLine: 3,
+            sourceHash: 'fixture',
+            kind: 'selection'
+        }]
+    }));
+
+    const mcp = await startMcp(root, { env: { MATH_WORKSPACE_DISCUSSION_MARKS: discussionMarksPath } });
     try {
         const tools = await mcp.request('tools/list');
         const formalReader = tools.tools.find(tool => tool.name === 'math_workspace');
@@ -1526,6 +1608,13 @@ async function testReaderMcpServer() {
         assert.equal(launch.structuredContent.pagePath, 'book1/01-foundations.md');
         assert.match(launch.structuredContent.url, /^http:\/\/127\.0\.0\.1:\d+\/\?path=book1%2F01-foundations\.md$/);
         assert.match(launch.content[0].text, /Codex's local browser/);
+
+        const marks = await mcp.request('tools/call', {
+            name: 'math_workspace_discussion_marks_get',
+            arguments: {}
+        });
+        assert.equal(marks.structuredContent.result.marks.length, 1);
+        assert.match(marks.content[0].text, /已读取 1 个标记。/);
     } finally {
         await stopReader(mcp.child);
     }
@@ -2386,6 +2475,7 @@ const tests = [
     ['verify rejects missing definition content', testVerifyRejectsMissingDefinitionContent],
     ['scan exclude and zero introduction pages', testScanExcludeAndZeroIntroductionPages],
     ['page title uses unique highest heading', testPageTitleUsesUniqueHighestHeading],
+    ['page integration status', testPageIntegrationStatus],
     ['perf-dummy thresholds', testPerfDummyThresholds],
     ['Lean anchor index', testLeanAnchorIndex],
     ['Lean build and dependency comparison', testLeanBuildAndDependencyComparison],

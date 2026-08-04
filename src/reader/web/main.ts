@@ -6,6 +6,7 @@ import {
     renderFormalMarkdown,
     type ReaderDependencyMarker,
     type ReaderFormula,
+    type ReaderPageIntegration,
     type ReaderLabel,
     type ReaderPage
 } from './formal-renderer';
@@ -19,6 +20,7 @@ import { ReaderLeanPopover, type ReaderLeanAnchorPayload } from './reader-lean-p
 import { readerIcon, replaceReaderButtonIcon, type ReaderIconName } from './reader-icons';
 import { ReaderToolbarPanel } from './reader-toolbar-panel';
 import { ReaderPropositionReview, type ReaderPropositionReviewItem } from './reader-proposition-review';
+import { ReaderTooltip } from './reader-tooltip';
 import {
     ReaderDiscussionMarks,
     type ReaderDiscussionMark,
@@ -154,7 +156,16 @@ const words = {
         leanDeclarations: 'Lean 声明',
         leanMarkdownOnly: '正文声明但 Lean 未观察到',
         leanOnly: '额外 Lean 支撑',
-        leanNone: '没有可显示的条目'
+        leanNone: '没有可显示的条目',
+        integrationManaged: '结构接入完成',
+        integrationSegmented: '分段接入',
+        integrationUnmanaged: '未接入',
+        integrationAttention: '需要收束',
+        integrationGroupSummary: (managed: number, total: number) => `接入 ${managed}/${total}`,
+        integrationManagedDetail: (anchors: number) => `唯一页锚点已建立；稳定锚点 ${anchors} 个`,
+        integrationSegmentedDetail: (anchors: number) => `已有 ${anchors} 个稳定锚点，但尚无唯一页锚点`,
+        integrationUnmanagedDetail: '尚未发现稳定锚点',
+        integrationAttentionDetail: (temporary: number, issues: number) => `临时锚点 ${temporary} 个；扫描提示 ${issues} 项`
     },
     en: {
         contents: 'Contents',
@@ -239,7 +250,16 @@ const words = {
         leanDeclarations: 'Lean declarations',
         leanMarkdownOnly: 'Markdown-only review',
         leanOnly: 'Additional Lean support',
-        leanNone: 'Nothing to show'
+        leanNone: 'Nothing to show',
+        integrationManaged: 'Structure integrated',
+        integrationSegmented: 'Segmented integration',
+        integrationUnmanaged: 'Not integrated',
+        integrationAttention: 'Needs consolidation',
+        integrationGroupSummary: (managed: number, total: number) => `Integrated ${managed}/${total}`,
+        integrationManagedDetail: (anchors: number) => `A unique page anchor is available; ${anchors} stable anchor${anchors === 1 ? '' : 's'}`,
+        integrationSegmentedDetail: (anchors: number) => `${anchors} stable anchor${anchors === 1 ? '' : 's'} found, but no unique page anchor`,
+        integrationUnmanagedDetail: 'No stable anchor was found',
+        integrationAttentionDetail: (temporary: number, issues: number) => `${temporary} temporary anchor${temporary === 1 ? '' : 's'}; ${issues} scanner notice${issues === 1 ? '' : 's'}`
     }
 } as const;
 
@@ -286,6 +306,49 @@ function leanStatusLabel(language: Language, kind: 'contract' | 'build' | 'depen
     return zh ? '尚未比对' : 'not compared';
 }
 
+function pageIntegration(page?: ReaderPage): ReaderPageIntegration {
+    return page?.integration || {
+        status: 'unmanaged',
+        stableAnchorCount: 0,
+        temporaryAnchorCount: 0,
+        issueCount: 0
+    };
+}
+
+function pageIntegrationStatusLabel(integration: ReaderPageIntegration, language: Language): string {
+    const dictionary = words[language];
+    switch (integration.status) {
+        case 'managed': return dictionary.integrationManaged;
+        case 'segmented': return dictionary.integrationSegmented;
+        case 'attention': return dictionary.integrationAttention;
+        default: return dictionary.integrationUnmanaged;
+    }
+}
+
+function pageIntegrationDetail(integration: ReaderPageIntegration, language: Language): string {
+    const dictionary = words[language];
+    switch (integration.status) {
+        case 'managed': return dictionary.integrationManagedDetail(integration.stableAnchorCount);
+        case 'segmented': return dictionary.integrationSegmentedDetail(integration.stableAnchorCount);
+        case 'attention': return dictionary.integrationAttentionDetail(integration.temporaryAnchorCount, integration.issueCount);
+        default: return dictionary.integrationUnmanagedDetail;
+    }
+}
+
+function pageIntegrationTooltip(page: ReaderPage | undefined, language: Language): string {
+    const integration = pageIntegration(page);
+    return `${pageIntegrationStatusLabel(integration, language)} · ${pageIntegrationDetail(integration, language)}`;
+}
+
+function pageIntegrationGlyph(page: ReaderPage | undefined, language: Language): HTMLSpanElement {
+    const integration = pageIntegration(page);
+    const glyph = document.createElement('span');
+    glyph.className = 'reader-page-integration is-' + integration.status;
+    glyph.dataset.readerTooltip = pageIntegrationTooltip(page, language);
+    glyph.setAttribute('aria-hidden', 'true');
+    return glyph;
+}
+
 const DEFAULT_FONT_SIZE = 14;
 const MIN_FONT_SIZE = 12;
 const MAX_FONT_SIZE = 24;
@@ -329,6 +392,7 @@ class ReaderApplication {
     private dependencyPopover!: ReaderDependencyPopover;
     private leanPopover!: ReaderLeanPopover;
     private toolbarPanel!: ReaderToolbarPanel;
+    private tooltip!: ReaderTooltip;
     private propositionReview!: ReaderPropositionReview;
     private discussionMarks!: ReaderDiscussionMarks;
     private realtimeEvents: EventSource | undefined;
@@ -377,6 +441,8 @@ class ReaderApplication {
         this.article = this.root.querySelector('#reader-article') as HTMLElement;
         this.pageTitle = this.root.querySelector('#reader-page-title') as HTMLElement;
         this.liveStatus = this.root.querySelector('#reader-live') as HTMLElement;
+        this.tooltip = new ReaderTooltip();
+        this.tooltip.bind(this.root);
         this.installToolbarIcons();
         this.updateFontSize(this.fontSize, false);
         (this.root.querySelector('#reader-page-filter') as HTMLInputElement).addEventListener('input', event => {
@@ -734,14 +800,26 @@ class ReaderApplication {
             const group = document.createElement('section');
             group.className = 'reader-nav-group';
             const heading = document.createElement('h2');
-            heading.innerHTML = renderFormalInline(this.markdown, groupName, this.renderOptions('', {}));
+            const headingText = document.createElement('span');
+            headingText.innerHTML = renderFormalInline(this.markdown, groupName, this.renderOptions('', {}));
+            const integrated = pages.filter(page => pageIntegration(page).status === 'managed').length;
+            const summary = document.createElement('span');
+            summary.className = 'reader-nav-integration-summary';
+            summary.textContent = this.dictionary().integrationGroupSummary(integrated, pages.length);
+            summary.title = this.dictionary().integrationGroupSummary(integrated, pages.length);
+            heading.append(headingText, summary);
             group.append(heading);
             pages.forEach(page => {
                 const button = document.createElement('button');
                 button.type = 'button';
                 button.className = 'reader-nav-page' + (page.filePath === this.currentPath ? ' is-active' : '');
                 button.dataset.pagePath = page.filePath;
-                button.innerHTML = renderFormalInline(this.markdown, page.displayHeading || page.title, this.renderOptions(page.filePath, {}));
+                const title = page.displayHeading || page.title;
+                const label = document.createElement('span');
+                label.className = 'reader-nav-page-label';
+                label.innerHTML = renderFormalInline(this.markdown, title, this.renderOptions(page.filePath, {}));
+                button.append(label, pageIntegrationGlyph(page, this.state!.language));
+                button.setAttribute('aria-label', `${title} — ${pageIntegrationTooltip(page, this.state!.language)}`);
                 group.append(button);
             });
             navigation.append(group);
@@ -794,7 +872,11 @@ class ReaderApplication {
     private renderArticle(): void {
         if (!this.page || !this.state) return;
         const title = this.page.page?.displayHeading || this.page.page?.title || this.page.filePath;
-        this.pageTitle.innerHTML = renderFormalInline(this.markdown, title, this.renderOptions(this.page.filePath, this.page.labels));
+        const titleLabel = document.createElement('span');
+        titleLabel.className = 'reader-page-title-label';
+        titleLabel.innerHTML = renderFormalInline(this.markdown, title, this.renderOptions(this.page.filePath, this.page.labels));
+        this.pageTitle.replaceChildren(titleLabel, pageIntegrationGlyph(this.page.page, this.state.language));
+        this.pageTitle.setAttribute('aria-label', `${title} — ${pageIntegrationTooltip(this.page.page, this.state.language)}`);
         document.title = title + ' — Math Workspace';
         const rendered = renderFormalDocument(this.markdown, this.page.content, {
             currentFilePath: this.page.filePath,
