@@ -211,7 +211,7 @@ Then ask directly in a native Codex task. When the user refers to marked materia
 
 The project needs `.math-workspace/config.json`; run `prepare` once to create it. The Math Workspace does not require `workspace-index.json`.
 
-The VS Code package remains available as a legacy compatibility integration, but new features target the Math Workspace first.
+The former VS Code preview is archived and unsupported. Project reading and interaction now use the local Math Workspace Reader.
 
 ### Codex MCP Entry
 
