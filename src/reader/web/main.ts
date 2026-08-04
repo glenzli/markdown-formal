@@ -26,6 +26,7 @@ import {
     type ReaderSymbolAuditModel,
     type ReaderSymbolAuditStatus
 } from './reader-symbol-audit';
+import { ReaderSymbolAuditReportView } from './reader-symbol-audit-report';
 import {
     ReaderDiscussionMarks,
     type ReaderDiscussionMark,
@@ -84,14 +85,43 @@ const words = {
         symbols: '符号',
         propositions: '命题审阅',
         symbolAudit: '符号审计',
-        symbolAuditIntro: '仅在点击开始后调用 Codex。它提取每章的专用与临时记号，先机械检查硬冲突，再对可能混淆的临时复用给出辅助意见。',
+        symbolAuditIntro: '仅在点击开始后调用 Codex。它先提取各章记号并机械发现同形候选，再统一辨别同义复述、特化、兼容复用与真正冲突。',
         symbolAuditCache: (reusable: number, total: number, missing: number) => `缓存：${reusable}/${total} 个文件可复用；本次需提取 ${missing} 个。`,
         symbolAuditConfiguredModel: '模型',
         symbolAuditConfiguredEffort: '强度',
         symbolAuditCodexDefault: '跟随 Codex 默认',
         symbolAuditModel: '模型',
         symbolAuditEffort: '推理强度',
-        symbolAuditLoadModels: '读取可用模型',
+        symbolAuditScope: '审计范围',
+        symbolAuditScopeAll: '全部内容',
+        symbolAuditScopeVolume: '单卷',
+        symbolAuditScopeChapters: '自选章节',
+        symbolAuditScopeVolumePicker: '卷',
+        symbolAuditScopePages: '选择章节',
+        symbolAuditScopeSummary: (files: number, externalSpecials: number) => `范围：${files} 页；与 ${externalSpecials} 项范围外专用记号交叉比对。`,
+        symbolAuditScopeRequired: '请至少选择一个章节。',
+        symbolAuditSavingSettings: '正在保存审计设置…',
+        symbolAuditCreatingJob: '正在创建审计任务…',
+        symbolAuditCancellingJob: '正在取消审计任务…',
+        symbolAuditActivity: (activity: string | undefined) => ({
+            'connecting-server': '正在连接 Codex Server',
+            'creating-task': '正在创建只读任务',
+            'waiting-response': 'Codex 正在处理',
+            'receiving-response': 'Codex 已开始生成结构化结果',
+            'saving-result': '正在校验并缓存本章提取结果',
+            'comparing-conflicts': '正在发现同形符号候选',
+            'reviewing-candidates': 'Codex 正在归并并判别候选关系',
+            'finalizing-report': '正在校验并保存审计报告'
+        }[activity || ''] || 'Codex 正在处理'),
+        symbolAuditElapsed: (seconds: number) => `已运行 ${seconds} 秒`,
+        symbolAuditTokenUsage: (usage: NonNullable<ReaderSymbolAuditStatus['job']>['tokenUsage'], reportedCalls: number, modelCalls: number) => {
+            if (modelCalls === 0) return '用量：尚未调用 Codex（若全程命中缓存则为 0）。';
+            if (!usage) return `用量：Codex Server 未提供精确统计（${modelCalls} 个任务）。`;
+            const details = [`输入 ${usage.inputTokens.toLocaleString()}`, `输出 ${usage.outputTokens.toLocaleString()}`];
+            if (usage.reasoningOutputTokens) details.push(`推理 ${usage.reasoningOutputTokens.toLocaleString()}`);
+            if (usage.cachedInputTokens) details.push(`缓存输入 ${usage.cachedInputTokens.toLocaleString()}`);
+            return `用量：${usage.totalTokens.toLocaleString()} tokens（${details.join(' · ')}；${reportedCalls}/${modelCalls} 个任务已回报）。`;
+        },
         symbolAuditSaveSettings: '保存设置',
         symbolAuditStart: '开始审计',
         symbolAuditForce: '重新审计全部',
@@ -103,10 +133,12 @@ const words = {
         symbolAuditReportCurrent: '当前审计结果',
         symbolAuditReportStale: '上次结果已过期：源文件或模型设置已变化。',
         symbolAuditNoReport: '尚未生成审计结果。',
-        symbolAuditHardConflicts: (count: number) => `硬冲突 ${count} 项`,
-        symbolAuditPossibleConfusion: (count: number) => `可能混淆 ${count} 项`,
-        symbolAuditNoHardConflicts: '未发现专用记号与不同绑定之间的硬冲突。',
-        symbolAuditNoAdvisories: '未发现需要回看的临时记号复用。',
+        symbolAuditHardConflicts: (count: number) => `高置信冲突 ${count} 项`,
+        symbolAuditLegacyCandidates: (count: number) => `旧版未归并候选 ${count} 项`,
+        symbolAuditPossibleConfusion: (count: number) => `待核对 ${count} 项`,
+        symbolAuditNoHardConflicts: '语义归并后未发现高置信冲突。',
+        symbolAuditNoAdvisories: '未留下需要人工核对的候选。',
+        symbolAuditOpenReport: '打开审计报告',
         symbolAuditLocate: '定位来源',
         symbolAuditLoading: '正在读取审计状态…',
         symbolAuditModelLoadFailed: '无法读取可用模型',
@@ -206,14 +238,43 @@ const words = {
         symbols: 'Symbols',
         propositions: 'Proposition review',
         symbolAudit: 'Symbol audit',
-        symbolAuditIntro: 'Codex is called only after you start an audit. It extracts declared and temporary notation per chapter, checks hard collisions mechanically, then reviews potentially confusing temporary reuse.',
+        symbolAuditIntro: 'Codex is called only after you start an audit. It extracts notation, discovers same-surface candidates mechanically, then reconciles restatements, specializations, compatible reuse, and genuine conflicts.',
         symbolAuditCache: (reusable: number, total: number, missing: number) => `Cache: ${reusable}/${total} files reusable; ${missing} need extraction.`,
         symbolAuditConfiguredModel: 'Model',
         symbolAuditConfiguredEffort: 'Effort',
         symbolAuditCodexDefault: 'Follow Codex default',
         symbolAuditModel: 'Model',
         symbolAuditEffort: 'Reasoning effort',
-        symbolAuditLoadModels: 'Load available models',
+        symbolAuditScope: 'Audit scope',
+        symbolAuditScopeAll: 'All content',
+        symbolAuditScopeVolume: 'One volume',
+        symbolAuditScopeChapters: 'Selected chapters',
+        symbolAuditScopeVolumePicker: 'Volume',
+        symbolAuditScopePages: 'Choose chapters',
+        symbolAuditScopeSummary: (files: number, externalSpecials: number) => `Scope: ${files} pages; compared against ${externalSpecials} out-of-scope declared symbols.`,
+        symbolAuditScopeRequired: 'Choose at least one chapter.',
+        symbolAuditSavingSettings: 'Saving audit settings…',
+        symbolAuditCreatingJob: 'Creating audit job…',
+        symbolAuditCancellingJob: 'Cancelling audit job…',
+        symbolAuditActivity: (activity: string | undefined) => ({
+            'connecting-server': 'Connecting to Codex Server',
+            'creating-task': 'Creating read-only task',
+            'waiting-response': 'Codex is processing',
+            'receiving-response': 'Codex has started generating the structured result',
+            'saving-result': 'Validating and caching the extracted result',
+            'comparing-conflicts': 'Discovering same-surface notation candidates',
+            'reviewing-candidates': 'Codex is reconciling candidate relationships',
+            'finalizing-report': 'Validating and saving the audit report'
+        }[activity || ''] || 'Codex is processing'),
+        symbolAuditElapsed: (seconds: number) => `Running for ${seconds}s`,
+        symbolAuditTokenUsage: (usage: NonNullable<ReaderSymbolAuditStatus['job']>['tokenUsage'], reportedCalls: number, modelCalls: number) => {
+            if (modelCalls === 0) return 'Usage: Codex has not been called; this stays at 0 when every result is cached.';
+            if (!usage) return `Usage: Codex Server did not provide an exact count for ${modelCalls} task${modelCalls === 1 ? '' : 's'}.`;
+            const details = [`input ${usage.inputTokens.toLocaleString()}`, `output ${usage.outputTokens.toLocaleString()}`];
+            if (usage.reasoningOutputTokens) details.push(`reasoning ${usage.reasoningOutputTokens.toLocaleString()}`);
+            if (usage.cachedInputTokens) details.push(`cached input ${usage.cachedInputTokens.toLocaleString()}`);
+            return `Usage: ${usage.totalTokens.toLocaleString()} tokens (${details.join(' · ')}; reported by ${reportedCalls}/${modelCalls} task${modelCalls === 1 ? '' : 's'}).`;
+        },
         symbolAuditSaveSettings: 'Save settings',
         symbolAuditStart: 'Start audit',
         symbolAuditForce: 'Re-audit all',
@@ -225,10 +286,12 @@ const words = {
         symbolAuditReportCurrent: 'Current audit result',
         symbolAuditReportStale: 'The previous result is stale because source files or model settings changed.',
         symbolAuditNoReport: 'No audit result yet.',
-        symbolAuditHardConflicts: (count: number) => `${count} hard conflict${count === 1 ? '' : 's'}`,
-        symbolAuditPossibleConfusion: (count: number) => `${count} possible confusion${count === 1 ? '' : 's'}`,
-        symbolAuditNoHardConflicts: 'No hard collision was found between declared notation and a distinct binding.',
-        symbolAuditNoAdvisories: 'No temporary notation reuse needs review.',
+        symbolAuditHardConflicts: (count: number) => `${count} high-confidence conflict${count === 1 ? '' : 's'}`,
+        symbolAuditLegacyCandidates: (count: number) => `${count} unreconciled legacy candidate${count === 1 ? '' : 's'}`,
+        symbolAuditPossibleConfusion: (count: number) => `${count} item${count === 1 ? '' : 's'} to review`,
+        symbolAuditNoHardConflicts: 'No high-confidence conflict remains after semantic reconciliation.',
+        symbolAuditNoAdvisories: 'No candidate remains for manual review.',
+        symbolAuditOpenReport: 'Open audit report',
         symbolAuditLocate: 'Locate source',
         symbolAuditLoading: 'Reading audit status…',
         symbolAuditModelLoadFailed: 'Could not load available models',
@@ -335,6 +398,10 @@ function escapeHtml(value: string): string {
 
 function queryPath(): string {
     return new URLSearchParams(window.location.search).get('path') || '';
+}
+
+function queryView(): string {
+    return new URLSearchParams(window.location.search).get('view') || '';
 }
 
 function normalizeQuery(value: string): string {
@@ -456,6 +523,8 @@ class ReaderApplication {
     private tooltip!: ReaderTooltip;
     private propositionReview!: ReaderPropositionReview;
     private symbolAudit!: ReaderSymbolAudit;
+    private symbolAuditReport!: ReaderSymbolAuditReportView;
+    private symbolAuditReportOpen = false;
     private discussionMarks!: ReaderDiscussionMarks;
     private realtimeEvents: EventSource | undefined;
 
@@ -473,12 +542,14 @@ class ReaderApplication {
     }
 
     private async openInitialPage(): Promise<void> {
+        const initialView = queryView();
         const initialPath = queryPath() || this.state?.pages[0]?.filePath || '';
         if (!initialPath) {
             this.article.textContent = 'No Markdown pages were found in the bound project.';
             return;
         }
         await this.openPage(initialPath, 'replace');
+        if (initialView === 'symbol-audit-report') await this.openSymbolAuditReport('replace');
     }
 
     private buildShell(): void {
@@ -598,6 +669,7 @@ class ReaderApplication {
             markTerminalPropositions: items => this.markTerminalPropositions(items)
         });
         this.symbolAudit = new ReaderSymbolAudit();
+        this.symbolAuditReport = new ReaderSymbolAuditReportView();
         this.discussionMarks = new ReaderDiscussionMarks({
             addMarks: locations => this.addDiscussionMarks(locations),
             removeMark: id => this.removeDiscussionMark(id),
@@ -756,7 +828,8 @@ class ReaderApplication {
         forward.dataset.tooltip = dictionary.forward;
         forward.setAttribute('aria-label', dictionary.forward);
         this.root.querySelectorAll<HTMLElement>('[data-panel]').forEach(button => {
-            const view = button.dataset.panel as keyof typeof dictionary;
+            const panel = button.dataset.panel || '';
+            const view = (panel === 'symbol-audit' ? 'symbolAudit' : panel) as keyof typeof dictionary;
             const label = typeof dictionary[view] === 'string' ? dictionary[view] : '';
             button.dataset.tooltip = label;
             button.setAttribute('aria-label', label);
@@ -892,8 +965,13 @@ class ReaderApplication {
 
     private async openPage(filePath: string, historyMode: 'push' | 'replace' | 'pop', anchor = '', preserveScroll = false): Promise<void> {
         if (!this.state || !this.state.pages.some(page => page.filePath === filePath)) return;
+        const effectiveHistoryMode = this.symbolAuditReportOpen && historyMode === 'push' && filePath === this.currentPath
+            ? 'replace'
+            : historyMode;
         const requestId = ++this.pageRequestId;
         this.toolbarPanel.close();
+        this.symbolAuditReportOpen = false;
+        this.article.classList.remove('is-symbol-audit-report');
         const previousScroll = this.main.scrollTop;
         this.article.classList.add('is-loading');
         try {
@@ -901,7 +979,7 @@ class ReaderApplication {
             if (requestId !== this.pageRequestId) return;
             this.page = page;
             this.currentPath = filePath;
-            this.updateHistory(filePath, historyMode);
+            this.updateHistory(filePath, effectiveHistoryMode);
             this.renderNavigation((this.root.querySelector('#reader-page-filter') as HTMLInputElement).value);
             this.renderArticle();
             if (anchor) {
@@ -990,6 +1068,10 @@ class ReaderApplication {
     }
 
     private navigateHistory(direction: -1 | 1): void {
+        if (this.symbolAuditReportOpen && direction === -1) {
+            this.closeSymbolAuditReport();
+            return;
+        }
         const index = this.historyIndex + direction;
         if (index < 0 || index >= this.historyPaths.length) return;
         this.historyIndex = index;
@@ -1001,7 +1083,8 @@ class ReaderApplication {
     private openPanel(view: string, trigger: HTMLElement): void {
         if (!this.state) return;
         const dictionary = this.dictionary();
-        const candidate = dictionary[view as keyof typeof dictionary];
+        const titleKey = view === 'symbol-audit' ? 'symbolAudit' : view;
+        const candidate = dictionary[titleKey as keyof typeof dictionary];
         const title = typeof candidate === 'string' ? candidate : view;
         this.toolbarPanel.open(view, trigger, title, content => {
             if (view === 'contents') this.renderContents(content);
@@ -1293,7 +1376,20 @@ class ReaderApplication {
                     codexDefault: dictionary.symbolAuditCodexDefault,
                     model: dictionary.symbolAuditModel,
                     effort: dictionary.symbolAuditEffort,
-                    loadModels: dictionary.symbolAuditLoadModels,
+                    scope: dictionary.symbolAuditScope,
+                    scopeAll: dictionary.symbolAuditScopeAll,
+                    scopeVolume: dictionary.symbolAuditScopeVolume,
+                    scopeChapters: dictionary.symbolAuditScopeChapters,
+                    scopeVolumePicker: dictionary.symbolAuditScopeVolumePicker,
+                    scopePages: dictionary.symbolAuditScopePages,
+                    scopeSummary: dictionary.symbolAuditScopeSummary,
+                    scopeRequired: dictionary.symbolAuditScopeRequired,
+                    savingSettings: dictionary.symbolAuditSavingSettings,
+                    creatingJob: dictionary.symbolAuditCreatingJob,
+                    cancellingJob: dictionary.symbolAuditCancellingJob,
+                    activity: dictionary.symbolAuditActivity,
+                    elapsed: dictionary.symbolAuditElapsed,
+                    tokenUsage: dictionary.symbolAuditTokenUsage,
                     saveSettings: dictionary.symbolAuditSaveSettings,
                     start: dictionary.symbolAuditStart,
                     force: dictionary.symbolAuditForce,
@@ -1306,9 +1402,11 @@ class ReaderApplication {
                     reportStale: dictionary.symbolAuditReportStale,
                     noReport: dictionary.symbolAuditNoReport,
                     hardConflicts: dictionary.symbolAuditHardConflicts,
+                    legacyCandidates: dictionary.symbolAuditLegacyCandidates,
                     possibleConfusion: dictionary.symbolAuditPossibleConfusion,
                     noHardConflicts: dictionary.symbolAuditNoHardConflicts,
                     noAdvisories: dictionary.symbolAuditNoAdvisories,
+                    openReport: dictionary.symbolAuditOpenReport,
                     locate: dictionary.symbolAuditLocate,
                     loading: dictionary.symbolAuditLoading,
                     modelLoadFailed: dictionary.symbolAuditModelLoadFailed,
@@ -1332,14 +1430,64 @@ class ReaderApplication {
                 const response = await this.postJson<{ status: ReaderSymbolAuditStatus }>('/api/symbol-audit', { action: 'cancel' });
                 return response.status;
             },
+            openReport: () => void this.openSymbolAuditReport('push'),
             locate: (filePath, line) => {
                 this.toolbarPanel.close();
                 void this.openPage(filePath, 'push').then(() => {
                     this.article.querySelector<HTMLElement>('[data-source-line="' + line + '"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 });
             },
+            currentFilePath: () => this.page?.filePath,
             changed: () => this.toolbarPanel.reposition()
         });
+    }
+
+    private async openSymbolAuditReport(historyMode: 'push' | 'replace' | 'pop' = 'push'): Promise<void> {
+        if (!this.state?.available || !this.currentPath) return;
+        const status = await this.fetchJson<ReaderSymbolAuditStatus>('/api/symbol-audit');
+        if (!status.report) return;
+        this.toolbarPanel.close();
+        this.symbolAudit.dispose();
+        if (this.discussionMarks.isToolsOpen()) this.discussionMarks.toggleTools();
+        this.symbolAuditReportOpen = true;
+        this.article.classList.add('is-symbol-audit-report');
+        const title = this.dictionary().symbolAuditOpenReport;
+        const titleLabel = document.createElement('span');
+        titleLabel.className = 'reader-page-title-label';
+        titleLabel.textContent = title;
+        this.pageTitle.replaceChildren(titleLabel);
+        this.pageTitle.setAttribute('aria-label', title);
+        document.title = title + ' — Math Workspace';
+        if (historyMode !== 'pop') {
+            const url = '?path=' + encodeURIComponent(this.currentPath) + '&view=symbol-audit-report';
+            const state = { filePath: this.currentPath, view: 'symbol-audit-report' };
+            if (historyMode === 'push') history.pushState(state, '', url);
+            else history.replaceState(state, '', url);
+        }
+        this.symbolAuditReport.render(this.article, status, {
+            language: this.state.language,
+            sourceTitle: filePath => {
+                const page = this.state?.pages.find(candidate => candidate.filePath === filePath);
+                return page?.displayHeading || page?.title || filePath.split('/').pop() || filePath;
+            },
+            locate: (filePath, line) => {
+                void this.openPage(filePath, 'push').then(() => {
+                    this.article.querySelector<HTMLElement>('[data-source-line="' + line + '"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                });
+            },
+            close: () => this.closeSymbolAuditReport()
+        });
+        this.main.scrollTop = 0;
+    }
+
+    private closeSymbolAuditReport(): void {
+        if (!this.page) return;
+        this.symbolAuditReportOpen = false;
+        history.replaceState({ filePath: this.currentPath }, '', '?path=' + encodeURIComponent(this.currentPath));
+        this.article.classList.remove('is-symbol-audit-report');
+        this.renderArticle();
+        this.renderNavigation((this.root.querySelector('#reader-page-filter') as HTMLInputElement).value);
+        this.main.scrollTop = 0;
     }
 
     private emptyState(value: string): HTMLElement {
@@ -1423,7 +1571,16 @@ class ReaderApplication {
         });
         window.addEventListener('popstate', () => {
             const filePath = queryPath();
-            if (filePath) void this.openPage(filePath, 'pop');
+            if (!filePath) return;
+            if (queryView() === 'symbol-audit-report') {
+                if (filePath !== this.currentPath) {
+                    void this.openPage(filePath, 'pop').then(() => this.openSymbolAuditReport('pop'));
+                } else {
+                    void this.openSymbolAuditReport('pop');
+                }
+                return;
+            }
+            void this.openPage(filePath, 'pop');
         });
         (this.root.querySelector('#reader-back') as HTMLButtonElement).addEventListener('click', () => this.navigateHistory(-1));
         (this.root.querySelector('#reader-forward') as HTMLButtonElement).addEventListener('click', () => this.navigateHistory(1));

@@ -1,15 +1,42 @@
-import type {
-    SymbolAuditAdvisory,
-    SymbolAuditBinding,
-    SymbolAuditCandidate,
-    SymbolAuditSettings,
-    SymbolAuditSource
+import {
+    normalizeSymbolAuditReconciliations,
+    type SymbolAuditReconciliation,
+    type SymbolAuditBinding,
+    type SymbolAuditCandidate,
+    type SymbolAuditSettings,
+    type SymbolAuditSource
 } from './symbol-audit';
 
 const { spawn } = require('node:child_process');
 
 const REQUEST_TIMEOUT_MS = 20_000;
 const TURN_TIMEOUT_MS = 9 * 60_000;
+
+export type CodexSymbolAuditActivity =
+    | 'connecting-server'
+    | 'creating-task'
+    | 'waiting-response'
+    | 'receiving-response';
+
+/** Exact usage reported by Codex app-server for one ephemeral audit turn. */
+export interface CodexSymbolAuditTokenUsage {
+    totalTokens: number;
+    inputTokens: number;
+    cachedInputTokens: number;
+    cacheWriteInputTokens: number;
+    outputTokens: number;
+    reasoningOutputTokens: number;
+}
+
+export interface CodexSymbolAuditExtractionResult {
+    bindings: unknown;
+    tokenUsage?: CodexSymbolAuditTokenUsage;
+}
+
+export interface CodexSymbolAuditReconciliationResult {
+    reconciliations: SymbolAuditReconciliation[];
+    tokenUsage?: CodexSymbolAuditTokenUsage;
+}
 
 export interface CodexSymbolAuditModel {
     id: string;
@@ -35,11 +62,28 @@ interface ActiveTurn {
     threadId: string;
     turnId?: string;
     text: string;
+    finalText?: string;
     queuedDeltas: Array<{ turnId: string; delta: string }>;
-    completedTurnIds: Set<string>;
-    resolve(value: string): void;
+    completedTurns: Map<string, CodexCompletedTurn>;
+    tokenUsage?: CodexSymbolAuditTokenUsage;
+    rawResponseUsage?: CodexSymbolAuditTokenUsage;
+    rawResponseIds: Set<string>;
+    onActivity?: (activity: CodexSymbolAuditActivity) => void;
+    resolve(value: CodexSymbolAuditTurnResult): void;
     reject(error: Error): void;
     timer: any;
+}
+
+interface CodexCompletedTurn {
+    id: string;
+    status?: string;
+    error?: { message?: unknown; additionalDetails?: unknown } | null;
+    items?: unknown;
+}
+
+interface CodexSymbolAuditTurnResult {
+    text: string;
+    tokenUsage?: CodexSymbolAuditTokenUsage;
 }
 
 function errorMessage(value: unknown): string {
@@ -47,7 +91,49 @@ function errorMessage(value: unknown): string {
     return typeof value === 'string' ? value : 'Codex app-server request failed.';
 }
 
-function parseJsonObject(value: string): Record<string, unknown> {
+function tokenCount(value: unknown): number | undefined {
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined;
+}
+
+function tokenUsage(value: unknown): CodexSymbolAuditTokenUsage | undefined {
+    const record = value && typeof value === 'object' ? value as Record<string, unknown> : undefined;
+    if (!record) return undefined;
+    const totalTokens = tokenCount(record.totalTokens);
+    if (totalTokens === undefined) return undefined;
+    return {
+        totalTokens,
+        inputTokens: tokenCount(record.inputTokens) || 0,
+        cachedInputTokens: tokenCount(record.cachedInputTokens) || 0,
+        cacheWriteInputTokens: tokenCount(record.cacheWriteInputTokens) || 0,
+        outputTokens: tokenCount(record.outputTokens) || 0,
+        reasoningOutputTokens: tokenCount(record.reasoningOutputTokens) || 0
+    };
+}
+
+function addTokenUsage(
+    accumulated: CodexSymbolAuditTokenUsage | undefined,
+    reported: CodexSymbolAuditTokenUsage | undefined
+): CodexSymbolAuditTokenUsage | undefined {
+    if (!reported) return accumulated;
+    const base = accumulated || {
+        totalTokens: 0,
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        cacheWriteInputTokens: 0,
+        outputTokens: 0,
+        reasoningOutputTokens: 0
+    };
+    return {
+        totalTokens: base.totalTokens + reported.totalTokens,
+        inputTokens: base.inputTokens + reported.inputTokens,
+        cachedInputTokens: base.cachedInputTokens + reported.cachedInputTokens,
+        cacheWriteInputTokens: base.cacheWriteInputTokens + reported.cacheWriteInputTokens,
+        outputTokens: base.outputTokens + reported.outputTokens,
+        reasoningOutputTokens: base.reasoningOutputTokens + reported.reasoningOutputTokens
+    };
+}
+
+function parseJsonObject(value: string): Record<string, unknown> | undefined {
     const trimmed = value.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
     try {
         const parsed = JSON.parse(trimmed);
@@ -65,6 +151,39 @@ function parseJsonObject(value: string): Record<string, unknown> {
             // The error below states the stable boundary rather than model prose.
         }
     }
+    return undefined;
+}
+
+function requiredJsonObject(value: string): Record<string, unknown> {
+    const parsed = parseJsonObject(value);
+    if (parsed) return parsed;
+    throw new Error('Codex did not return the required JSON symbol-audit result.');
+}
+
+/**
+ * The schema asks for {"bindings": []}, but a model can still answer an
+ * otherwise unambiguous empty-source result in a short sentence. Accept only
+ * that narrow case for extraction: malformed or explanatory output that could
+ * conceal a binding remains a visible failure.
+ */
+function isExplicitEmptyExtraction(value: string): boolean {
+    const compact = value.trim().replace(/\s+/g, ' ');
+    if (!compact || compact.length > 360 || /[{}\[\]]/.test(compact)) return false;
+    const english = compact.toLowerCase();
+    const hasEnglishEmptyStatement = /\bno (?:project-relevant )?(?:mathematical )?(?:symbols?|notations?|symbol bindings?|notation bindings?)\b/.test(english)
+        && /\b(?:defined|used|present|found|contained|appear)\b/.test(english);
+    const hasChineseEmptyStatement = /(?:没有|无|未发现)(?:任何)?(?:项目相关的)?(?:数学)?(?:符号|记号)(?:绑定)?/.test(compact)
+        || /(?:该|本|此)(?:源文件|文件|章节|页面|文档)(?:中)?(?:没有|无|未发现)(?:任何)?(?:项目相关的)?(?:数学)?(?:符号|记号)(?:绑定)?/.test(compact);
+    return hasEnglishEmptyStatement || hasChineseEmptyStatement;
+}
+
+function extractionBindings(value: string): unknown {
+    const parsed = parseJsonObject(value);
+    if (parsed) {
+        if (Array.isArray(parsed.bindings)) return parsed.bindings;
+        throw new Error('Codex returned JSON without the required symbol-audit bindings array.');
+    }
+    if (isExplicitEmptyExtraction(value)) return [];
     throw new Error('Codex did not return the required JSON symbol-audit result.');
 }
 
@@ -83,6 +202,7 @@ function promptForExtraction(source: SymbolAuditSource): string {
         'For each binding, give expression without outer dollar delimiters; normalizedExpression is not needed. Give structure.base and modifiers (subscripts, superscripts, decorations, indices), a short globally comparable bindingKey in kebab-case, semanticType, concise Chinese meaning, source line range, evidence, and confidence.',
         'Do not include universal syntax such as +, =, \\in, parentheses, generic quantifier syntax, or a dummy binder that has no distinct local meaning. Treat the same expression with a genuinely different local meaning as a separate binding.',
         'Every registered special symbol listed below must be represented as a special binding when it is defined or used by this source. Do not reinterpret a temporary symbol as a later special symbol just because their glyphs match.',
+        'If no binding is found, return exactly {"bindings":[]}. Do not return prose for an empty result.',
         `Source path: ${source.filePath}`,
         'Registered special symbols from the maintained table:',
         JSON.stringify(registered),
@@ -93,11 +213,19 @@ function promptForExtraction(source: SymbolAuditSource): string {
     ].join('\n\n');
 }
 
-function promptForAdvisory(candidates: SymbolAuditCandidate[]): string {
+function promptForReconciliation(candidates: SymbolAuditCandidate[]): string {
     return [
-        'You are Math Workspace’s notation-confusion review pass. Return only the JSON object required by the output schema.',
-        'Each group below has the same temporary surface notation but distinct extracted meanings. Assess whether reusing it is likely to confuse a reader crossing the cited source locations.',
-        'Return an advisory only when the semantic roles are materially different enough to warrant human review. Do not call ordinary local reuse a conflict. This is advisory only; do not propose source edits.',
+        'You are Math Workspace’s notation reconciliation pass. Return only the JSON object required by the output schema.',
+        'Each group below has the same normalized surface notation but independently extracted bindingKey values. A bindingKey is only a per-file model hint and MUST NOT be treated as a canonical semantic identity.',
+        'Assess every candidate group exactly once. Compare meanings, semantic roles, scopes, evidence, and source roles before deciding the relation.',
+        'Use relation="same-binding" for synonyms, glossary/summary restatements, aliases, or wording differences that denote one mathematical object.',
+        'Use relation="specialization" when one occurrence is an explicit model, coordinate realization, restricted instance, or parameter specialization of the other.',
+        'Use relation="compatible-reuse" for genuinely different local meanings whose scopes make the reuse acceptable. Set readerRisk=true only when a reader crossing those locations could still be confused.',
+        'Use relation="conflict" only when meanings are genuinely incompatible, their scopes overlap, and at least one occurrence is deliberately project-wide or declared notation. A generic binder or temporary variable is not project-wide merely because an extraction labeled it special.',
+        'Use relation="uncertain" when the supplied evidence cannot distinguish the cases. Do not upgrade uncertainty to conflict.',
+        'A defining equality should be compared by the symbol it defines, not treated as a different meaning merely because another occurrence names only its left-hand side.',
+        'Summary, glossary, appendix, and specialization pages often repeat or instantiate main-text definitions; their location alone is not evidence of conflict.',
+        'This pass detects and classifies; do not propose source edits. Give a concise Chinese reason grounded in the supplied bindings.',
         'Candidate groups:',
         JSON.stringify(candidates.map(candidate => ({
             expression: candidate.expression,
@@ -107,7 +235,10 @@ function promptForAdvisory(candidates: SymbolAuditCandidate[]): string {
                 kind: binding.kind,
                 bindingKey: binding.bindingKey,
                 semanticType: binding.semanticType,
-                meaning: binding.meaning
+                scope: binding.scope,
+                meaning: binding.meaning,
+                evidence: binding.evidence,
+                confidence: binding.confidence
             }))
         })))
     ].join('\n\n');
@@ -150,20 +281,22 @@ const EXTRACTION_OUTPUT_SCHEMA = {
     }
 };
 
-const ADVISORY_OUTPUT_SCHEMA = {
+const RECONCILIATION_OUTPUT_SCHEMA = {
     type: 'object',
     additionalProperties: false,
-    required: ['advisories'],
+    required: ['reconciliations'],
     properties: {
-        advisories: {
+        reconciliations: {
             type: 'array',
             items: {
                 type: 'object',
                 additionalProperties: false,
-                required: ['expression', 'severity', 'reason', 'bindingKeys'],
+                required: ['expression', 'relation', 'confidence', 'readerRisk', 'reason', 'bindingKeys'],
                 properties: {
                     expression: { type: 'string' },
-                    severity: { type: 'string', enum: ['notice', 'review'] },
+                    relation: { type: 'string', enum: ['same-binding', 'specialization', 'compatible-reuse', 'conflict', 'uncertain'] },
+                    confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+                    readerRisk: { type: 'boolean' },
                     reason: { type: 'string' },
                     bindingKeys: { type: 'array', items: { type: 'string' } }
                 }
@@ -219,26 +352,30 @@ export class CodexSymbolAuditRunner {
         return models.sort((left, right) => Number(right.isDefault) - Number(left.isDefault) || left.displayName.localeCompare(right.displayName));
     }
 
-    async extract(rootPath: string, source: SymbolAuditSource, settings: SymbolAuditSettings): Promise<unknown> {
-        const result = await this.startEphemeralTurn(rootPath, promptForExtraction(source), settings, EXTRACTION_OUTPUT_SCHEMA);
-        return parseJsonObject(result).bindings;
+    async extract(
+        rootPath: string,
+        source: SymbolAuditSource,
+        settings: SymbolAuditSettings,
+        onActivity?: (activity: CodexSymbolAuditActivity) => void
+    ): Promise<CodexSymbolAuditExtractionResult> {
+        const result = await this.startEphemeralTurn(rootPath, promptForExtraction(source), settings, EXTRACTION_OUTPUT_SCHEMA, onActivity);
+        return {
+            bindings: extractionBindings(result.text),
+            ...(result.tokenUsage ? { tokenUsage: result.tokenUsage } : {})
+        };
     }
 
-    async reviewTemporaryCandidates(rootPath: string, candidates: SymbolAuditCandidate[], settings: SymbolAuditSettings): Promise<SymbolAuditAdvisory[]> {
-        if (!candidates.length) return [];
-        const result = await this.startEphemeralTurn(rootPath, promptForAdvisory(candidates), settings, ADVISORY_OUTPUT_SCHEMA);
-        const rawAdvisories = parseJsonObject(result).advisories;
-        if (!Array.isArray(rawAdvisories)) return [];
-        return rawAdvisories.flatMap((item: unknown) => {
-            const value = item && typeof item === 'object' ? item as Record<string, unknown> : {};
-            const expression = typeof value.expression === 'string' ? value.expression.trim().slice(0, 160) : '';
-            const severity = value.severity === 'review' ? 'review' : value.severity === 'notice' ? 'notice' : undefined;
-            const reason = typeof value.reason === 'string' ? value.reason.trim().slice(0, 560) : '';
-            const bindingKeys = Array.isArray(value.bindingKeys)
-                ? value.bindingKeys.filter((key): key is string => typeof key === 'string' && key.length > 0).slice(0, 32)
-                : [];
-            return expression && severity && reason && bindingKeys.length ? [{ expression, severity, reason, bindingKeys }] : [];
-        });
+    async reconcileCandidates(
+        rootPath: string,
+        candidates: SymbolAuditCandidate[],
+        settings: SymbolAuditSettings,
+        onActivity?: (activity: CodexSymbolAuditActivity) => void
+    ): Promise<CodexSymbolAuditReconciliationResult> {
+        if (!candidates.length) return { reconciliations: [] };
+        const result = await this.startEphemeralTurn(rootPath, promptForReconciliation(candidates), settings, RECONCILIATION_OUTPUT_SCHEMA, onActivity);
+        const rawReconciliations = requiredJsonObject(result.text).reconciliations;
+        const reconciliations = normalizeSymbolAuditReconciliations(rawReconciliations, candidates);
+        return { reconciliations, ...(result.tokenUsage ? { tokenUsage: result.tokenUsage } : {}) };
     }
 
     async interrupt(): Promise<void> {
@@ -264,8 +401,16 @@ export class CodexSymbolAuditRunner {
         });
     }
 
-    private async startEphemeralTurn(rootPath: string, prompt: string, settings: SymbolAuditSettings, outputSchema: Record<string, unknown>): Promise<string> {
+    private async startEphemeralTurn(
+        rootPath: string,
+        prompt: string,
+        settings: SymbolAuditSettings,
+        outputSchema: Record<string, unknown>,
+        onActivity?: (activity: CodexSymbolAuditActivity) => void
+    ): Promise<CodexSymbolAuditTurnResult> {
         return this.withTurn(async () => {
+            onActivity?.('connecting-server');
+            onActivity?.('creating-task');
             const started = await this.request('thread/start', {
                 cwd: rootPath,
                 ephemeral: true,
@@ -275,17 +420,25 @@ export class CodexSymbolAuditRunner {
             });
             const threadId = typeof started?.thread?.id === 'string' ? started.thread.id : '';
             if (!threadId) throw new Error('Codex app-server returned an ephemeral audit without a task id.');
-            return this.startTurn(threadId, prompt, settings, outputSchema);
+            return this.startTurn(threadId, prompt, settings, outputSchema, onActivity);
         });
     }
 
-    private async startTurn(threadId: string, prompt: string, settings: SymbolAuditSettings, outputSchema: Record<string, unknown>): Promise<string> {
-        return new Promise<string>((resolve, reject) => {
+    private async startTurn(
+        threadId: string,
+        prompt: string,
+        settings: SymbolAuditSettings,
+        outputSchema: Record<string, unknown>,
+        onActivity?: (activity: CodexSymbolAuditActivity) => void
+    ): Promise<CodexSymbolAuditTurnResult> {
+        return new Promise<CodexSymbolAuditTurnResult>((resolve, reject) => {
             const activeTurn: ActiveTurn = {
                 threadId,
                 text: '',
                 queuedDeltas: [],
-                completedTurnIds: new Set<string>(),
+                completedTurns: new Map<string, CodexCompletedTurn>(),
+                rawResponseIds: new Set<string>(),
+                onActivity,
                 resolve,
                 reject,
                 timer: setTimeout(() => this.finishTurn(activeTurn, new Error('Codex did not complete the symbol audit in time.')), TURN_TIMEOUT_MS)
@@ -298,6 +451,7 @@ export class CodexSymbolAuditRunner {
                 ...(settings.model ? { model: settings.model } : {}),
                 ...(settings.effort ? { effort: settings.effort } : {})
             };
+            onActivity?.('waiting-response');
             void this.request('turn/start', params, TURN_TIMEOUT_MS).then(response => {
                 if (this.activeTurn !== activeTurn) return;
                 const turnId = typeof response?.turn?.id === 'string' ? response.turn.id : '';
@@ -310,9 +464,10 @@ export class CodexSymbolAuditRunner {
                     if (item.turnId === turnId) activeTurn.text += item.delta;
                 });
                 activeTurn.queuedDeltas = [];
-                if (activeTurn.completedTurnIds.has(turnId)) this.finishTurn(activeTurn);
+                const completedTurn = activeTurn.completedTurns.get(turnId);
+                if (completedTurn) this.finishCompletedTurn(activeTurn, completedTurn);
             }, error => this.finishTurn(activeTurn, error instanceof Error ? error : new Error(String(error))));
-        }).then(result => result.trim());
+        }).then(result => ({ ...result, text: result.text.trim() }));
     }
 
     private async request(method: string, params: unknown, timeoutMs = REQUEST_TIMEOUT_MS): Promise<any> {
@@ -439,15 +594,72 @@ export class CodexSymbolAuditRunner {
         }
         const activeTurn = this.activeTurn;
         if (!activeTurn || message?.params?.threadId !== activeTurn.threadId) return;
+        if (message.method === 'thread/tokenUsage/updated') {
+            if (!activeTurn.turnId || message.params?.turnId === activeTurn.turnId) {
+                const reportedUsage = tokenUsage(message.params?.tokenUsage?.total);
+                if (reportedUsage) activeTurn.tokenUsage = reportedUsage;
+            }
+            return;
+        }
+        if (message.method === 'rawResponse/completed') {
+            if (!activeTurn.turnId || message.params?.turnId === activeTurn.turnId) {
+                const responseId = typeof message.params?.responseId === 'string' ? message.params.responseId : '';
+                if (!responseId || !activeTurn.rawResponseIds.has(responseId)) {
+                    if (responseId) activeTurn.rawResponseIds.add(responseId);
+                    activeTurn.rawResponseUsage = addTokenUsage(activeTurn.rawResponseUsage, tokenUsage(message.params?.usage));
+                }
+            }
+            return;
+        }
         if (message.method === 'item/agentMessage/delta' && typeof message.params?.delta === 'string') {
+            activeTurn.onActivity?.('receiving-response');
             if (activeTurn.turnId && message.params.turnId === activeTurn.turnId) activeTurn.text += message.params.delta;
             else if (!activeTurn.turnId && typeof message.params.turnId === 'string') activeTurn.queuedDeltas.push({ turnId: message.params.turnId, delta: message.params.delta });
             return;
         }
-        if (message.method === 'turn/completed' && typeof message.params?.turn?.id === 'string') {
-            if (activeTurn.turnId === message.params.turn.id) this.finishTurn(activeTurn);
-            else activeTurn.completedTurnIds.add(message.params.turn.id);
+        if (message.method === 'item/completed' && message.params?.item?.type === 'agentMessage' && typeof message.params.item.text === 'string') {
+            if (!activeTurn.turnId || message.params?.turnId === activeTurn.turnId) {
+                const finalText = message.params.item.text;
+                if (message.params.item.phase === 'final_answer') activeTurn.finalText = finalText;
+                else if (message.params.item.phase !== 'commentary' && (!activeTurn.text || finalText.length >= activeTurn.text.length)) activeTurn.text = finalText;
+            }
+            activeTurn.onActivity?.('receiving-response');
+            return;
         }
+        if (message.method === 'turn/started' || (typeof message.method === 'string' && message.method.startsWith('item/'))) {
+            activeTurn.onActivity?.('waiting-response');
+        }
+        if (message.method === 'turn/completed' && typeof message.params?.turn?.id === 'string') {
+            if (activeTurn.turnId === message.params.turn.id) this.finishCompletedTurn(activeTurn, message.params.turn);
+            else activeTurn.completedTurns.set(message.params.turn.id, message.params.turn);
+        }
+    }
+
+    private finishCompletedTurn(activeTurn: ActiveTurn, completedTurn: CodexCompletedTurn): void {
+        if (Array.isArray(completedTurn.items)) {
+            const agentMessages = completedTurn.items.filter((item: any) => item?.type === 'agentMessage' && typeof item.text === 'string');
+            const finalMessage = agentMessages.find((item: any) => item.phase === 'final_answer') || agentMessages.find((item: any) => item.phase !== 'commentary');
+            if (finalMessage) activeTurn.finalText = finalMessage.text;
+        }
+        if (completedTurn.status === 'failed') {
+            const message = typeof completedTurn.error?.message === 'string' && completedTurn.error.message.trim()
+                ? completedTurn.error.message.trim()
+                : 'Codex reported that the symbol-audit turn failed.';
+            const details = typeof completedTurn.error?.additionalDetails === 'string' && completedTurn.error.additionalDetails.trim()
+                ? ` ${completedTurn.error.additionalDetails.trim()}`
+                : '';
+            this.finishTurn(activeTurn, new Error(`${message}${details}`));
+            return;
+        }
+        if (completedTurn.status === 'interrupted') {
+            this.finishTurn(activeTurn, new Error('Codex interrupted the symbol-audit turn.'));
+            return;
+        }
+        if (completedTurn.status !== undefined && completedTurn.status !== 'completed') {
+            this.finishTurn(activeTurn, new Error(`Codex ended the symbol-audit turn with unexpected status ${completedTurn.status}.`));
+            return;
+        }
+        this.finishTurn(activeTurn);
     }
 
     private finishTurn(turn: ActiveTurn, error?: Error): void {
@@ -455,7 +667,10 @@ export class CodexSymbolAuditRunner {
         this.activeTurn = undefined;
         clearTimeout(turn.timer);
         if (error) turn.reject(error);
-        else turn.resolve(turn.text || '');
+        else {
+            const usage = turn.tokenUsage || turn.rawResponseUsage;
+            turn.resolve({ text: turn.finalText || turn.text || '', ...(usage ? { tokenUsage: usage } : {}) });
+        }
     }
 
     private write(message: unknown): void {

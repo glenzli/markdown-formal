@@ -2020,6 +2020,13 @@ async function testReaderSymbolAudit() {
         '定义 $C$ 为循环算子网络。',
         ''
     ].join('\n'));
+    await fs.mkdir(path.join(root, 'book2'), { recursive: true });
+    await fs.writeFile(path.join(root, 'book2', '03-outside.md'), [
+        '# #h-3333333333333333 Outside notation',
+        '',
+        'This chapter is outside the focused audit range.',
+        ''
+    ].join('\n'));
     await fs.mkdir(path.join(root, '.math-workspace'), { recursive: true });
     await fs.writeFile(path.join(root, '.math-workspace', 'config.json'), '{}\n');
     await fs.writeFile(path.join(root, '.math-workspace', 'symbols.json'), JSON.stringify([{
@@ -2060,15 +2067,51 @@ const receive = message => {
     }
     fs.appendFileSync(${JSON.stringify(counterPath)}, 'turn\\n');
     const prompt = message.params.input?.[0]?.text || '';
+    const shouldFail = prompt.includes('TRIGGER_SYMBOL_AUDIT_FAILURE');
     const result = prompt.includes('Candidate groups')
-      ? { advisories: [] }
+      ? { reconciliations: [
+          { expression: 'C', relation: 'conflict', confidence: 'high', readerRisk: true, reason: 'C has incompatible overlapping meanings.', bindingKeys: ['local-bound-constant', 'cyclic-operator-network'] },
+          { expression: 'S', relation: 'same-binding', confidence: 'high', readerRisk: false, reason: 'Both occurrences describe the same summary symbol.', bindingKeys: ['summary-symbol', 'summary-notation'] }
+        ] }
       : prompt.includes('01-local.md')
-        ? { bindings: [{ expression: 'C', startLine: 3, endLine: 3, structure: { base: 'C', modifiers: [] }, kind: 'temporary', scope: 'local', bindingKey: 'local-bound-constant', semanticType: 'constant', meaning: '局部推导中的临时有界常数', evidence: 'let C be a temporary bound constant', confidence: 'high' }] }
-        : { bindings: [{ expression: 'C', startLine: 3, endLine: 3, structure: { base: 'C', modifiers: [] }, kind: 'special', scope: 'book', bindingKey: 'cyclic-operator-network', semanticType: 'network', meaning: '循环算子网络', evidence: '定义 C 为循环算子网络', confidence: 'high' }] };
-    const turn = { id: 'symbol-turn-' + threadCount, status: 'completed' };
-    write({ method: 'item/agentMessage/delta', params: { threadId: message.params.threadId, turnId: turn.id, itemId: 'message', delta: JSON.stringify(result) } });
-    write({ id: message.id, result: { turn } });
-    return write({ method: 'turn/completed', params: { threadId: message.params.threadId, turn } });
+        ? { bindings: [
+            { expression: 'C', startLine: 3, endLine: 3, structure: { base: 'C', modifiers: [] }, kind: 'temporary', scope: 'local', bindingKey: 'local-bound-constant', semanticType: 'constant', meaning: '局部推导中的临时有界常数', evidence: 'let C be a temporary bound constant', confidence: 'high' },
+            { expression: 'S', startLine: 3, endLine: 3, structure: { base: 'S', modifiers: [] }, kind: 'special', scope: 'book', bindingKey: 'summary-symbol', semanticType: 'set', meaning: '同一个汇总符号', evidence: 'summary notation S', confidence: 'high' }
+          ] }
+        : prompt.includes('03-outside.md')
+          ? 'No project-relevant mathematical symbols are defined or used in this source.'
+        : { bindings: [
+            { expression: 'C', startLine: 3, endLine: 3, structure: { base: 'C', modifiers: [] }, kind: 'special', scope: 'book', bindingKey: 'cyclic-operator-network', semanticType: 'network', meaning: '循环算子网络', evidence: '定义 C 为循环算子网络', confidence: 'high' },
+            { expression: 'S', startLine: 3, endLine: 3, structure: { base: 'S', modifiers: [] }, kind: 'special', scope: 'book', bindingKey: 'summary-notation', semanticType: 'set', meaning: '同一个汇总符号', evidence: 'summary notation S', confidence: 'high' }
+          ] };
+    const turnId = 'symbol-turn-' + threadCount;
+    const startedTurn = { id: turnId, status: 'inProgress' };
+    if (shouldFail) {
+      write({ method: 'turn/completed', params: { threadId: message.params.threadId, turn: {
+        id: turnId, status: 'failed', error: { message: 'Synthetic symbol-audit model failure.', additionalDetails: 'Fixture detail.' }, items: []
+      } } });
+      return write({ id: message.id, result: { turn: startedTurn } });
+    }
+    const resultText = typeof result === 'string' ? result : JSON.stringify(result);
+    if (prompt.includes('03-outside.md')) {
+      write({ method: 'item/completed', params: { threadId: message.params.threadId, turnId, completedAtMs: Date.now(), item: {
+        type: 'agentMessage', id: 'message', text: resultText, phase: 'final_answer', memoryCitation: null
+      } } });
+      write({ method: 'rawResponse/completed', params: { threadId: message.params.threadId, turnId, responseId: 'response-' + threadCount, usage: {
+        totalTokens: 100, inputTokens: 50, cachedInputTokens: 0, cacheWriteInputTokens: 0, outputTokens: 20, reasoningOutputTokens: 30
+      } } });
+    } else {
+      write({ method: 'item/agentMessage/delta', params: { threadId: message.params.threadId, turnId, itemId: 'message', delta: resultText } });
+      write({ method: 'thread/tokenUsage/updated', params: { threadId: message.params.threadId, turnId, tokenUsage: {
+        total: { totalTokens: 100, inputTokens: 50, cachedInputTokens: 0, cacheWriteInputTokens: 0, outputTokens: 20, reasoningOutputTokens: 30 },
+        last: { totalTokens: 100, inputTokens: 50, cachedInputTokens: 0, cacheWriteInputTokens: 0, outputTokens: 20, reasoningOutputTokens: 30 },
+        modelContextWindow: 128000
+      } } });
+    }
+    write({ id: message.id, result: { turn: startedTurn } });
+    return write({ method: 'turn/completed', params: { threadId: message.params.threadId, turn: {
+      id: turnId, status: 'completed', error: null, items: [{ type: 'agentMessage', id: 'message', text: resultText, phase: 'final_answer', memoryCitation: null }]
+    } } });
   }
   if (message.method === 'turn/interrupt') return write({ id: message.id, result: {} });
 };
@@ -2097,7 +2140,8 @@ process.stdin.on('data', chunk => {
         assert.equal((await fetch(reader.url + '/api/symbol-audit')).status, 403);
         const before = await (await fetch(reader.url + '/api/symbol-audit', { headers })).json();
         assert.equal(before.job, undefined);
-        assert.equal(before.cache.missingFiles, 2);
+        assert.equal(before.cache.missingFiles, 3);
+        assert.deepEqual(before.scope.groups.map(group => group.id), ['book1', 'book2']);
         await assert.rejects(fs.readFile(counterPath, 'utf8'));
 
         const models = await (await fetch(reader.url + '/api/symbol-audit/models', { headers })).json();
@@ -2119,18 +2163,29 @@ process.stdin.on('data', chunk => {
         assert.equal(completed.reportState, 'current');
         assert.equal(completed.report.hardConflicts.length, 1);
         assert.equal(completed.report.hardConflicts[0].expression, 'C');
-        assert.equal((await fs.readFile(counterPath, 'utf8')).trim().split('\n').length, 2);
+        assert.equal(completed.report.reconciliations.length, 2);
+        assert.equal(completed.report.reconciliations.find(item => item.expression === 'S').relation, 'same-binding');
+        assert.equal(completed.report.hardConflicts.some(item => item.expression === 'S'), false);
+        assert.equal(completed.job.modelCalls, 4);
+        assert.equal(completed.job.tokenUsageReportedCalls, 4);
+        assert.equal(completed.job.tokenUsage.totalTokens, 400);
+        assert.equal(completed.job.tokenUsage.inputTokens, 200);
+        assert.equal(completed.job.tokenUsage.outputTokens, 80);
+        assert.equal(completed.job.tokenUsage.reasoningOutputTokens, 120);
+        assert.equal((await fs.readFile(counterPath, 'utf8')).trim().split('\n').length, 4);
 
         const cachedRun = await fetch(reader.url + '/api/symbol-audit', {
             method: 'POST', headers,
             body: JSON.stringify({ action: 'run' })
         });
         assert.equal(cachedRun.status, 202);
-        await waitFor(async () => {
+        const cachedComplete = await waitFor(async () => {
             const status = await (await fetch(reader.url + '/api/symbol-audit', { headers })).json();
-            return status.job?.status === 'complete' && status.job.reusedFiles === 2 ? status : undefined;
+            return status.job?.status === 'complete' && status.job.reusedFiles === 3 ? status : undefined;
         });
-        assert.equal((await fs.readFile(counterPath, 'utf8')).trim().split('\n').length, 2);
+        assert.equal(cachedComplete.job.modelCalls, 0);
+        assert.equal(cachedComplete.job.tokenUsage, undefined);
+        assert.equal((await fs.readFile(counterPath, 'utf8')).trim().split('\n').length, 4);
 
         await fs.appendFile(path.join(root, 'book1', '01-local.md'), '\nThis file changed.\n');
         await waitFor(async () => {
@@ -2142,7 +2197,59 @@ process.stdin.on('data', chunk => {
             const status = await (await fetch(reader.url + '/api/symbol-audit', { headers })).json();
             return status.job?.status === 'complete' && status.job.scannedFiles === 1 ? status : undefined;
         });
-        assert.equal((await fs.readFile(counterPath, 'utf8')).trim().split('\n').length, 3);
+        assert.equal((await fs.readFile(counterPath, 'utf8')).trim().split('\n').length, 6);
+
+        const chapterScope = await fetch(reader.url + '/api/symbol-audit', {
+            method: 'POST', headers,
+            body: JSON.stringify({ action: 'settings', settings: {
+                model: 'gpt-symbol', effort: 'high', scope: { kind: 'chapters', filePaths: ['book1/01-local.md'] }
+            } })
+        });
+        assert.equal(chapterScope.status, 200);
+        const chapterStatus = (await chapterScope.json()).status;
+        assert.equal(chapterStatus.cache.totalFiles, 1);
+        assert.equal(chapterStatus.cache.reusableFiles, 1);
+        assert.equal(chapterStatus.scope.externalSpecialBindingCount, 1);
+        await fetch(reader.url + '/api/symbol-audit', { method: 'POST', headers, body: JSON.stringify({ action: 'run' }) });
+        const chapterComplete = await waitFor(async () => {
+            const status = await (await fetch(reader.url + '/api/symbol-audit', { headers })).json();
+            return status.job?.status === 'complete' && status.job.reusedFiles === 1 ? status : undefined;
+        });
+        assert.equal(chapterComplete.report.hardConflicts.length, 1);
+        assert.equal(chapterComplete.report.externalSpecialBindingCount, 1);
+        assert.equal(chapterComplete.job.modelCalls, 1);
+        assert.equal((await fs.readFile(counterPath, 'utf8')).trim().split('\n').length, 7);
+
+        const volumeScope = await fetch(reader.url + '/api/symbol-audit', {
+            method: 'POST', headers,
+            body: JSON.stringify({ action: 'settings', settings: {
+                model: 'gpt-symbol', effort: 'high', scope: { kind: 'volume', groupId: 'book1' }
+            } })
+        });
+        assert.equal(volumeScope.status, 200);
+        const volumeStatus = (await volumeScope.json()).status;
+        assert.equal(volumeStatus.cache.totalFiles, 2);
+        assert.equal(volumeStatus.cache.reusableFiles, 2);
+
+        await fs.appendFile(path.join(root, 'book1', '01-local.md'), '\nTRIGGER_SYMBOL_AUDIT_FAILURE\n');
+        await fetch(reader.url + '/api/symbol-audit', {
+            method: 'POST', headers,
+            body: JSON.stringify({ action: 'settings', settings: {
+                model: 'gpt-symbol', effort: 'high', scope: { kind: 'chapters', filePaths: ['book1/01-local.md'] }
+            } })
+        });
+        await waitFor(async () => {
+            const status = await (await fetch(reader.url + '/api/symbol-audit', { headers })).json();
+            return status.cache.missingFiles === 1 ? status : undefined;
+        });
+        const failedRun = await fetch(reader.url + '/api/symbol-audit', { method: 'POST', headers, body: JSON.stringify({ action: 'run' }) });
+        assert.equal(failedRun.status, 202);
+        const failed = await waitFor(async () => {
+            const status = await (await fetch(reader.url + '/api/symbol-audit', { headers })).json();
+            return status.job?.status === 'failed' ? status : undefined;
+        });
+        assert.equal(failed.job.error, 'Synthetic symbol-audit model failure. Fixture detail.');
+        assert.equal(failed.job.error.includes('required JSON'), false);
     } finally {
         await stopReader(reader.child);
     }

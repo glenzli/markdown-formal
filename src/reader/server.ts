@@ -23,6 +23,7 @@ import { ReaderWorkspace, type WorkspaceSnapshot } from './workspace';
 import { readLeanBuild } from '../lean/lean-state';
 import { readLeanDependencyArtifact } from '../lean/lean-dependencies';
 import { SymbolAuditService } from './symbol-audit-service';
+import type { SymbolAuditScope, SymbolAuditSettings } from './symbol-audit';
 
 const http = require('node:http');
 const { URL } = require('node:url');
@@ -272,7 +273,7 @@ function sourceHash(value: string): string {
     return createHash('sha256').update(value).digest('hex');
 }
 
-function symbolAuditSettingsInput(value: unknown): { model?: string; effort?: string } {
+function symbolAuditSettingsInput(value: unknown): SymbolAuditSettings {
     const record = value && typeof value === 'object' ? value as Record<string, unknown> : {};
     const read = (key: 'model' | 'effort', maximum: number): string | undefined => {
         const item = record[key];
@@ -284,7 +285,26 @@ function symbolAuditSettingsInput(value: unknown): { model?: string; effort?: st
     };
     const model = read('model', 160);
     const effort = read('effort', 80);
-    return { ...(model ? { model } : {}), ...(effort ? { effort } : {}) };
+    const rawScope = record.scope;
+    let scope: SymbolAuditScope | undefined;
+    if (rawScope !== undefined && rawScope !== null) {
+        if (!rawScope || typeof rawScope !== 'object' || Array.isArray(rawScope)) throw new Error('Symbol audit scope must be an object.');
+        const scopeRecord = rawScope as Record<string, unknown>;
+        const kind = scopeRecord.kind;
+        if (kind === 'all') scope = { kind: 'all' };
+        else if (kind === 'volume') {
+            const groupId = typeof scopeRecord.groupId === 'string' ? scopeRecord.groupId.trim() : '';
+            if (!groupId || groupId.length > 320 || groupId.startsWith('/') || groupId.includes('..')) throw new Error('Symbol audit volume scope is invalid.');
+            scope = { kind: 'volume', groupId };
+        } else if (kind === 'chapters') {
+            if (!Array.isArray(scopeRecord.filePaths) || scopeRecord.filePaths.length > 160) throw new Error('Symbol audit chapter scope is invalid.');
+            const filePaths = Array.from(new Set(scopeRecord.filePaths.map(item => typeof item === 'string' ? item.trim() : '')))
+                .filter(filePath => filePath && filePath.length <= 480 && !filePath.startsWith('/') && !filePath.includes('..'))
+                .sort();
+            scope = { kind: 'chapters', filePaths };
+        } else throw new Error('Symbol audit scope kind is invalid.');
+    }
+    return { ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(scope ? { scope } : {}) };
 }
 
 function discussionMarkInput(snapshot: WorkspaceSnapshot, rootPath: string, value: any): ReaderDiscussionMarkInput {

@@ -1,40 +1,81 @@
-import { readerIcon } from './reader-icons';
-
 export interface ReaderSymbolAuditBinding {
     filePath: string;
     startLine: number;
+    endLine?: number;
     expression: string;
     kind: 'special' | 'temporary';
+    scope?: 'book' | 'chapter' | 'section' | 'local';
     bindingKey: string;
     semanticType: string;
     meaning: string;
+    evidence?: string;
+    confidence?: 'high' | 'medium' | 'low';
 }
 
 export interface ReaderSymbolAuditReport {
     createdAt: string;
+    model?: string;
+    effort?: string;
     bindingCount: number;
+    externalSpecialBindingCount: number;
     scannedFiles: number;
     reusedFiles: number;
     hardConflicts: Array<{ expression: string; reason: string; bindings: ReaderSymbolAuditBinding[] }>;
     candidates: Array<{ expression: string; bindings: ReaderSymbolAuditBinding[] }>;
+    reconciliations?: Array<{
+        expression: string;
+        relation: 'same-binding' | 'specialization' | 'compatible-reuse' | 'conflict' | 'uncertain';
+        confidence: 'high' | 'medium' | 'low';
+        readerRisk: boolean;
+        reason: string;
+        bindingKeys: string[];
+    }>;
     advisories: Array<{ expression: string; severity: 'notice' | 'review'; reason: string; bindingKeys: string[] }>;
 }
 
 export interface ReaderSymbolAuditStatus {
-    settings: { model?: string; effort?: string };
+    settings: {
+        model?: string;
+        effort?: string;
+        scope?: ReaderSymbolAuditScope;
+    };
     cache: { totalFiles: number; reusableFiles: number; missingFiles: number };
+    scope: {
+        selectedFilePaths: string[];
+        pages: Array<{ filePath: string; title: string; groupId: string }>;
+        groups: Array<{ id: string; label: string; filePaths: string[] }>;
+        externalSpecialBindingCount: number;
+    };
     reportState: 'none' | 'current' | 'stale';
     report?: ReaderSymbolAuditReport;
     job?: {
         status: 'running' | 'complete' | 'failed' | 'cancelled';
+        startedAt: string;
         totalFiles: number;
         completedFiles: number;
         scannedFiles: number;
         reusedFiles: number;
+        modelCalls: number;
+        tokenUsageReportedCalls: number;
+        tokenUsage?: {
+            totalTokens: number;
+            inputTokens: number;
+            cachedInputTokens: number;
+            cacheWriteInputTokens: number;
+            outputTokens: number;
+            reasoningOutputTokens: number;
+        };
         currentFilePath?: string;
+        activity?: string;
+        activityAt?: string;
         error?: string;
     };
 }
+
+export type ReaderSymbolAuditScope =
+    | { kind: 'all' }
+    | { kind: 'volume'; groupId: string }
+    | { kind: 'chapters'; filePaths: string[] };
 
 export interface ReaderSymbolAuditModel {
     model: string;
@@ -53,7 +94,20 @@ export interface ReaderSymbolAuditLabels {
     codexDefault: string;
     model: string;
     effort: string;
-    loadModels: string;
+    scope: string;
+    scopeAll: string;
+    scopeVolume: string;
+    scopeChapters: string;
+    scopeVolumePicker: string;
+    scopePages: string;
+    scopeSummary: (files: number, externalSpecials: number) => string;
+    scopeRequired: string;
+    savingSettings: string;
+    creatingJob: string;
+    cancellingJob: string;
+    activity: (value: string | undefined) => string;
+    elapsed: (seconds: number) => string;
+    tokenUsage: (usage: NonNullable<ReaderSymbolAuditStatus['job']>['tokenUsage'], reportedCalls: number, modelCalls: number) => string;
     saveSettings: string;
     start: string;
     force: string;
@@ -66,9 +120,11 @@ export interface ReaderSymbolAuditLabels {
     reportStale: string;
     noReport: string;
     hardConflicts: (count: number) => string;
+    legacyCandidates: (count: number) => string;
     possibleConfusion: (count: number) => string;
     noHardConflicts: string;
     noAdvisories: string;
+    openReport: string;
     locate: string;
     loading: string;
     modelLoadFailed: string;
@@ -79,10 +135,12 @@ export interface ReaderSymbolAuditHost {
     labels: () => ReaderSymbolAuditLabels;
     getStatus: () => Promise<ReaderSymbolAuditStatus>;
     loadModels: () => Promise<ReaderSymbolAuditModel[]>;
-    saveSettings: (settings: { model?: string; effort?: string }) => Promise<ReaderSymbolAuditStatus>;
+    saveSettings: (settings: { model?: string; effort?: string; scope?: ReaderSymbolAuditScope }) => Promise<ReaderSymbolAuditStatus>;
     start: (force: boolean) => Promise<ReaderSymbolAuditStatus>;
     cancel: () => Promise<ReaderSymbolAuditStatus>;
+    openReport: () => void;
     locate: (filePath: string, line: number) => void;
+    currentFilePath: () => string | undefined;
     changed: () => void;
 }
 
@@ -109,11 +167,20 @@ export class ReaderSymbolAudit {
     private models: ReaderSymbolAuditModel[] = [];
     private pollTimer: number | undefined;
     private busy = false;
+    private modelsLoading = false;
+    private modelsRequested = false;
+    private modelLoadError = '';
+    private pendingStatus = '';
 
     render(container: HTMLElement, host: ReaderSymbolAuditHost): void {
         this.dispose();
         this.container = container;
         this.host = host;
+        this.models = [];
+        this.modelsRequested = false;
+        this.modelLoadError = '';
+        this.pendingStatus = '';
+        this.draw();
         void this.refresh();
     }
 
@@ -129,6 +196,7 @@ export class ReaderSymbolAudit {
         try {
             this.status = await this.host.getStatus();
             this.draw();
+            if (!this.modelsRequested) void this.loadModels();
             if (this.status.job?.status === 'running') {
                 this.pollTimer = window.setTimeout(() => void this.refresh(), 1100);
             }
@@ -145,6 +213,7 @@ export class ReaderSymbolAudit {
         container.replaceChildren();
         if (!this.status) {
             container.append(text(error || labels.loading, 'reader-panel-summary'));
+            host.changed();
             return;
         }
 
@@ -154,12 +223,75 @@ export class ReaderSymbolAudit {
             this.status.cache.totalFiles,
             this.status.cache.missingFiles
         ), 'reader-symbol-audit-cache'));
+        const jobStatus = this.jobStatusView(labels);
+        if (jobStatus) container.append(jobStatus);
 
         const settings = document.createElement('section');
         settings.className = 'reader-symbol-audit-settings';
         const settingsHeader = document.createElement('div');
         settingsHeader.className = 'reader-symbol-audit-settings-header';
-        settingsHeader.append(text(labels.configuredModel + '：' + (this.status.settings.model || labels.codexDefault)), text(labels.configuredEffort + '：' + (this.status.settings.effort || labels.codexDefault)));
+        settingsHeader.append(
+            text(labels.configuredModel + '：' + (this.status.settings.model || labels.codexDefault)),
+            text(labels.configuredEffort + '：' + (this.status.settings.effort || labels.codexDefault)),
+            text(labels.scopeSummary(this.status.scope.selectedFilePaths.length, this.status.scope.externalSpecialBindingCount))
+        );
+        const configuredScope = this.status.settings.scope;
+        const scopeRow = document.createElement('label');
+        scopeRow.className = 'reader-symbol-audit-field';
+        scopeRow.append(document.createTextNode(labels.scope));
+        const scopeMode = document.createElement('select');
+        scopeMode.className = 'reader-panel-search';
+        const scopeKind = configuredScope?.kind || 'all';
+        scopeMode.append(
+            option('all', labels.scopeAll, scopeKind === 'all'),
+            option('volume', labels.scopeVolume, scopeKind === 'volume'),
+            option('chapters', labels.scopeChapters, scopeKind === 'chapters')
+        );
+        scopeRow.append(scopeMode);
+        const currentGroupId = this.status.scope.pages.find(page => page.filePath === host.currentFilePath())?.groupId || this.status.scope.groups[0]?.id || '';
+        const volumeRow = document.createElement('label');
+        volumeRow.className = 'reader-symbol-audit-field';
+        volumeRow.append(document.createTextNode(labels.scopeVolumePicker));
+        const volume = document.createElement('select');
+        volume.className = 'reader-panel-search';
+        const selectedGroupId = configuredScope?.kind === 'volume' ? configuredScope.groupId : currentGroupId;
+        this.status.scope.groups.forEach(group => volume.append(option(group.id, `${group.label} · ${group.filePaths.length}`, group.id === selectedGroupId)));
+        volumeRow.append(volume);
+        const chapterDetails = document.createElement('details');
+        chapterDetails.className = 'reader-symbol-audit-scope-pages';
+        const chapterSummary = document.createElement('summary');
+        chapterSummary.textContent = labels.scopePages;
+        chapterDetails.append(chapterSummary);
+        const selectedChapterPaths = new Set(configuredScope?.kind === 'chapters' ? configuredScope.filePaths : []);
+        const chapterCheckboxes: HTMLInputElement[] = [];
+        this.status.scope.groups.forEach(group => {
+            const groupElement = document.createElement('section');
+            groupElement.className = 'reader-symbol-audit-scope-group';
+            const groupTitle = document.createElement('strong');
+            groupTitle.textContent = group.label;
+            groupElement.append(groupTitle);
+            this.status.scope.pages.filter(page => page.groupId === group.id).forEach(page => {
+                const pageRow = document.createElement('label');
+                pageRow.className = 'reader-symbol-audit-scope-page';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = page.filePath;
+                checkbox.checked = selectedChapterPaths.has(page.filePath);
+                chapterCheckboxes.push(checkbox);
+                const pageTitle = document.createElement('span');
+                pageTitle.textContent = page.title;
+                pageRow.append(checkbox, pageTitle);
+                groupElement.append(pageRow);
+            });
+            chapterDetails.append(groupElement);
+        });
+        const updateScopeVisibility = () => {
+            volumeRow.hidden = scopeMode.value !== 'volume';
+            chapterDetails.hidden = scopeMode.value !== 'chapters';
+            if (scopeMode.value === 'chapters') chapterDetails.open = true;
+        };
+        scopeMode.addEventListener('change', updateScopeVisibility);
+        updateScopeVisibility();
         const modelRow = document.createElement('label');
         modelRow.className = 'reader-symbol-audit-field';
         modelRow.append(document.createTextNode(labels.model));
@@ -192,60 +324,117 @@ export class ReaderSymbolAudit {
         populateEfforts();
         model.addEventListener('change', populateEfforts);
         effortRow.append(effort);
+        const selectedScope = (): ReaderSymbolAuditScope => {
+            if (scopeMode.value === 'all') return { kind: 'all' };
+            if (scopeMode.value === 'volume') return { kind: 'volume', groupId: volume.value };
+            const filePaths = chapterCheckboxes.filter(checkbox => checkbox.checked).map(checkbox => checkbox.value);
+            if (!filePaths.length) throw new Error(labels.scopeRequired);
+            return { kind: 'chapters', filePaths };
+        };
+        const selectedSettings = (): { model?: string; effort?: string; scope?: ReaderSymbolAuditScope } => ({
+            ...(model.value ? { model: model.value } : {}),
+            ...(effort.value ? { effort: effort.value } : {}),
+            scope: selectedScope()
+        });
         const settingActions = document.createElement('div');
         settingActions.className = 'reader-symbol-audit-actions';
-        const loadModels = document.createElement('button');
-        loadModels.type = 'button';
-        loadModels.className = 'reader-panel-action';
-        loadModels.append(readerIcon('reload'));
-        loadModels.dataset.tooltip = labels.loadModels;
-        loadModels.setAttribute('aria-label', labels.loadModels);
-        loadModels.addEventListener('click', () => void this.loadModels());
         const save = document.createElement('button');
         save.type = 'button';
         save.className = 'reader-symbol-audit-button is-secondary';
         save.textContent = labels.saveSettings;
+        save.disabled = this.busy;
         save.addEventListener('click', () => void this.act(async () => {
-            this.status = await host.saveSettings({
-                ...(model.value ? { model: model.value } : {}),
-                ...(effort.value ? { effort: effort.value } : {})
-            });
-        }));
-        settingActions.append(loadModels, save);
-        settings.append(settingsHeader, modelRow, effortRow, settingActions);
+            this.status = await host.saveSettings(selectedSettings());
+        }, labels.savingSettings));
+        settingActions.append(save);
+        settings.append(settingsHeader, scopeRow, volumeRow, chapterDetails, modelRow, effortRow, settingActions);
+        if (this.modelLoadError) settings.append(text(this.modelLoadError, 'reader-panel-summary'));
         container.append(settings);
 
         const job = this.status.job;
         const actions = document.createElement('div');
         actions.className = 'reader-symbol-audit-run-actions';
         if (job?.status === 'running') {
-            actions.append(text(labels.running(job.completedFiles, job.totalFiles, job.currentFilePath), 'reader-symbol-audit-progress'));
             const cancel = document.createElement('button');
             cancel.type = 'button';
             cancel.className = 'reader-symbol-audit-button is-secondary';
             cancel.textContent = labels.cancel;
-            cancel.addEventListener('click', () => void this.act(async () => { this.status = await host.cancel(); }));
+            cancel.disabled = this.busy;
+            cancel.addEventListener('click', () => void this.act(async () => { this.status = await host.cancel(); }, labels.cancellingJob));
             actions.append(cancel);
         } else {
             const start = document.createElement('button');
             start.type = 'button';
             start.className = 'reader-symbol-audit-button';
             start.textContent = labels.start;
-            start.addEventListener('click', () => void this.act(async () => { this.status = await host.start(false); }));
+            start.disabled = this.busy;
+            start.addEventListener('click', () => {
+                try {
+                    void this.startAudit(selectedSettings(), false);
+                } catch (error) {
+                    this.draw(error instanceof Error ? error.message : String(error));
+                }
+            });
             const force = document.createElement('button');
             force.type = 'button';
             force.className = 'reader-symbol-audit-button is-secondary';
             force.textContent = labels.force;
-            force.addEventListener('click', () => void this.act(async () => { this.status = await host.start(true); }));
+            force.disabled = this.busy;
+            force.addEventListener('click', () => {
+                try {
+                    void this.startAudit(selectedSettings(), true);
+                } catch (error) {
+                    this.draw(error instanceof Error ? error.message : String(error));
+                }
+            });
             actions.append(start, force);
-            if (job?.status === 'complete') actions.append(text(labels.complete(job.scannedFiles, job.reusedFiles), 'reader-symbol-audit-progress'));
-            if (job?.status === 'failed') actions.append(text(labels.failed + (job.error ? '：' + job.error : ''), 'reader-symbol-audit-error'));
-            if (job?.status === 'cancelled') actions.append(text(labels.cancelled, 'reader-symbol-audit-progress'));
+            if (job?.status === 'complete') {
+                actions.append(
+                    text(labels.complete(job.scannedFiles, job.reusedFiles), 'reader-symbol-audit-progress'),
+                    text(labels.tokenUsage(job.tokenUsage, job.tokenUsageReportedCalls, job.modelCalls), 'reader-symbol-audit-token-usage')
+                );
+            }
+            if (job?.status === 'failed') {
+                actions.append(
+                    text(labels.failed + (job.error ? '：' + job.error : ''), 'reader-symbol-audit-error'),
+                    text(labels.tokenUsage(job.tokenUsage, job.tokenUsageReportedCalls, job.modelCalls), 'reader-symbol-audit-token-usage')
+                );
+            }
+            if (job?.status === 'cancelled') {
+                actions.append(
+                    text(labels.cancelled, 'reader-symbol-audit-progress'),
+                    text(labels.tokenUsage(job.tokenUsage, job.tokenUsageReportedCalls, job.modelCalls), 'reader-symbol-audit-token-usage')
+                );
+            }
         }
         container.append(actions);
         container.append(this.reportView(labels));
         if (error) container.append(text(labels.actionFailed + '：' + error, 'reader-symbol-audit-error'));
         host.changed();
+    }
+
+    private jobStatusView(labels: ReaderSymbolAuditLabels): HTMLElement | undefined {
+        const job = this.status?.job;
+        if (!this.pendingStatus && job?.status !== 'running') return undefined;
+        const section = document.createElement('section');
+        section.className = 'reader-symbol-audit-job';
+        if (this.pendingStatus) {
+            section.append(text(this.pendingStatus, 'reader-symbol-audit-job-title'));
+            return section;
+        }
+        if (!job) return section;
+        const elapsed = Math.max(0, Math.floor((Date.now() - Date.parse(job.startedAt)) / 1000));
+        const title = text(
+            `${labels.running(job.completedFiles, job.totalFiles, job.currentFilePath)} · ${labels.activity(job.activity)} · ${labels.elapsed(elapsed)}`,
+            'reader-symbol-audit-job-title'
+        );
+        const progress = document.createElement('progress');
+        progress.className = 'reader-symbol-audit-job-progress';
+        progress.max = Math.max(1, job.totalFiles);
+        progress.value = Math.min(job.completedFiles, job.totalFiles);
+        progress.setAttribute('aria-label', title.textContent || '');
+        section.append(title, progress, text(labels.tokenUsage(job.tokenUsage, job.tokenUsageReportedCalls, job.modelCalls), 'reader-symbol-audit-token-usage'));
+        return section;
     }
 
     private reportView(labels: ReaderSymbolAuditLabels): HTMLElement {
@@ -257,67 +446,80 @@ export class ReaderSymbolAudit {
             return section;
         }
         section.append(text(this.status?.reportState === 'current' ? labels.reportCurrent : labels.reportStale, 'reader-symbol-audit-report-state'));
-        if (report.hardConflicts.length === 0) section.append(text(labels.noHardConflicts, 'reader-symbol-audit-ok'));
-        else {
-            section.append(text(labels.hardConflicts(report.hardConflicts.length), 'reader-symbol-audit-conflict-title'));
-            report.hardConflicts.slice(0, 12).forEach(conflict => {
-                const card = document.createElement('article');
-                card.className = 'reader-symbol-audit-conflict';
-                const title = document.createElement('strong');
-                title.textContent = conflict.expression;
-                card.append(title, text(conflict.reason));
-                conflict.bindings.slice(0, 5).forEach(binding => card.append(this.bindingButton(binding, labels)));
-                section.append(card);
-            });
-        }
-        if (report.advisories.length === 0) section.append(text(labels.noAdvisories, 'reader-symbol-audit-ok'));
-        else {
-            section.append(text(labels.possibleConfusion(report.advisories.length), 'reader-symbol-audit-conflict-title'));
-            report.advisories.slice(0, 12).forEach(advisory => {
-                const item = document.createElement('article');
-                item.className = 'reader-symbol-audit-advisory is-' + advisory.severity;
-                item.append(text(advisory.expression + ' · ' + advisory.reason));
-                section.append(item);
-            });
-        }
+        const summary = document.createElement('div');
+        summary.className = 'reader-symbol-audit-report-summary-compact';
+        const hard = document.createElement('span');
+        const legacyReport = !Array.isArray(report.reconciliations);
+        hard.className = legacyReport ? 'is-review' : report.hardConflicts.length ? 'is-hard' : 'is-ok';
+        hard.textContent = legacyReport ? labels.legacyCandidates(report.hardConflicts.length) : labels.hardConflicts(report.hardConflicts.length);
+        const review = document.createElement('span');
+        review.className = report.advisories.length ? 'is-review' : 'is-ok';
+        review.textContent = labels.possibleConfusion(report.advisories.length);
+        summary.append(hard, review);
+        const open = document.createElement('button');
+        open.type = 'button';
+        open.className = 'reader-symbol-audit-button';
+        open.textContent = labels.openReport;
+        open.addEventListener('click', () => this.host?.openReport());
+        section.append(summary, open);
         return section;
     }
 
-    private bindingButton(binding: ReaderSymbolAuditBinding, labels: ReaderSymbolAuditLabels): HTMLButtonElement {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'reader-symbol-audit-source';
-        button.textContent = `${binding.filePath}:${binding.startLine} · ${binding.bindingKey} — ${binding.meaning}`;
-        button.dataset.tooltip = labels.locate;
-        button.setAttribute('aria-label', labels.locate + ' ' + button.textContent);
-        button.addEventListener('click', () => this.host?.locate(binding.filePath, binding.startLine));
-        return button;
-    }
-
     private async loadModels(): Promise<void> {
-        if (!this.host || this.busy) return;
-        this.busy = true;
+        if (!this.host || this.modelsLoading || this.modelsRequested) return;
+        this.modelsRequested = true;
+        this.modelsLoading = true;
         try {
             this.models = await this.host.loadModels();
+            this.modelLoadError = '';
             this.draw();
         } catch (error) {
-            this.draw(this.host.labels().modelLoadFailed + '：' + (error instanceof Error ? error.message : String(error)));
+            this.modelLoadError = this.host.labels().modelLoadFailed + '：' + (error instanceof Error ? error.message : String(error));
+            this.draw();
         } finally {
-            this.busy = false;
+            this.modelsLoading = false;
         }
     }
 
-    private async act(operation: () => Promise<void>): Promise<void> {
+    private async startAudit(settings: { model?: string; effort?: string; scope?: ReaderSymbolAuditScope }, force: boolean): Promise<void> {
         if (!this.host || this.busy) return;
         this.busy = true;
         try {
-            await operation();
+            this.pendingStatus = this.host.labels().savingSettings;
             this.draw();
-            if (this.status?.job?.status === 'running') this.pollTimer = window.setTimeout(() => void this.refresh(), 160);
+            this.status = await this.host.saveSettings(settings);
+            this.pendingStatus = this.host.labels().creatingJob;
+            this.draw();
+            this.status = await this.host.start(force);
         } catch (error) {
+            this.pendingStatus = '';
+            this.busy = false;
             this.draw(error instanceof Error ? error.message : String(error));
+            return;
+        }
+        this.pendingStatus = '';
+        this.busy = false;
+        this.draw();
+        if (this.status?.job?.status === 'running') this.pollTimer = window.setTimeout(() => void this.refresh(), 160);
+    }
+
+    private async act(operation: () => Promise<void>, pendingStatus = ''): Promise<void> {
+        if (!this.host || this.busy) return;
+        this.busy = true;
+        this.pendingStatus = pendingStatus;
+        this.draw();
+        try {
+            await operation();
+        } catch (error) {
+            this.pendingStatus = '';
+            this.busy = false;
+            this.draw(error instanceof Error ? error.message : String(error));
+            return;
         } finally {
             this.busy = false;
+            this.pendingStatus = '';
         }
+        this.draw();
+        if (this.status?.job?.status === 'running') this.pollTimer = window.setTimeout(() => void this.refresh(), 160);
     }
 }
