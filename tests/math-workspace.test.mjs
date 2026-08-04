@@ -2006,6 +2006,148 @@ async function testReaderDiscussionMarks() {
     }
 }
 
+async function testReaderSymbolAudit() {
+    const root = await makeWorkspace('reader-symbol-audit');
+    await fs.writeFile(path.join(root, 'book1', '01-local.md'), [
+        '# #h-1111111111111111 Local notation',
+        '',
+        'In this derivation, let $C$ be a temporary bound constant.',
+        ''
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'book1', '02-cyclic.md'), [
+        '# #h-2222222222222222 Cyclic notation',
+        '',
+        '定义 $C$ 为循环算子网络。',
+        ''
+    ].join('\n'));
+    await fs.mkdir(path.join(root, '.math-workspace'), { recursive: true });
+    await fs.writeFile(path.join(root, '.math-workspace', 'config.json'), '{}\n');
+    await fs.writeFile(path.join(root, '.math-workspace', 'symbols.json'), JSON.stringify([{
+        pattern: 'C',
+        display: '$C$',
+        meaning: '循环算子网络',
+        scope: 'book',
+        source: 'book1/02-cyclic.md:3'
+    }], null, 2));
+    assert.equal(runCli(root, ['prepare']).status, 0);
+
+    const counterPath = path.join(root, 'symbol-audit-turns.txt');
+    const fakeCodex = path.join(root, 'fake-codex-symbol-audit.mjs');
+    await fs.writeFile(fakeCodex, `#!/usr/bin/env node
+import fs from 'node:fs';
+let buffer = '';
+let threadCount = 0;
+const write = value => process.stdout.write(JSON.stringify(value) + '\\n');
+const receive = message => {
+  if (message.method === 'initialize') {
+    if (message.params.capabilities?.experimentalApi !== true) return write({ id: message.id, error: { message: 'experimental API capability was not enabled' } });
+    return write({ id: message.id, result: { platformFamily: 'test' } });
+  }
+  if (message.method === 'model/list') return write({ id: message.id, result: { data: [{
+    id: 'symbol-model', model: 'gpt-symbol', displayName: 'Symbol test model', description: 'fixture', hidden: false, isDefault: true,
+    defaultReasoningEffort: 'high', supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'low' }, { reasoningEffort: 'high', description: 'high' }]
+  }], nextCursor: null } });
+  if (message.method === 'thread/start') {
+    if (message.params.ephemeral !== true || message.params.sandbox !== 'read-only' || message.params.approvalPolicy !== 'never' || message.params.model !== 'gpt-symbol') {
+      return write({ id: message.id, error: { message: 'Symbol audit must use the configured ephemeral read-only model.' } });
+    }
+    threadCount += 1;
+    return write({ id: message.id, result: { thread: { id: 'symbol-thread-' + threadCount } } });
+  }
+  if (message.method === 'turn/start') {
+    if (message.params.model !== 'gpt-symbol' || message.params.effort !== 'high' || !message.params.outputSchema) {
+      return write({ id: message.id, error: { message: 'Symbol audit turn did not use its configured model, effort, and schema.' } });
+    }
+    fs.appendFileSync(${JSON.stringify(counterPath)}, 'turn\\n');
+    const prompt = message.params.input?.[0]?.text || '';
+    const result = prompt.includes('Candidate groups')
+      ? { advisories: [] }
+      : prompt.includes('01-local.md')
+        ? { bindings: [{ expression: 'C', startLine: 3, endLine: 3, structure: { base: 'C', modifiers: [] }, kind: 'temporary', scope: 'local', bindingKey: 'local-bound-constant', semanticType: 'constant', meaning: '局部推导中的临时有界常数', evidence: 'let C be a temporary bound constant', confidence: 'high' }] }
+        : { bindings: [{ expression: 'C', startLine: 3, endLine: 3, structure: { base: 'C', modifiers: [] }, kind: 'special', scope: 'book', bindingKey: 'cyclic-operator-network', semanticType: 'network', meaning: '循环算子网络', evidence: '定义 C 为循环算子网络', confidence: 'high' }] };
+    const turn = { id: 'symbol-turn-' + threadCount, status: 'completed' };
+    write({ method: 'item/agentMessage/delta', params: { threadId: message.params.threadId, turnId: turn.id, itemId: 'message', delta: JSON.stringify(result) } });
+    write({ id: message.id, result: { turn } });
+    return write({ method: 'turn/completed', params: { threadId: message.params.threadId, turn } });
+  }
+  if (message.method === 'turn/interrupt') return write({ id: message.id, result: {} });
+};
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', chunk => {
+  buffer += chunk;
+  let index = buffer.indexOf('\\n');
+  while (index >= 0) {
+    const line = buffer.slice(0, index).trim();
+    buffer = buffer.slice(index + 1);
+    if (line) receive(JSON.parse(line));
+    index = buffer.indexOf('\\n');
+  }
+});
+`);
+    await fs.chmod(fakeCodex, 0o755);
+    const env = {
+        MATH_WORKSPACE_STATE: path.join(root, 'reader-projects.json'),
+        MATH_WORKSPACE_SYMBOL_AUDIT_STATE: path.join(root, 'reader-symbol-audit.json'),
+        MATH_WORKSPACE_CODEX_COMMAND: fakeCodex
+    };
+    const reader = await startReader(root, { env });
+    try {
+        const state = await (await fetch(reader.url + '/api/state')).json();
+        const headers = { 'content-type': 'application/json', 'x-math-workspace-token': state.requestToken };
+        assert.equal((await fetch(reader.url + '/api/symbol-audit')).status, 403);
+        const before = await (await fetch(reader.url + '/api/symbol-audit', { headers })).json();
+        assert.equal(before.job, undefined);
+        assert.equal(before.cache.missingFiles, 2);
+        await assert.rejects(fs.readFile(counterPath, 'utf8'));
+
+        const models = await (await fetch(reader.url + '/api/symbol-audit/models', { headers })).json();
+        assert.equal(models.models[0].model, 'gpt-symbol');
+        const configured = await fetch(reader.url + '/api/symbol-audit', {
+            method: 'POST', headers,
+            body: JSON.stringify({ action: 'settings', settings: { model: 'gpt-symbol', effort: 'high' } })
+        });
+        assert.equal(configured.status, 200);
+        const started = await fetch(reader.url + '/api/symbol-audit', {
+            method: 'POST', headers,
+            body: JSON.stringify({ action: 'run' })
+        });
+        assert.equal(started.status, 202);
+        const completed = await waitFor(async () => {
+            const status = await (await fetch(reader.url + '/api/symbol-audit', { headers })).json();
+            return status.job?.status === 'complete' ? status : undefined;
+        });
+        assert.equal(completed.reportState, 'current');
+        assert.equal(completed.report.hardConflicts.length, 1);
+        assert.equal(completed.report.hardConflicts[0].expression, 'C');
+        assert.equal((await fs.readFile(counterPath, 'utf8')).trim().split('\n').length, 2);
+
+        const cachedRun = await fetch(reader.url + '/api/symbol-audit', {
+            method: 'POST', headers,
+            body: JSON.stringify({ action: 'run' })
+        });
+        assert.equal(cachedRun.status, 202);
+        await waitFor(async () => {
+            const status = await (await fetch(reader.url + '/api/symbol-audit', { headers })).json();
+            return status.job?.status === 'complete' && status.job.reusedFiles === 2 ? status : undefined;
+        });
+        assert.equal((await fs.readFile(counterPath, 'utf8')).trim().split('\n').length, 2);
+
+        await fs.appendFile(path.join(root, 'book1', '01-local.md'), '\nThis file changed.\n');
+        await waitFor(async () => {
+            const status = await (await fetch(reader.url + '/api/symbol-audit', { headers })).json();
+            return status.cache.missingFiles === 1 ? status : undefined;
+        });
+        await fetch(reader.url + '/api/symbol-audit', { method: 'POST', headers, body: JSON.stringify({ action: 'run' }) });
+        await waitFor(async () => {
+            const status = await (await fetch(reader.url + '/api/symbol-audit', { headers })).json();
+            return status.job?.status === 'complete' && status.job.scannedFiles === 1 ? status : undefined;
+        });
+        assert.equal((await fs.readFile(counterPath, 'utf8')).trim().split('\n').length, 3);
+    } finally {
+        await stopReader(reader.child);
+    }
+}
+
 async function testReaderLauncher() {
     const root = await makeWorkspace('reader-launcher');
     await fs.writeFile(path.join(root, 'book1', '01-foundations.md'), [
@@ -2459,6 +2601,7 @@ const tests = [
     ['structured definition marker content', testStructuredDefinitionMarkerContent],
     ['project knowledge analysis', testProjectKnowledgeAnalysis],
     ['symbol cache', testSymbolCache],
+    ['local Reader symbol audit', testReaderSymbolAudit],
     ['warns unbalanced symbol pattern', testWarnsUnbalancedSymbolPattern],
     ['recall boundaries and optional blocks', testRecallBoundariesAndOptionalBlocks],
     ['strong marker with softbreak', testStrongMarkerWithSoftbreak],

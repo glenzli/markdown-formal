@@ -16,6 +16,7 @@ import {
     PanelLeftOpen,
     Plus,
     RefreshCw,
+    ScanSearch,
     Sigma,
     Star,
     TextCursor,
@@ -45,6 +46,7 @@ export type ReaderIconName =
     | 'plus'
     | 'reload'
     | 'sigma'
+    | 'scan'
     | 'star'
     | 'trash'
     | 'x';
@@ -70,6 +72,7 @@ const ICONS: Record<ReaderIconName, IconNode> = {
     plus: Plus,
     reload: RefreshCw,
     sigma: Sigma,
+    scan: ScanSearch,
     star: Star,
     trash: Trash2,
     x: X

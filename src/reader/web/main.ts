@@ -22,6 +22,11 @@ import { ReaderToolbarPanel } from './reader-toolbar-panel';
 import { ReaderPropositionReview, type ReaderPropositionReviewItem } from './reader-proposition-review';
 import { ReaderTooltip } from './reader-tooltip';
 import {
+    ReaderSymbolAudit,
+    type ReaderSymbolAuditModel,
+    type ReaderSymbolAuditStatus
+} from './reader-symbol-audit';
+import {
     ReaderDiscussionMarks,
     type ReaderDiscussionMark,
     type ReaderDiscussionMarkLocation
@@ -78,6 +83,34 @@ const words = {
         definitions: '定义',
         symbols: '符号',
         propositions: '命题审阅',
+        symbolAudit: '符号审计',
+        symbolAuditIntro: '仅在点击开始后调用 Codex。它提取每章的专用与临时记号，先机械检查硬冲突，再对可能混淆的临时复用给出辅助意见。',
+        symbolAuditCache: (reusable: number, total: number, missing: number) => `缓存：${reusable}/${total} 个文件可复用；本次需提取 ${missing} 个。`,
+        symbolAuditConfiguredModel: '模型',
+        symbolAuditConfiguredEffort: '强度',
+        symbolAuditCodexDefault: '跟随 Codex 默认',
+        symbolAuditModel: '模型',
+        symbolAuditEffort: '推理强度',
+        symbolAuditLoadModels: '读取可用模型',
+        symbolAuditSaveSettings: '保存设置',
+        symbolAuditStart: '开始审计',
+        symbolAuditForce: '重新审计全部',
+        symbolAuditCancel: '取消',
+        symbolAuditRunning: (completed: number, total: number, filePath?: string) => `正在审计 ${completed}/${total}${filePath ? ` · ${filePath}` : ''}`,
+        symbolAuditComplete: (scanned: number, reused: number) => `本次提取 ${scanned} 个文件，复用缓存 ${reused} 个。`,
+        symbolAuditFailed: '审计未完成',
+        symbolAuditCancelled: '审计已取消',
+        symbolAuditReportCurrent: '当前审计结果',
+        symbolAuditReportStale: '上次结果已过期：源文件或模型设置已变化。',
+        symbolAuditNoReport: '尚未生成审计结果。',
+        symbolAuditHardConflicts: (count: number) => `硬冲突 ${count} 项`,
+        symbolAuditPossibleConfusion: (count: number) => `可能混淆 ${count} 项`,
+        symbolAuditNoHardConflicts: '未发现专用记号与不同绑定之间的硬冲突。',
+        symbolAuditNoAdvisories: '未发现需要回看的临时记号复用。',
+        symbolAuditLocate: '定位来源',
+        symbolAuditLoading: '正在读取审计状态…',
+        symbolAuditModelLoadFailed: '无法读取可用模型',
+        symbolAuditActionFailed: '符号审计操作失败',
         discussionTools: '标记工具',
         closeDiscussionTools: '清除并退出标记',
         discussionSelectTool: '选区',
@@ -172,6 +205,34 @@ const words = {
         definitions: 'Definitions',
         symbols: 'Symbols',
         propositions: 'Proposition review',
+        symbolAudit: 'Symbol audit',
+        symbolAuditIntro: 'Codex is called only after you start an audit. It extracts declared and temporary notation per chapter, checks hard collisions mechanically, then reviews potentially confusing temporary reuse.',
+        symbolAuditCache: (reusable: number, total: number, missing: number) => `Cache: ${reusable}/${total} files reusable; ${missing} need extraction.`,
+        symbolAuditConfiguredModel: 'Model',
+        symbolAuditConfiguredEffort: 'Effort',
+        symbolAuditCodexDefault: 'Follow Codex default',
+        symbolAuditModel: 'Model',
+        symbolAuditEffort: 'Reasoning effort',
+        symbolAuditLoadModels: 'Load available models',
+        symbolAuditSaveSettings: 'Save settings',
+        symbolAuditStart: 'Start audit',
+        symbolAuditForce: 'Re-audit all',
+        symbolAuditCancel: 'Cancel',
+        symbolAuditRunning: (completed: number, total: number, filePath?: string) => `Auditing ${completed}/${total}${filePath ? ` · ${filePath}` : ''}`,
+        symbolAuditComplete: (scanned: number, reused: number) => `Extracted ${scanned} files and reused ${reused} cached results.`,
+        symbolAuditFailed: 'Audit did not finish',
+        symbolAuditCancelled: 'Audit cancelled',
+        symbolAuditReportCurrent: 'Current audit result',
+        symbolAuditReportStale: 'The previous result is stale because source files or model settings changed.',
+        symbolAuditNoReport: 'No audit result yet.',
+        symbolAuditHardConflicts: (count: number) => `${count} hard conflict${count === 1 ? '' : 's'}`,
+        symbolAuditPossibleConfusion: (count: number) => `${count} possible confusion${count === 1 ? '' : 's'}`,
+        symbolAuditNoHardConflicts: 'No hard collision was found between declared notation and a distinct binding.',
+        symbolAuditNoAdvisories: 'No temporary notation reuse needs review.',
+        symbolAuditLocate: 'Locate source',
+        symbolAuditLoading: 'Reading audit status…',
+        symbolAuditModelLoadFailed: 'Could not load available models',
+        symbolAuditActionFailed: 'Symbol audit action failed',
         discussionTools: 'Marking tools',
         closeDiscussionTools: 'Clear and exit marking',
         discussionSelectTool: 'Select',
@@ -394,6 +455,7 @@ class ReaderApplication {
     private toolbarPanel!: ReaderToolbarPanel;
     private tooltip!: ReaderTooltip;
     private propositionReview!: ReaderPropositionReview;
+    private symbolAudit!: ReaderSymbolAudit;
     private discussionMarks!: ReaderDiscussionMarks;
     private realtimeEvents: EventSource | undefined;
 
@@ -431,7 +493,7 @@ class ReaderApplication {
             '<button id="reader-navigation-toggle" class="icon-button reader-navigation-toggle" type="button"></button>',
             '<div class="reader-history"><button id="reader-back" class="icon-button" aria-label="Back"></button><button id="reader-forward" class="icon-button" aria-label="Forward"></button></div>',
             '<div id="reader-page-title" class="reader-page-title"></div>',
-            '<div class="reader-tools"><button class="tool-button" data-panel="contents" aria-label="Contents"></button><button class="tool-button" data-panel="definitions" aria-label="Definitions"></button><button class="tool-button" data-panel="symbols" aria-label="Symbols"></button><button class="tool-button" data-panel="propositions" aria-label="Proposition review"></button><button id="reader-discussion-tools" class="tool-button" type="button" aria-label="Marking tools"></button></div>',
+            '<div class="reader-tools"><button class="tool-button" data-panel="contents" aria-label="Contents"></button><button class="tool-button" data-panel="definitions" aria-label="Definitions"></button><button class="tool-button" data-panel="symbols" aria-label="Symbols"></button><button class="tool-button" data-panel="propositions" aria-label="Proposition review"></button><button class="tool-button" data-panel="symbol-audit" aria-label="Symbol audit"></button><button id="reader-discussion-tools" class="tool-button" type="button" aria-label="Marking tools"></button></div>',
             '<div class="reader-type-control"><button type="button" class="type-size-button" data-font-size="-1" aria-label="Decrease text size">A−</button><output id="reader-font-size" aria-live="polite">' + this.fontSize + 'px</output><button type="button" class="type-size-button" data-font-size="1" aria-label="Increase text size">A+</button></div>',
             '<span id="reader-live" class="reader-live" aria-live="polite"></span>',
             '</header><article id="reader-article" class="reader-article"></article></main>',
@@ -535,6 +597,7 @@ class ReaderApplication {
             openProposition: id => this.openCurrentProposition(id),
             markTerminalPropositions: items => this.markTerminalPropositions(items)
         });
+        this.symbolAudit = new ReaderSymbolAudit();
         this.discussionMarks = new ReaderDiscussionMarks({
             addMarks: locations => this.addDiscussionMarks(locations),
             removeMark: id => this.removeDiscussionMark(id),
@@ -572,7 +635,7 @@ class ReaderApplication {
     private async fetchJson<T>(url: string): Promise<T> {
         const response = await fetch(url, {
             cache: 'no-store',
-            headers: url === '/api/discussion-marks' && this.state?.requestToken
+            headers: (url === '/api/discussion-marks' || url.startsWith('/api/symbol-audit')) && this.state?.requestToken
                 ? { 'x-math-workspace-token': this.state.requestToken }
                 : undefined
         });
@@ -582,7 +645,7 @@ class ReaderApplication {
 
     private async postJson<T>(url: string, value: unknown = {}): Promise<T> {
         const headers: Record<string, string> = { 'content-type': 'application/json' };
-        if (url === '/api/discussion-marks' && this.state?.requestToken) {
+        if ((url === '/api/discussion-marks' || url.startsWith('/api/symbol-audit')) && this.state?.requestToken) {
             headers['x-math-workspace-token'] = this.state.requestToken;
         }
         const response = await fetch(url, {
@@ -597,7 +660,7 @@ class ReaderApplication {
 
     private async deleteJson<T>(url: string): Promise<T> {
         const headers: Record<string, string> = {};
-        if (url.startsWith('/api/discussion-marks') && this.state?.requestToken) {
+        if ((url.startsWith('/api/discussion-marks') || url.startsWith('/api/symbol-audit')) && this.state?.requestToken) {
             headers['x-math-workspace-token'] = this.state.requestToken;
         }
         const response = await fetch(url, { method: 'DELETE', cache: 'no-store', headers });
@@ -771,6 +834,7 @@ class ReaderApplication {
             ['[data-panel="definitions"]', 'definition'],
             ['[data-panel="symbols"]', 'sigma'],
             ['[data-panel="propositions"]', 'propositions'],
+            ['[data-panel="symbol-audit"]', 'scan'],
             ['#reader-discussion-tools', 'marker']
         ];
         icons.forEach(([selector, icon]) => {
@@ -944,6 +1008,7 @@ class ReaderApplication {
             if (view === 'definitions') this.renderDefinitions(content);
             if (view === 'symbols') this.renderSymbols(content);
             if (view === 'propositions') this.propositionReview.render(content, this.currentPropositionReviewItems());
+            if (view === 'symbol-audit') this.renderSymbolAudit(content);
         });
     }
 
@@ -1214,6 +1279,67 @@ class ReaderApplication {
         });
         container.append(grid, detail);
         show(symbols[0]);
+    }
+
+    private renderSymbolAudit(container: HTMLElement): void {
+        this.symbolAudit.render(container, {
+            labels: () => {
+                const dictionary = this.dictionary();
+                return {
+                    intro: dictionary.symbolAuditIntro,
+                    cache: dictionary.symbolAuditCache,
+                    configuredModel: dictionary.symbolAuditConfiguredModel,
+                    configuredEffort: dictionary.symbolAuditConfiguredEffort,
+                    codexDefault: dictionary.symbolAuditCodexDefault,
+                    model: dictionary.symbolAuditModel,
+                    effort: dictionary.symbolAuditEffort,
+                    loadModels: dictionary.symbolAuditLoadModels,
+                    saveSettings: dictionary.symbolAuditSaveSettings,
+                    start: dictionary.symbolAuditStart,
+                    force: dictionary.symbolAuditForce,
+                    cancel: dictionary.symbolAuditCancel,
+                    running: dictionary.symbolAuditRunning,
+                    complete: dictionary.symbolAuditComplete,
+                    failed: dictionary.symbolAuditFailed,
+                    cancelled: dictionary.symbolAuditCancelled,
+                    reportCurrent: dictionary.symbolAuditReportCurrent,
+                    reportStale: dictionary.symbolAuditReportStale,
+                    noReport: dictionary.symbolAuditNoReport,
+                    hardConflicts: dictionary.symbolAuditHardConflicts,
+                    possibleConfusion: dictionary.symbolAuditPossibleConfusion,
+                    noHardConflicts: dictionary.symbolAuditNoHardConflicts,
+                    noAdvisories: dictionary.symbolAuditNoAdvisories,
+                    locate: dictionary.symbolAuditLocate,
+                    loading: dictionary.symbolAuditLoading,
+                    modelLoadFailed: dictionary.symbolAuditModelLoadFailed,
+                    actionFailed: dictionary.symbolAuditActionFailed
+                };
+            },
+            getStatus: () => this.fetchJson<ReaderSymbolAuditStatus>('/api/symbol-audit'),
+            loadModels: async () => {
+                const response = await this.fetchJson<{ models: ReaderSymbolAuditModel[] }>('/api/symbol-audit/models');
+                return response.models || [];
+            },
+            saveSettings: async settings => {
+                const response = await this.postJson<{ status: ReaderSymbolAuditStatus }>('/api/symbol-audit', { action: 'settings', settings });
+                return response.status;
+            },
+            start: async force => {
+                const response = await this.postJson<{ status: ReaderSymbolAuditStatus }>('/api/symbol-audit', { action: 'run', force });
+                return response.status;
+            },
+            cancel: async () => {
+                const response = await this.postJson<{ status: ReaderSymbolAuditStatus }>('/api/symbol-audit', { action: 'cancel' });
+                return response.status;
+            },
+            locate: (filePath, line) => {
+                this.toolbarPanel.close();
+                void this.openPage(filePath, 'push').then(() => {
+                    this.article.querySelector<HTMLElement>('[data-source-line="' + line + '"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                });
+            },
+            changed: () => this.toolbarPanel.reposition()
+        });
     }
 
     private emptyState(value: string): HTMLElement {

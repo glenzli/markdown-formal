@@ -504,6 +504,7 @@ button { cursor: pointer; }
     width: min(760px, calc(100vw - 24px));
     max-height: calc(100vh - 24px);
 }
+.reader-toolbar-panel.is-symbol-audit { width: min(620px, calc(100vw - 24px)); max-height: min(700px, calc(100vh - 24px)); }
 .reader-toolbar-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #e6eaed; padding: 2px 2px 8px; }
 .reader-toolbar-panel h2 { margin: 0; color: #303840; font-size: 13px; font-weight: 700; }
 .reader-panel-close, .reader-panel-action, .reader-source-action {
@@ -539,6 +540,32 @@ button { cursor: pointer; }
 .reader-panel-search { min-height: 34px; padding: 7px 9px; }
 .reader-panel-list { display: grid; gap: 4px; }
 .reader-panel-empty, .reader-panel-summary { margin: 4px 2px; color: #737e87; font-size: 12px; line-height: 1.55; }
+.reader-symbol-audit-intro { margin: 1px 2px 0; color: #61717c; font-size: 12px; line-height: 1.55; }
+.reader-symbol-audit-cache { margin: -3px 2px 1px; color: #4f687a; font-size: 11px; line-height: 1.5; }
+.reader-symbol-audit-settings { display: grid; gap: 7px; padding: 9px; border: 1px solid #dce5ea; border-radius: 7px; background: #f8fbfc; }
+.reader-symbol-audit-settings-header { display: flex; flex-wrap: wrap; gap: 3px 12px; color: #70808b; font-size: 11px; }
+.reader-symbol-audit-settings-header p { margin: 0; }
+.reader-symbol-audit-field { display: grid; grid-template-columns: 74px minmax(0, 1fr); align-items: center; gap: 8px; color: #485965; font-size: 12px; font-weight: 650; }
+.reader-symbol-audit-field select { width: 100%; min-height: 30px; padding-block: 4px; font: inherit; font-weight: 500; }
+.reader-symbol-audit-actions, .reader-symbol-audit-run-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.reader-symbol-audit-actions { justify-content: flex-end; }
+.reader-symbol-audit-button { display: inline-flex; align-items: center; justify-content: center; min-height: 31px; border: 1px solid #287698; border-radius: 5px; padding: 5px 10px; background: #2678a0; color: #fff; font: inherit; font-size: 12px; font-weight: 700; }
+.reader-symbol-audit-button:hover { background: #17658b; border-color: #17658b; }
+.reader-symbol-audit-button.is-secondary { border-color: #ccd9e0; background: #fff; color: #496170; }
+.reader-symbol-audit-button.is-secondary:hover { border-color: #89aabb; background: #eef6fa; color: #1d688c; }
+.reader-symbol-audit-progress { margin: 0; color: #597180; font-size: 11px; line-height: 1.45; }
+.reader-symbol-audit-error { margin: 0; color: #a44937; font-size: 11px; line-height: 1.45; }
+.reader-symbol-audit-report { display: grid; gap: 7px; padding-top: 3px; border-top: 1px solid #e4eaed; }
+.reader-symbol-audit-report-state { margin: 4px 2px 0; color: #657883; font-size: 11px; font-weight: 700; }
+.reader-symbol-audit-ok { margin: 0 2px; color: #34815b; font-size: 11px; line-height: 1.45; }
+.reader-symbol-audit-conflict-title { margin: 2px 2px 0; color: #944b29; font-size: 12px; }
+.reader-symbol-audit-conflict, .reader-symbol-audit-advisory { display: grid; gap: 4px; padding: 8px; border: 1px solid #ecd8c2; border-radius: 6px; background: #fffaf2; }
+.reader-symbol-audit-conflict strong { color: #783f27; font-size: 12px; }
+.reader-symbol-audit-conflict p, .reader-symbol-audit-advisory p { margin: 0; color: #667780; font-size: 11px; line-height: 1.45; }
+.reader-symbol-audit-advisory { border-color: #d9e2e8; background: #f8fbfc; }
+.reader-symbol-audit-advisory.is-review { border-color: #e3d2b4; background: #fffaf1; }
+.reader-symbol-audit-source { overflow: hidden; border: 0; padding: 0; background: transparent; color: #1d6a92; font: inherit; font-size: 11px; line-height: 1.45; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.reader-symbol-audit-source:hover { color: #104e71; text-decoration: underline; }
 .reader-proposition-review-description { margin: 1px 2px 0; color: #66747e; font-size: 12px; line-height: 1.55; }
 .reader-proposition-review-map { display: grid; gap: 5px; }
 .reader-proposition-review-map h3 { margin: 0; color: #47545d; font-size: 12px; font-weight: 700; }

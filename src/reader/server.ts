@@ -22,6 +22,7 @@ import { ReaderProjectRegistry } from './projects';
 import { ReaderWorkspace, type WorkspaceSnapshot } from './workspace';
 import { readLeanBuild } from '../lean/lean-state';
 import { readLeanDependencyArtifact } from '../lean/lean-dependencies';
+import { SymbolAuditService } from './symbol-audit-service';
 
 const http = require('node:http');
 const { URL } = require('node:url');
@@ -271,6 +272,21 @@ function sourceHash(value: string): string {
     return createHash('sha256').update(value).digest('hex');
 }
 
+function symbolAuditSettingsInput(value: unknown): { model?: string; effort?: string } {
+    const record = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+    const read = (key: 'model' | 'effort', maximum: number): string | undefined => {
+        const item = record[key];
+        if (item === undefined || item === null || item === '') return undefined;
+        if (typeof item !== 'string') throw new Error(`Symbol audit ${key} must be a string.`);
+        const normalized = item.trim();
+        if (normalized.length > maximum) throw new Error(`Symbol audit ${key} is too long.`);
+        return normalized || undefined;
+    };
+    const model = read('model', 160);
+    const effort = read('effort', 80);
+    return { ...(model ? { model } : {}), ...(effort ? { effort } : {}) };
+}
+
 function discussionMarkInput(snapshot: WorkspaceSnapshot, rootPath: string, value: any): ReaderDiscussionMarkInput {
     const filePath = toPosix(String(value?.filePath || '')).replace(/^\/+/, '');
     const source = snapshot.documents.get(filePath);
@@ -390,6 +406,7 @@ export async function startReaderServer(options: FormalReaderServerOptions): Pro
         chooseDirectory: options.chooseProjectDirectory
     });
     const discussionMarks = new ReaderDiscussionMarkStore({ stateFilePath: options.discussionMarksPath });
+    const symbolAudit = new SymbolAuditService();
     // This token only authorizes same-origin mutations from the current Math Workspace page.
     const requestToken = randomBytes(24).toString('hex');
     let rootPath: string | undefined;
@@ -408,6 +425,7 @@ export async function startReaderServer(options: FormalReaderServerOptions): Pro
     };
 
     const activateProject = async (inputPath: string): Promise<void> => {
+        if (rootPath) await symbolAudit.cancel(rootPath);
         const project = await projects.remember(inputPath);
         const nextWorkspace = new ReaderWorkspace(project.rootPath);
         await nextWorkspace.start();
@@ -528,6 +546,45 @@ export async function startReaderServer(options: FormalReaderServerOptions): Pro
                     return;
                 }
                 sendText(response, 405, 'Discussion marks support GET, POST, and DELETE.');
+                return;
+            }
+
+            if (url.pathname === '/api/symbol-audit' || url.pathname === '/api/symbol-audit/models') {
+                if (!requireRequestToken(request, response, requestToken)) return;
+                if (url.pathname === '/api/symbol-audit/models') {
+                    if (request.method !== 'GET') {
+                        sendText(response, 405, 'Symbol audit models support GET only.');
+                        return;
+                    }
+                    sendJson(response, 200, { models: await symbolAudit.models() });
+                    return;
+                }
+                if (request.method === 'GET') {
+                    sendJson(response, 200, await symbolAudit.status(rootPath, snapshot));
+                    return;
+                }
+                if (request.method === 'POST') {
+                    const body = await readJsonRequest(request, 16 * 1024);
+                    const action = typeof body?.action === 'string' ? body.action : '';
+                    if (action === 'settings') {
+                        const settings = await symbolAudit.updateSettings(rootPath, symbolAuditSettingsInput(body?.settings));
+                        sendJson(response, 200, { settings, status: await symbolAudit.status(rootPath, snapshot) });
+                        return;
+                    }
+                    if (action === 'run') {
+                        const job = await symbolAudit.start(rootPath, snapshot, body?.force === true);
+                        sendJson(response, 202, { job, status: await symbolAudit.status(rootPath, snapshot) });
+                        return;
+                    }
+                    if (action === 'cancel') {
+                        const job = await symbolAudit.cancel(rootPath);
+                        sendJson(response, 200, { job, status: await symbolAudit.status(rootPath, snapshot) });
+                        return;
+                    }
+                    sendText(response, 400, 'Symbol audit POST needs settings, run, or cancel action.');
+                    return;
+                }
+                sendText(response, 405, 'Symbol audit supports GET and POST.');
                 return;
             }
 
@@ -662,6 +719,7 @@ export async function startReaderServer(options: FormalReaderServerOptions): Pro
             unsubscribe();
             eventResponses.forEach(response => response.end());
             eventResponses.clear();
+            await symbolAudit.close();
             await workspace?.close();
             await new Promise<void>((resolve, reject) => server.close((error: Error | undefined) => error ? reject(error) : resolve()));
         }
