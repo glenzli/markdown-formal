@@ -207,6 +207,34 @@ npm run workspace -- serve
 
 旧 VS Code 预览已归档；项目阅读与交互统一通过本地 Math Workspace 提供。
 
+## 探索稿与文档阶段
+
+探索稿比正式文档的“初稿”更早：它可以是灵感、错误尝试或尚未确定进入书稿的材料。探索稿需要在 `.math-workspace/config.json` 中显式配置，而不是按目录名自动发现：
+
+```json
+{
+  "scan": {
+    "exclude": ["draft/**"]
+  },
+  "documents": {
+    "collections": [
+      {
+        "id": "drafts",
+        "title": "探索稿",
+        "mode": "draft",
+        "include": ["draft/**"]
+      }
+    ]
+  }
+}
+```
+
+`scan.exclude` 让目录不进入正式扫描；`documents.collections` 让其中 Markdown 仍在 Reader 的可折叠探索稿区出现。探索稿只用于阅读，不生成 formal hash、定义或符号索引、依赖图、Lean 对齐或符号审计输入，因此相关工具在探索稿页默认禁用。
+
+正式文档使用独立的阶段元数据：默认“初稿”，可改为“修订中”或“稳定稿”。目录右键菜单支持单篇或多选批量修改；多选时 Reader 仍打开选中的第一篇。还可以为单篇文档记录 `RC1`、`v1` 等自由格式里程碑，Math Workspace 同时保存当时的内容 hash，并在后续内容变化时标记“有改动”。
+
+状态默认写入 `.math-workspace/documents.json`，以项目相对路径为键。移动或重命名文件后，旧记录会成为 orphan；这是有意的轻量行为，不做不可靠的语义猜测。若需改变状态文件位置，可设置 `documents.stateFile`。
+
 ## Codex MCP 入口
 
 Math Workspace 可作为独立本地客户端运行，也可通过 Codex MCP 打开。MCP 可启动或复用本机工作区，也提供讨论标记、命题、严格依赖、Lean 对齐与只读校验查询；它不嵌入或复制工作区渲染，更不维护第二套 Codex 对话实现。

@@ -17,6 +17,8 @@ Math Workspace 是一个面向长篇数学写作与形式化协作的本地工�
 
 Math Workspace 不会替你证明数学结论，也不会在后台悄悄改写书稿。确定性的扫描与校验负责可以机械判断的部分；模型辅助能力必须由用户显式启动，其结果作为审阅意见而不是事实来源。
 
+需要把已有数学仓库接入 Math Workspace，或让 Codex/其他 AI 继承项目规则时，先阅读 [安装与项目适配指南](docs/install.md)。它分别说明 CLI、Reader、Codex plugin、skill 组合与可选 Lean 接入，不要求一次启用全部能力。
+
 ## 快速开始
 
 在数学项目中安装：
@@ -49,6 +51,8 @@ npm run workspace -- serve .
 npm run workspace -- finish path/to/chapter.md
 ```
 
+首次接入建议从 `prepare → verify → serve` 开始；确认扫描边界和 Reader 正常后，再接入 Codex plugin、项目特化 skill 或 Lean。完整步骤与故障排查见 [docs/install.md](docs/install.md)。
+
 ## 它解决什么问题
 
 大型数学项目很少只缺一个 Markdown 预览器。真正容易失控的是跨越数十章、数百个命题之后的结构：
@@ -76,6 +80,8 @@ Reader 是当前受支持的主要界面，提供：
 - 多卷到章节的导航、目录、定义查询、当前页符号和引用回溯。
 - 命题类对象的严格依赖标记、章节关系图、端点审阅与批量辅助审阅。
 - 内容接管状态，用于区分已经使用稳定锚点管理的章节与仍待迁移的内容。
+- 可折叠的探索稿集合；探索稿继续可读，但不进入正式 hash、依赖、Lean 或符号审计流程。
+- 正式文档的“初稿 / 修订中 / 稳定稿”阶段、批量状态修改与可选 `RC1` / `v1` 版本里程碑。
 - 正文实时刷新，以及适合浏览器侧栏的紧凑阅读布局。
 
 Reader 只读取项目源码，不直接写入书稿。增强界面只会在存在 `.math-workspace/config.json` 的项目中启用。
@@ -215,6 +221,7 @@ release 和 npm 包提供可审阅的 AI artifact：
 这些规则不会远程自动安装或更新。目标项目应先审阅，再融合进自己的 `AGENTS.md`、skill 或项目指南。
 `skills-src/*.vasm.md` 是通用规则的唯一内容源；`npm run content:build` 生成 `skills/`、plugin 内的 `SKILL.md` 和带 hash 的 catalog。不要直接修改这些生成文件，目标项目应消费经过审阅的 release 或 catalog。
 
+面向 AI 的推荐适配顺序是：先读取目标仓库自身规则，再按任务引入 `math-writing`、`editor` 或 `lean-formalization`，最后用 `integrator` 消解重复和项目特化冲突。可复制的接入清单、Codex plugin 安装和更新方式见 [安装与项目适配指南](docs/install.md)。
 
 ## 开发
 
@@ -229,7 +236,7 @@ npm test
 本机联调 CLI 与 Codex plugin 时可以使用 `npm link`。公开文档的维护源在 `docs-src/**/*.vasm.md`，修改后运行：
 
 ```bash
-npm run content:build -- --dry-run
+vasmc build --dry-run
 npm run content:build
 ```
 

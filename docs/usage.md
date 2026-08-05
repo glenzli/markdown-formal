@@ -213,6 +213,34 @@ The project needs `.math-workspace/config.json`; run `prepare` once to create it
 
 The former VS Code preview is archived and unsupported. Project reading and interaction now use the local Math Workspace Reader.
 
+### Exploratory Drafts and Document Stages
+
+An exploratory draft is earlier than a formal document's Initial Draft stage: it may be an idea, a failed attempt, or material not yet intended for the manuscript. Draft collections are configured explicitly in `.math-workspace/config.json`; they are not discovered from a directory name alone:
+
+```json
+{
+  "scan": {
+    "exclude": ["draft/**"]
+  },
+  "documents": {
+    "collections": [
+      {
+        "id": "drafts",
+        "title": "Exploratory drafts",
+        "mode": "draft",
+        "include": ["draft/**"]
+      }
+    ]
+  }
+}
+```
+
+`scan.exclude` keeps the directory out of the formal scan, while `documents.collections` makes its Markdown files visible in a collapsible Reader group. Drafts remain readable but do not produce formal hashes, definition or symbol indexes, dependency nodes, Lean alignment, or symbol-audit input; the corresponding tools are disabled on draft pages.
+
+Formal documents use separate lifecycle metadata. They start as Initial Draft and can be changed to Revising or Stable Draft. The navigation context menu updates one document or a multi-selection; the Reader continues to display the first selected document. A document can also record a free-form milestone such as `RC1` or `v1`; Math Workspace stores the content hash at that point and later marks the document as changed when the hash differs.
+
+State is stored in `.math-workspace/documents.json` by default and keyed by project-relative path. Moving or renaming a file leaves the old record orphaned by design instead of guessing semantic identity. Set `documents.stateFile` to use another project-relative state path.
+
 ### Codex MCP Entry
 
 The Math Workspace remains an independent local client and can also be opened through Codex MCP. MCP starts or reuses the local workspace and provides narrow selection, formal-object, strict-dependency, Lean-alignment, and read-only validation queries; it does not embed or duplicate Math Workspace rendering or a Codex discussion surface.
@@ -728,6 +756,34 @@ npm run workspace -- serve
 项目需要先有 `.math-workspace/config.json`；首次使用可运行 `prepare`。Math Workspace 不要求预先生成 `workspace-index.json`。
 
 旧 VS Code 预览已归档；项目阅读与交互统一通过本地 Math Workspace 提供。
+
+## 探索稿与文档阶段
+
+探索稿比正式文档的“初稿”更早：它可以是灵感、错误尝试或尚未确定进入书稿的材料。探索稿需要在 `.math-workspace/config.json` 中显式配置，而不是按目录名自动发现：
+
+```json
+{
+  "scan": {
+    "exclude": ["draft/**"]
+  },
+  "documents": {
+    "collections": [
+      {
+        "id": "drafts",
+        "title": "探索稿",
+        "mode": "draft",
+        "include": ["draft/**"]
+      }
+    ]
+  }
+}
+```
+
+`scan.exclude` 让目录不进入正式扫描；`documents.collections` 让其中 Markdown 仍在 Reader 的可折叠探索稿区出现。探索稿只用于阅读，不生成 formal hash、定义或符号索引、依赖图、Lean 对齐或符号审计输入，因此相关工具在探索稿页默认禁用。
+
+正式文档使用独立的阶段元数据：默认“初稿”，可改为“修订中”或“稳定稿”。目录右键菜单支持单篇或多选批量修改；多选时 Reader 仍打开选中的第一篇。还可以为单篇文档记录 `RC1`、`v1` 等自由格式里程碑，Math Workspace 同时保存当时的内容 hash，并在后续内容变化时标记“有改动”。
+
+状态默认写入 `.math-workspace/documents.json`，以项目相对路径为键。移动或重命名文件后，旧记录会成为 orphan；这是有意的轻量行为，不做不可靠的语义猜测。若需改变状态文件位置，可设置 `documents.stateFile`。
 
 ## Codex MCP 入口
 
